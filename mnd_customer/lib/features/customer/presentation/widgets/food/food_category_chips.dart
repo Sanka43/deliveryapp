@@ -1,0 +1,103 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/home/home_section_entrance.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_section_header.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/food_catalog_provider.dart';
+
+class FoodCategoryChips extends ConsumerWidget {
+  const FoodCategoryChips({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<List<String>> labelsAsync = ref.watch(foodCategoryLabelsProvider);
+    final String? selected = ref.watch(selectedFoodCategoryProvider);
+
+    return HomeSectionEntrance(
+      delay: const Duration(milliseconds: 80),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const MndSectionHeader(title: 'Categories'),
+          const SizedBox(height: AppSpacing.sm),
+          labelsAsync.when(
+            loading: () => const SizedBox(
+              height: 40,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+            error: (_, __) => _ChipRow(
+              labels: kFoodCategoryFallbackLabels,
+              selected: selected,
+              onSelected: (String label) {
+                ref.read(selectedFoodCategoryProvider.notifier).state = label;
+              },
+            ),
+            data: (List<String> labels) => _ChipRow(
+              labels: labels,
+              selected: selected,
+              onSelected: (String label) {
+                ref.read(selectedFoodCategoryProvider.notifier).state = label;
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChipRow extends StatelessWidget {
+  const _ChipRow({
+    required this.labels,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<String> labels;
+  final String? selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: labels.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (BuildContext context, int index) {
+          final String label = labels[index];
+          final bool isSelected = (selected ?? 'All') == label;
+          return Material(
+            color: isSelected ? AppColors.brandPrimary : AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(999),
+            child: InkWell(
+              onTap: () => onSelected(label),
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  border: isSelected
+                      ? null
+                      : Border.all(
+                          color: AppColors.textPrimary.withValues(alpha: 0.08),
+                        ),
+                  boxShadow: isSelected ? null : AppColors.cardShadow,
+                ),
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: isSelected ? Colors.white : AppColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}

@@ -1,0 +1,15 @@
+# Firebase Console → Project settings → Your Android app → Add fingerprint
+# Package: com.example.mnd_delivery_app
+# (Re-run signingReport if you change PC or debug keystore.)
+
+SHA-1 (with colons — paste into Firebase "SHA certificate fingerprints"):
+E9:29:A2:FA:36:1F:2C:62:B9:83:42:E9:E1:A6:0D:6E:52:CB:08:E0
+
+SHA-256 (with colons):
+E2:E0:AD:82:62:7C:67:85:45:57:37:A3:2C:6B:54:C1:4F:76:C4:96:66:3F:E1:73:17:D5:61:75:3C:2C:B3:AA
+
+SHA-1 (no colons, lowercase — sometimes needed for Google Cloud / OAuth):
+e929a2fa361f2c62b98342e9e1a60d6e52cb08e0
+
+SHA-256 (no colons, lowercase):
+e2e0ad82627c6785455737a32c6b54c14f76c496663fe17317d561753c2cb3aa

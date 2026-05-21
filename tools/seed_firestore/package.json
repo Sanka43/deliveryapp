@@ -1,0 +1,9 @@
+{
+  "name": "mnd-seed-firestore",
+  "private": true,
+  "type": "module",
+  "description": "Writes sample vendors/products/banners for the MND Flutter app (requires a Firebase Admin service account).",
+  "dependencies": {
+    "firebase-admin": "^13.6.0"
+  }
+}
