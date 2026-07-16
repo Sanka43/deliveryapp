@@ -56,14 +56,15 @@ firebase deploy --only hosting:admin
    Terms (optional listing field):
    `https://mnd-masterndelivery.web.app/legal/shop-terms.html`
 6. Confirm Cloud Functions password-reset debug OTP is off in production.
-   Code default is `SHOP_PASSWORD_RESET_DEBUG=false`. Redeploy functions after
-   pull, and do not set the param to `true` on the live project:
+   Keep `functions/.env` as `SHOP_PASSWORD_RESET_DEBUG=false` (see `.env.example`).
+   Redeploy after changing it:
 
 ```bash
 firebase deploy --only functions
 ```
 
-   The Functions emulator still returns debug OTP for local QA.
+   The Functions emulator can still enable debug OTP with `SHOP_PASSWORD_RESET_DEBUG=1`
+   for local QA only.
 7. Prepare Play Console declarations:
    - Privacy policy URL (above)
    - Data safety form (location, photos, account, device/FCM)
