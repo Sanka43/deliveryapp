@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/shop_auth_state_provider.dart';
 import 'package:mnd_shop/app/providers/vendor_shell_tab_provider.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_sales_summary.dart';
@@ -31,7 +32,8 @@ class VendorDashboardPage extends ConsumerStatefulWidget {
   static String formatMoney(double v) => 'Rs. ${v.toStringAsFixed(2)}';
 
   @override
-  ConsumerState<VendorDashboardPage> createState() => _VendorDashboardPageState();
+  ConsumerState<VendorDashboardPage> createState() =>
+      _VendorDashboardPageState();
 }
 
 class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
@@ -67,7 +69,9 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
     WidgetRef ref,
     VendorPendingOrder order,
   ) async {
-    final VendorOrdersRepository repo = ref.read(vendorOrdersRepositoryProvider);
+    final VendorOrdersRepository repo = ref.read(
+      vendorOrdersRepositoryProvider,
+    );
     final bool? accepted = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         fullscreenDialog: true,
@@ -88,7 +92,10 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
       if (err != null) {
         _snack(context, err, error: true);
       } else {
-        _snack(context, 'Accepted · ${order.referenceForDisplay}');
+        _snack(
+          context,
+          '${_vTxt(context, en: 'Accepted', si: 'පිළිගත්තා')} · ${order.referenceForDisplay}',
+        );
       }
     } else if (accepted == false) {
       final String? err = await repo.rejectOrder(orderId: order.id);
@@ -98,7 +105,10 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
       if (err != null) {
         _snack(context, err, error: true);
       } else {
-        _snack(context, 'Rejected · ${order.referenceForDisplay}');
+        _snack(
+          context,
+          '${_vTxt(context, en: 'Rejected', si: 'ප්‍රතික්ෂේප කළා')} · ${order.referenceForDisplay}',
+        );
       }
     }
   }
@@ -110,20 +120,21 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
-        builder: (BuildContext ctx) => IncomingVendorOrderPage(order: order, readOnly: true),
+        builder: (BuildContext ctx) =>
+            IncomingVendorOrderPage(order: order, readOnly: true),
       ),
     );
   }
 
-  static String _greeting(DateTime now) {
+  static String _greeting(BuildContext context, DateTime now) {
     final int h = now.hour;
     if (h < 12) {
-      return 'Good Morning';
+      return _vTxt(context, en: 'Good Morning', si: 'සුභ උදෑසනක්');
     }
     if (h < 17) {
-      return 'Good Afternoon';
+      return _vTxt(context, en: 'Good Afternoon', si: 'සුභ මධ්‍යාහ්නයක්');
     }
-    return 'Good Evening';
+    return _vTxt(context, en: 'Good Evening', si: 'සුභ සන්ධ්‍යාවක්');
   }
 
   Future<void> _onRefresh() async {
@@ -139,12 +150,18 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
   @override
   Widget build(BuildContext context) {
     final VendorSalesSummary sales = ref.watch(vendorSalesSummaryProvider);
-    final AsyncValue<VendorOrderBoard> board = ref.watch(vendorOrderBoardProvider);
-    final VendorOrderBoard orderBoard = board.valueOrNull ?? VendorOrderBoard.empty;
-    final VendorCatalogMetricsSnapshot catalog =
-        ref.watch(vendorCatalogMetricsProvider);
+    final AsyncValue<VendorOrderBoard> board = ref.watch(
+      vendorOrderBoardProvider,
+    );
+    final VendorOrderBoard orderBoard =
+        board.valueOrNull ?? VendorOrderBoard.empty;
+    final VendorCatalogMetricsSnapshot catalog = ref.watch(
+      vendorCatalogMetricsProvider,
+    );
     final AsyncValue<bool> activeAsync = ref.watch(vendorStoreActiveProvider);
-    final AsyncValue<void> profileStoreSync = ref.watch(vendorStoreFromProfileProvider);
+    final AsyncValue<void> profileStoreSync = ref.watch(
+      vendorStoreFromProfileProvider,
+    );
     ref.watch(shopAuthStateProvider);
     ref.watch(vendorAccountDocDataProvider);
     final String storeId = ref.watch(vendorEffectiveStoreIdProvider).trim();
@@ -183,13 +200,14 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                   12,
                 ),
                 child: VendorDashboardHeader(
-                  greeting: _greeting(now),
+                  greeting: _greeting(context, now),
                   shopName: shopName,
                   unreadCount: unreadNotifications,
                   onNotificationTap: () {
                     Navigator.of(context).push<void>(
                       MaterialPageRoute<void>(
-                        builder: (BuildContext ctx) => const VendorNotificationsPage(),
+                        builder: (BuildContext ctx) =>
+                            const VendorNotificationsPage(),
                       ),
                     );
                   },
@@ -211,64 +229,85 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: <Widget>[
-                        if (profileStoreSync.isLoading)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: _SyncBanner(theme: theme, cs: cs),
-                          ),
-                        _StoreStatusHeroCard(
-                          isOpen: isOpen,
-                          pulseAnimation: _pulseController,
-                          sales: sales,
-                          board: orderBoard,
-                          catalog: catalog,
-                          canToggle: canToggleLive,
-                          storeId: storeId,
-                          onToggle: (bool value) async {
-                            if (storeId.isEmpty) {
-                              _snack(context, 'Set store ID first.', error: true);
-                              return;
-                            }
-                            final String? err = await ref
-                                .read(vendorOrdersRepositoryProvider)
-                                .setVendorActive(storeId, value);
-                            if (context.mounted && err != null) {
-                              _snack(context, err, error: true);
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        if (pendingApproval || rejected)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: _ApprovalBanner(
-                              pendingApproval: pendingApproval,
-                              theme: theme,
-                              cs: cs,
-                            ),
-                          ),
-                        const SizedBox(height: 12),
-                        _IncomingOrdersSection(
-                          storeId: storeId,
-                          board: board,
-                          ref: ref,
-                        ),
-                        const SizedBox(height: 12),
-                        board.when(
-                          data: (VendorOrderBoard b) => _WorkflowGrid(
-                            board: b,
-                            onOrderTap: (VendorPendingOrder o) =>
-                                _VendorDashboardPageState._openOrderDetailReadOnly(context, o),
-                            onViewAll: () {
-                              ref.read(vendorShellTabIndexProvider.notifier).state = 2;
-                            },
-                          ),
-                          loading: () => const SizedBox(height: 120),
-                          error: (Object e, StackTrace s) => const SizedBox.shrink(),
-                        ),
-                        const SizedBox(height: 12),
-                        const _SalesPreviewCard(),
-                        SizedBox(height: MediaQuery.paddingOf(context).bottom + 112),
+                              if (profileStoreSync.isLoading)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: _SyncBanner(theme: theme, cs: cs),
+                                ),
+                              _StoreStatusHeroCard(
+                                isOpen: isOpen,
+                                pulseAnimation: _pulseController,
+                                sales: sales,
+                                board: orderBoard,
+                                catalog: catalog,
+                                canToggle: canToggleLive,
+                                storeId: storeId,
+                                onToggle: (bool value) async {
+                                  if (storeId.isEmpty) {
+                                    _snack(
+                                      context,
+                                      _vTxt(
+                                        context,
+                                        en: 'Set store ID first.',
+                                        si: 'මුලින් store ID සකසන්න.',
+                                      ),
+                                      error: true,
+                                    );
+                                    return;
+                                  }
+                                  final String? err = await ref
+                                      .read(vendorOrdersRepositoryProvider)
+                                      .setVendorActive(storeId, value);
+                                  if (context.mounted && err != null) {
+                                    _snack(context, err, error: true);
+                                  }
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              if (pendingApproval || rejected)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: _ApprovalBanner(
+                                    pendingApproval: pendingApproval,
+                                    theme: theme,
+                                    cs: cs,
+                                  ),
+                                ),
+                              const SizedBox(height: 12),
+                              _IncomingOrdersSection(
+                                storeId: storeId,
+                                board: board,
+                                ref: ref,
+                              ),
+                              const SizedBox(height: 12),
+                              board.when(
+                                data: (VendorOrderBoard b) => _WorkflowGrid(
+                                  board: b,
+                                  onOrderTap: (VendorPendingOrder o) =>
+                                      _VendorDashboardPageState._openOrderDetailReadOnly(
+                                        context,
+                                        o,
+                                      ),
+                                  onViewAll: () {
+                                    ref
+                                            .read(
+                                              vendorShellTabIndexProvider
+                                                  .notifier,
+                                            )
+                                            .state =
+                                        2;
+                                  },
+                                ),
+                                loading: () => const SizedBox(height: 120),
+                                error: (Object e, StackTrace s) =>
+                                    const SizedBox.shrink(),
+                              ),
+                              const SizedBox(height: 12),
+                              const _SalesPreviewCard(),
+                              SizedBox(
+                                height:
+                                    MediaQuery.paddingOf(context).bottom + 112,
+                              ),
                             ],
                           ),
                         ),
@@ -285,7 +324,11 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                 child: Transform.rotate(
                   angle: -0.28,
                   child: Text(
-                    'ADMIN STILL NOT APPROVED YOUR SHOP',
+                    _vTxt(
+                      context,
+                      en: 'ADMIN STILL NOT APPROVED YOUR SHOP',
+                      si: 'ඔබේ සාප්පුව තවම ADMIN අනුමත කර නැත',
+                    ),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -323,9 +366,13 @@ class _IncomingOrdersSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme cs = theme.colorScheme;
-    final int? incomingCount = board.whenOrNull(data: (VendorOrderBoard b) => b.incoming.length);
+    final int? incomingCount = board.whenOrNull(
+      data: (VendorOrderBoard b) => b.incoming.length,
+    );
     final bool showViewAll =
-        storeId.isNotEmpty && incomingCount != null && incomingCount > _homePreviewLimit;
+        storeId.isNotEmpty &&
+        incomingCount != null &&
+        incomingCount > _homePreviewLimit;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
@@ -340,11 +387,15 @@ class _IncomingOrdersSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             child: Row(
               children: <Widget>[
-                Icon(Icons.inbox_rounded, color: cs.primary.withValues(alpha: 0.9), size: 22),
+                Icon(
+                  Icons.inbox_rounded,
+                  color: cs.primary.withValues(alpha: 0.9),
+                  size: 22,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Incoming orders',
+                    _vTxt(context, en: 'Incoming orders', si: 'එන ඇණවුම්'),
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.45,
@@ -357,13 +408,16 @@ class _IncomingOrdersSection extends StatelessWidget {
                   TextButton(
                     onPressed: _openAllIncomingOrders,
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       foregroundColor: cs.primary,
                     ),
                     child: Text(
-                      'View all',
+                      _vTxt(context, en: 'View all', si: 'සියල්ල බලන්න'),
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.2,
@@ -384,35 +438,52 @@ class _IncomingOrdersSection extends StatelessWidget {
               data: (VendorOrderBoard b) {
                 if (storeId.isEmpty) {
                   return _EmptyOrdersPanel(
-                    title: 'Link your store',
-                    subtitle:
-                        'Add your store ID under Products so incoming orders can load.',
+                    title: _vTxt(
+                      context,
+                      en: 'Link your store',
+                      si: 'ඔබේ සාප්පුව සම්බන්ධ කරන්න',
+                    ),
+                    subtitle: _vTxt(
+                      context,
+                      en: 'Add your store ID under Products so incoming orders can load.',
+                      si: 'එන ඇණවුම් ලැබීමට Products යටතේ store ID එක එක් කරන්න.',
+                    ),
                     icon: Icons.storefront_outlined,
                     embeddedInSection: true,
                   );
                 }
                 if (b.incoming.isEmpty) {
                   return _EmptyOrdersPanel(
-                    title: 'No incoming orders yet',
+                    title: _vTxt(
+                      context,
+                      en: 'No incoming orders yet',
+                      si: 'තවම එන ඇණවුම් නැත',
+                    ),
                     icon: Icons.move_to_inbox_rounded,
                     embeddedInSection: true,
                   );
                 }
-                final List<VendorPendingOrder> visible =
-                    b.incoming.take(_homePreviewLimit).toList();
+                final List<VendorPendingOrder> visible = b.incoming
+                    .take(_homePreviewLimit)
+                    .toList();
                 return Column(
                   children: List<Widget>.generate(visible.length, (int i) {
                     final VendorPendingOrder o = visible[i];
                     return Padding(
-                      padding: EdgeInsets.only(bottom: i < visible.length - 1 ? 12 : 0),
+                      padding: EdgeInsets.only(
+                        bottom: i < visible.length - 1 ? 12 : 0,
+                      ),
                       child: _ModernIncomingOrderCard(
                         order: o,
-                        moneyLabel: VendorDashboardPage.formatMoney(o.total),
-                        onOpenDetail: () => _VendorDashboardPageState._openIncomingDetail(
-                          context,
-                          ref,
-                          o,
+                        moneyLabel: VendorDashboardPage.formatMoney(
+                          o.shopTotal,
                         ),
+                        onOpenDetail: () =>
+                            _VendorDashboardPageState._openIncomingDetail(
+                              context,
+                              ref,
+                              o,
+                            ),
                         onAccept: () async {
                           final String? err = await ref
                               .read(vendorOrdersRepositoryProvider)
@@ -422,9 +493,16 @@ class _IncomingOrdersSection extends StatelessWidget {
                               );
                           if (context.mounted) {
                             if (err != null) {
-                              _VendorDashboardPageState._snack(context, err, error: true);
+                              _VendorDashboardPageState._snack(
+                                context,
+                                err,
+                                error: true,
+                              );
                             } else {
-                              _VendorDashboardPageState._snack(context, 'Accepted · ${o.referenceForDisplay}');
+                              _VendorDashboardPageState._snack(
+                                context,
+                                '${_vTxt(context, en: 'Accepted', si: 'පිළිගත්තා')} · ${o.referenceForDisplay}',
+                              );
                             }
                           }
                         },
@@ -434,9 +512,16 @@ class _IncomingOrdersSection extends StatelessWidget {
                               .rejectOrder(orderId: o.id);
                           if (context.mounted) {
                             if (err != null) {
-                              _VendorDashboardPageState._snack(context, err, error: true);
+                              _VendorDashboardPageState._snack(
+                                context,
+                                err,
+                                error: true,
+                              );
                             } else {
-                              _VendorDashboardPageState._snack(context, 'Rejected · ${o.referenceForDisplay}');
+                              _VendorDashboardPageState._snack(
+                                context,
+                                '${_vTxt(context, en: 'Rejected', si: 'ප්‍රතික්ෂේප කළා')} · ${o.referenceForDisplay}',
+                              );
                             }
                           }
                         },
@@ -449,7 +534,7 @@ class _IncomingOrdersSection extends StatelessWidget {
               error: (Object e, _) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text(
-                  'Could not load orders.\n$e',
+                  '${_vTxt(context, en: 'Could not load orders.', si: 'ඇණවුම් පූරණය කළ නොහැක.')}\n$e',
                   style: theme.textTheme.bodyMedium?.copyWith(color: cs.error),
                 ),
               ),
@@ -481,16 +566,19 @@ class _SyncBanner extends StatelessWidget {
           SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: cs.primary,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Syncing store link from your account…',
-              style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              _vTxt(
+                context,
+                en: 'Syncing store link from your account…',
+                si: 'ඔබේ ගිණුමෙන් store link එක sync කරමින්…',
+              ),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
             ),
           ),
         ],
@@ -530,9 +618,19 @@ class _ApprovalBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 pendingApproval
-                    ? 'Awaiting admin approval. Your shop is not visible to customers yet.'
-                    : 'This shop is not approved for the marketplace. Contact support.',
-                style: theme.textTheme.bodyMedium?.copyWith(color: cs.onPrimaryContainer),
+                    ? _vTxt(
+                        context,
+                        en: 'Awaiting admin approval. Your shop is not visible to customers yet.',
+                        si: 'Admin අනුමැතිය බලාපොරොත්තුයි. ඔබේ සාප්පුව තවම පාරිභෝගිකයන්ට නොපෙනේ.',
+                      )
+                    : _vTxt(
+                        context,
+                        en: 'This shop is not approved for the marketplace. Contact support.',
+                        si: 'මෙම සාප්පුව marketplace සඳහා අනුමත කර නොමැත. support අමතන්න.',
+                      ),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onPrimaryContainer,
+                ),
               ),
             ),
           ],
@@ -613,7 +711,10 @@ class _StoreStatusHeroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
                   decoration: BoxDecoration(
                     color: isOpen
                         ? Colors.black.withValues(alpha: 0.45)
@@ -656,11 +757,15 @@ class _StoreStatusHeroCard extends StatelessWidget {
                           height: 9,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isOpen ? AppColors.pulseGreen : AppColors.closedGrey,
+                            color: isOpen
+                                ? AppColors.pulseGreen
+                                : AppColors.closedGrey,
                             boxShadow: isOpen
                                 ? <BoxShadow>[
                                     BoxShadow(
-                                      color: AppColors.pulseGreen.withValues(alpha: 0.75),
+                                      color: AppColors.pulseGreen.withValues(
+                                        alpha: 0.75,
+                                      ),
                                       blurRadius: 10,
                                       spreadRadius: 1,
                                     ),
@@ -671,7 +776,9 @@ class _StoreStatusHeroCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 9),
                       Text(
-                        isOpen ? 'Open' : 'Close',
+                        isOpen
+                            ? _vTxt(context, en: 'Open', si: 'විවෘතයි')
+                            : _vTxt(context, en: 'Close', si: 'වසා ඇත'),
                         style: theme.textTheme.labelMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.5,
@@ -687,7 +794,9 @@ class _StoreStatusHeroCard extends StatelessWidget {
                 Theme(
                   data: theme.copyWith(
                     switchTheme: SwitchThemeData(
-                      thumbColor: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+                      thumbColor: WidgetStateProperty.resolveWith((
+                        Set<WidgetState> states,
+                      ) {
                         if (states.contains(WidgetState.disabled)) {
                           return Colors.white.withValues(alpha: 0.45);
                         }
@@ -696,7 +805,9 @@ class _StoreStatusHeroCard extends StatelessWidget {
                         }
                         return Colors.white;
                       }),
-                      trackColor: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+                      trackColor: WidgetStateProperty.resolveWith((
+                        Set<WidgetState> states,
+                      ) {
                         if (states.contains(WidgetState.disabled)) {
                           return Colors.white.withValues(alpha: 0.2);
                         }
@@ -705,7 +816,9 @@ class _StoreStatusHeroCard extends StatelessWidget {
                         }
                         return Colors.black.withValues(alpha: 0.28);
                       }),
-                      trackOutlineColor: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+                      trackOutlineColor: WidgetStateProperty.resolveWith((
+                        Set<WidgetState> states,
+                      ) {
                         if (states.contains(WidgetState.disabled)) {
                           return Colors.white.withValues(alpha: 0.35);
                         }
@@ -714,7 +827,9 @@ class _StoreStatusHeroCard extends StatelessWidget {
                         }
                         return Colors.white.withValues(alpha: 0.72);
                       }),
-                      trackOutlineWidth: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+                      trackOutlineWidth: WidgetStateProperty.resolveWith((
+                        Set<WidgetState> states,
+                      ) {
                         if (states.contains(WidgetState.disabled)) {
                           return 1.0;
                         }
@@ -723,13 +838,17 @@ class _StoreStatusHeroCard extends StatelessWidget {
                         }
                         return 1.5;
                       }),
-                      overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
+                      overlayColor: WidgetStateProperty.all<Color>(
+                        Colors.transparent,
+                      ),
                     ),
                   ),
                   child: Switch(
                     value: isOpen,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    onChanged: canToggle && storeId.isNotEmpty ? onToggle : null,
+                    onChanged: canToggle && storeId.isNotEmpty
+                        ? onToggle
+                        : null,
                   ),
                 ),
               ],
@@ -752,7 +871,11 @@ class _StoreStatusHeroCard extends StatelessWidget {
                   Expanded(
                     flex: 11,
                     child: VendorStatMiniCard(
-                      label: 'Today revenue',
+                      label: _vTxt(
+                        context,
+                        en: 'Today revenue',
+                        si: 'අද ආදායම',
+                      ),
                       value: VendorDashboardPage.formatMoney(sales.todayGross),
                       gradient: VendorDashboardTheme.heroStatGradient(context),
                       labelColor: VendorDashboardTheme.heroStatLabel(context),
@@ -765,7 +888,11 @@ class _StoreStatusHeroCard extends StatelessWidget {
                   Expanded(
                     flex: 9,
                     child: VendorStatMiniCard(
-                      label: 'Today orders',
+                      label: _vTxt(
+                        context,
+                        en: 'Today orders',
+                        si: 'අද ඇණවුම්',
+                      ),
                       value: '${sales.ordersToday}',
                       gradient: VendorDashboardTheme.heroStatGradient(context),
                       labelColor: VendorDashboardTheme.heroStatLabel(context),
@@ -785,7 +912,11 @@ class _StoreStatusHeroCard extends StatelessWidget {
                   child: VendorHeroInsightChip(
                     expand: true,
                     icon: Icons.inbox_outlined,
-                    label: 'Pending accept',
+                    label: _vTxt(
+                      context,
+                      en: 'Pending accept',
+                      si: 'බලාපොරොත්තු',
+                    ),
                     value: '${board.incoming.length}',
                     fillColor: board.incoming.isNotEmpty
                         ? Colors.white.withValues(alpha: 0.38)
@@ -801,7 +932,11 @@ class _StoreStatusHeroCard extends StatelessWidget {
                   child: VendorHeroInsightChip(
                     expand: true,
                     icon: Icons.local_fire_department_outlined,
-                    label: 'Active orders',
+                    label: _vTxt(
+                      context,
+                      en: 'Active orders',
+                      si: 'සක්‍රීය ඇණවුම්',
+                    ),
                     value: '${board.activeCount}',
                     fillColor: Colors.white.withValues(alpha: 0.28),
                     borderColor: Colors.white.withValues(alpha: 0.48),
@@ -822,7 +957,7 @@ class _StoreStatusHeroCard extends StatelessWidget {
                     icon: sales.weekOverWeekGrowthPercent >= 0
                         ? Icons.trending_up_rounded
                         : Icons.trending_down_rounded,
-                    label: 'Week growth',
+                    label: _vTxt(context, en: 'Week growth', si: 'සති වර්ධනය'),
                     value:
                         '${sales.weekOverWeekGrowthPercent >= 0 ? '+' : ''}${sales.weekOverWeekGrowthPercent.toStringAsFixed(1)}%',
                     fillColor: Colors.white.withValues(alpha: 0.28),
@@ -838,7 +973,7 @@ class _StoreStatusHeroCard extends StatelessWidget {
                       ? VendorHeroInsightChip(
                           expand: true,
                           icon: Icons.warning_amber_rounded,
-                          label: 'Low stock',
+                          label: _vTxt(context, en: 'Low stock', si: 'අඩු තොග'),
                           value: '${catalog.lowCount}',
                           fillColor: Colors.white.withValues(alpha: 0.38),
                           borderColor: Colors.white.withValues(alpha: 0.48),
@@ -849,9 +984,15 @@ class _StoreStatusHeroCard extends StatelessWidget {
                       : VendorHeroInsightChip(
                           expand: true,
                           icon: Icons.receipt_long_outlined,
-                          label: 'Avg order today',
+                          label: _vTxt(
+                            context,
+                            en: 'Avg order today',
+                            si: 'අද සාමාන්‍ය ඇණවුම',
+                          ),
                           value: VendorDashboardPage.formatMoney(
-                            sales.ordersToday > 0 ? sales.todayGross / sales.ordersToday : 0,
+                            sales.ordersToday > 0
+                                ? sales.todayGross / sales.ordersToday
+                                : 0,
                           ),
                           fillColor: Colors.white.withValues(alpha: 0.28),
                           borderColor: Colors.white.withValues(alpha: 0.48),
@@ -995,7 +1136,9 @@ class _OrdersLoadingSkeleton extends StatelessWidget {
             height: 108,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.15)),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.15),
+              ),
               gradient: LinearGradient(
                 colors: <Color>[
                   cs.outlineVariant.withValues(alpha: 0.2),
@@ -1029,7 +1172,13 @@ class _ModernIncomingOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme cs = theme.colorScheme;
-    final String itemsLabel = order.itemCount == 1 ? '1 item' : '${order.itemCount} items';
+    final String itemsLabel = order.itemCount == 1
+        ? _vTxt(context, en: '1 item', si: 'අයිතම 1')
+        : _vTxt(
+            context,
+            en: '${order.itemCount} items',
+            si: 'අයිතම ${order.itemCount}',
+          );
 
     final Color primaryText = VendorDashboardTheme.primaryText(context);
     final Color mutedText = VendorDashboardTheme.mutedText(context);
@@ -1051,7 +1200,9 @@ class _ModernIncomingOrderCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             color: VendorDashboardTheme.cardSurface(context),
-            border: Border.all(color: VendorDashboardTheme.sectionBorder(context)),
+            border: Border.all(
+              color: VendorDashboardTheme.sectionBorder(context),
+            ),
             boxShadow: VendorDashboardTheme.orderCardShadow(context),
           ),
           child: Padding(
@@ -1076,7 +1227,9 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                         children: <Widget>[
                           Text(
                             order.referenceForDisplay,
-                            style: headlineStyle.copyWith(fontFamily: 'monospace'),
+                            style: headlineStyle.copyWith(
+                              fontFamily: 'monospace',
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1108,13 +1261,16 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: VendorDashboardTheme.newBadgeBg(context),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            'NEW',
+                            _vTxt(context, en: 'NEW', si: 'නව'),
                             style: theme.textTheme.labelSmall?.copyWith(
                               color: VendorDashboardTheme.newBadgeText(context),
                               fontWeight: FontWeight.w800,
@@ -1133,15 +1289,25 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                     Icon(Icons.schedule_rounded, size: 16, color: mutedText),
                     const SizedBox(width: 6),
                     Text(
-                      order.placedAtLabel.isEmpty ? 'Just now' : order.placedAtLabel,
-                      style: theme.textTheme.bodySmall?.copyWith(color: mutedText),
+                      order.placedAtLabel.isEmpty
+                          ? _vTxt(context, en: 'Just now', si: 'දැන්ම')
+                          : order.placedAtLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: mutedText,
+                      ),
                     ),
                     const SizedBox(width: 14),
-                    Icon(Icons.shopping_bag_outlined, size: 16, color: mutedText),
+                    Icon(
+                      Icons.shopping_bag_outlined,
+                      size: 16,
+                      color: mutedText,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       itemsLabel,
-                      style: theme.textTheme.bodySmall?.copyWith(color: mutedText),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: mutedText,
+                      ),
                     ),
                   ],
                 ),
@@ -1157,7 +1323,10 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                         : null,
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
@@ -1190,7 +1359,9 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        child: const Text('Accept'),
+                        child: Text(
+                          _vTxt(context, en: 'Accept', si: 'පිළිගන්න'),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1199,17 +1370,24 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                         onPressed: () => onReject(),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.orderRejectRed,
-                          backgroundColor: isDark ? cs.surfaceContainerHigh : Colors.white,
+                          backgroundColor: isDark
+                              ? cs.surfaceContainerHigh
+                              : Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          side: const BorderSide(color: AppColors.orderRejectRed, width: 1.5),
+                          side: const BorderSide(
+                            color: AppColors.orderRejectRed,
+                            width: 1.5,
+                          ),
                           textStyle: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        child: const Text('Reject'),
+                        child: Text(
+                          _vTxt(context, en: 'Reject', si: 'ප්‍රතික්ෂේප කරන්න'),
+                        ),
                       ),
                     ),
                   ],
@@ -1238,10 +1416,9 @@ class _WorkflowGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     final List<_WFSpec> specs = <_WFSpec>[
       _WFSpec(
-        title: 'In Kitchen',
+        title: _vTxt(context, en: 'In Kitchen', si: 'මුළුතැන්ගෙයි'),
         count: board.kitchen.length,
         orders: board.kitchen,
         icon: Icons.restaurant_rounded,
@@ -1249,7 +1426,7 @@ class _WorkflowGrid extends StatelessWidget {
         accent: Colors.white,
       ),
       _WFSpec(
-        title: 'Ready',
+        title: _vTxt(context, en: 'Ready', si: 'සූදානම්'),
         count: board.readyForPickup.length,
         orders: board.readyForPickup,
         icon: Icons.task_alt_rounded,
@@ -1297,6 +1474,7 @@ class _WFSpec {
   final int count;
   final List<VendorPendingOrder> orders;
   final IconData icon;
+
   /// Solid fill uses [colors.first] (flat design — no gradient).
   final List<Color> colors;
   final Color accent;
@@ -1334,7 +1512,9 @@ class _WorkflowCell extends StatelessWidget {
   static String _trackingHashLine(VendorPendingOrder o) {
     final String ref = o.referenceForDisplay.trim();
     if (ref.isEmpty || ref == '-') {
-      final String tail = o.id.length > 6 ? o.id.substring(o.id.length - 6) : o.id;
+      final String tail = o.id.length > 6
+          ? o.id.substring(o.id.length - 6)
+          : o.id;
       return '#$tail';
     }
     return ref.startsWith('#') ? ref : '#$ref';
@@ -1354,8 +1534,12 @@ class _WorkflowCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final Color tile = gradient.first;
-    final List<VendorPendingOrder> shown = orders.take(_kMaxTrackingLines).toList(growable: false);
-    final int hidden = count > _kMaxTrackingLines ? count - _kMaxTrackingLines : 0;
+    final List<VendorPendingOrder> shown = orders
+        .take(_kMaxTrackingLines)
+        .toList(growable: false);
+    final int hidden = count > _kMaxTrackingLines
+        ? count - _kMaxTrackingLines
+        : 0;
     final int emptySlotCount = count > 0 && hidden == 0
         ? (_kMaxTrackingLines - shown.length).clamp(0, _kMaxTrackingLines)
         : 0;
@@ -1392,154 +1576,162 @@ class _WorkflowCell extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: _kDeepBlue,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: Center(
-                        child: Icon(icon, color: accent, size: 18),
-                      ),
-                    ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: _kDeepBlue,
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: <Widget>[
-                        SizedBox(
-                          width: double.infinity,
-                          child: Text(
-                            title,
-                            textAlign: TextAlign.right,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
-                              height: 1.1,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              '$count',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.5,
-                                height: 1,
-                                fontSize: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Center(child: Icon(icon, color: accent, size: 18)),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Container(
-                height: 1,
-                decoration: const BoxDecoration(
-                  color: _kDividerBlue,
-                  borderRadius: BorderRadius.all(Radius.circular(1)),
                 ),
-              ),
-              const SizedBox(height: 4),
-              if (count == 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    'No orders',
-                    textAlign: TextAlign.right,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: _kMutedOnBlue,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                )
-              else
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: <Widget>[
-                    for (final VendorPendingOrder o in shown)
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => onOrderTap(o),
-                          borderRadius: BorderRadius.circular(6),
-                          splashColor: const Color(0x33FFFFFF),
-                          highlightColor: const Color(0x1AFFFFFF),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 2),
-                            child: Text(
-                              _trackingHashLine(o),
-                              textAlign: TextAlign.right,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: trackingStyle,
-                            ),
-                          ),
-                        ),
-                      ),
-                    for (int i = 0; i < emptySlotCount; i++)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 2),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: <Widget>[
+                      SizedBox(
+                        width: double.infinity,
                         child: Text(
-                          _kEmptySlotLine,
+                          title,
                           textAlign: TextAlign.right,
                           maxLines: 1,
-                          style: emptySlotStyle,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            height: 1.1,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
-                    if (hidden > 0)
-                      InkWell(
-                        onTap: onViewAll,
+                      const SizedBox(height: 2),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            '$count',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                              height: 1,
+                              fontSize: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Container(
+              height: 1,
+              decoration: const BoxDecoration(
+                color: _kDividerBlue,
+                borderRadius: BorderRadius.all(Radius.circular(1)),
+              ),
+            ),
+            const SizedBox(height: 4),
+            if (count == 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  _vTxt(context, en: 'No orders', si: 'ඇණවුම් නැත'),
+                  textAlign: TextAlign.right,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: _kMutedOnBlue,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              )
+            else
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  for (final VendorPendingOrder o in shown)
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => onOrderTap(o),
                         borderRadius: BorderRadius.circular(6),
                         splashColor: const Color(0x33FFFFFF),
                         highlightColor: const Color(0x1AFFFFFF),
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 1),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 1,
+                            horizontal: 2,
+                          ),
                           child: Text(
-                            '+$hidden more',
+                            _trackingHashLine(o),
                             textAlign: TextAlign.right,
                             maxLines: 1,
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: _kMutedOnBlue,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.05,
-                              fontSize: 12,
-                              height: 1.15,
-                              decoration: TextDecoration.underline,
-                              decorationColor: _kMutedOnBlue,
-                            ),
+                            overflow: TextOverflow.ellipsis,
+                            style: trackingStyle,
                           ),
                         ),
                       ),
-                  ],
-                ),
-            ],
-          ),
+                    ),
+                  for (int i = 0; i < emptySlotCount; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 1,
+                        horizontal: 2,
+                      ),
+                      child: Text(
+                        _kEmptySlotLine,
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        style: emptySlotStyle,
+                      ),
+                    ),
+                  if (hidden > 0)
+                    InkWell(
+                      onTap: onViewAll,
+                      borderRadius: BorderRadius.circular(6),
+                      splashColor: const Color(0x33FFFFFF),
+                      highlightColor: const Color(0x1AFFFFFF),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(
+                          _vTxt(
+                            context,
+                            en: '+$hidden more',
+                            si: 'තවත් $hidden',
+                          ),
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: _kMutedOnBlue,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.05,
+                            fontSize: 12,
+                            height: 1.15,
+                            decoration: TextDecoration.underline,
+                            decorationColor: _kMutedOnBlue,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+          ],
         ),
+      ),
     );
   }
 }
@@ -1552,32 +1744,28 @@ class _SalesPreviewCard extends ConsumerWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme cs = theme.colorScheme;
     final VendorSalesSummary sales = ref.watch(vendorSalesSummaryProvider);
-    final List<DailySalesPoint> days = ref.watch(vendorReportsProvider).last7Days;
+    final List<DailySalesPoint> days = ref
+        .watch(vendorReportsProvider)
+        .last7Days;
 
     final bool growthPositive = sales.weekOverWeekGrowthPercent >= 0;
-    final double priorWeekGross = sales.weekGross /
-        (1 + sales.weekOverWeekGrowthPercent / 100);
-    final double priorScale = sales.weekGross > 0 ? priorWeekGross / sales.weekGross : 0.85;
+    final double priorWeekGross = sales.priorWeekGross;
 
     final List<FlSpot> currentSpots = <FlSpot>[
-      for (int i = 0; i < days.length; i++) FlSpot(i.toDouble(), days[i].grossLkr),
-    ];
-    final List<FlSpot> priorSpots = <FlSpot>[
       for (int i = 0; i < days.length; i++)
-        FlSpot(
-          i.toDouble(),
-          days[i].grossLkr * priorScale * (1 - 0.018 * i),
-        ),
+        FlSpot(i.toDouble(), days[i].grossLkr),
     ];
 
     final int lastIndex = days.isEmpty ? 0 : days.length - 1;
-    final double maxY = <double>[
-      if (currentSpots.isNotEmpty) ...currentSpots.map((FlSpot e) => e.y),
-      if (priorSpots.isNotEmpty) ...priorSpots.map((FlSpot e) => e.y),
-    ].fold<double>(1, math.max) *
+    final bool hourlyChart = days.length > 12;
+    final int xLabelStep = hourlyChart
+        ? 4
+        : math.max(1, (days.length / 4).ceil());
+    final double maxY =
+        <double>[
+          if (currentSpots.isNotEmpty) ...currentSpots.map((FlSpot e) => e.y),
+        ].fold<double>(1, math.max) *
         1.12;
-
-    final Color priorLine = VendorDashboardTheme.chartPriorLine(context);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
@@ -1591,7 +1779,7 @@ class _SalesPreviewCard extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Today revenue',
+            _vTxt(context, en: 'Today revenue', si: 'අද ආදායම'),
             style: theme.textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w600,
               color: VendorDashboardTheme.mutedText(context),
@@ -1619,7 +1807,10 @@ class _SalesPreviewCard extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: growthPositive
                       ? AppColors.openGreen.withValues(alpha: 0.12)
@@ -1651,7 +1842,11 @@ class _SalesPreviewCard extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'vs. ${VendorDashboardPage.formatMoney(priorWeekGross)} previous week',
+            _vTxt(
+              context,
+              en: 'vs. ${VendorDashboardPage.formatMoney(priorWeekGross)} previous week',
+              si: 'පසුගිය සතිය ${VendorDashboardPage.formatMoney(priorWeekGross)} සමඟ සසඳා',
+            ),
             style: theme.textTheme.bodySmall?.copyWith(
               color: VendorDashboardTheme.mutedText(context),
               height: 1.35,
@@ -1659,7 +1854,7 @@ class _SalesPreviewCard extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 148,
+            height: 166,
             child: days.isEmpty
                 ? const SizedBox.shrink()
                 : LineChart(
@@ -1687,20 +1882,36 @@ class _SalesPreviewCard extends ConsumerWidget {
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            reservedSize: 26,
-                            interval: 1,
+                            reservedSize: 34,
+                            interval: xLabelStep.toDouble(),
                             getTitlesWidget: (double value, TitleMeta meta) {
                               final int i = value.round();
-                              if (i < 0 || i > lastIndex) {
-                                return const SizedBox.shrink();
+                              String? label;
+                              if (hourlyChart) {
+                                if (i >= 8 && i <= 24 && i % xLabelStep == 0) {
+                                  label = i.toString().padLeft(2, '0');
+                                }
+                              } else {
+                                if (i >= 0 &&
+                                    i <= lastIndex &&
+                                    (i == 0 ||
+                                        i == lastIndex ||
+                                        i % xLabelStep == 0)) {
+                                  label = days[i].shortLabel;
+                                }
                               }
+                              if (label == null) return const SizedBox.shrink();
                               return Padding(
-                                padding: const EdgeInsets.only(top: 8),
+                                padding: const EdgeInsets.only(top: 10),
                                 child: Text(
-                                  days[i].shortLabel,
+                                  label,
+                                  maxLines: 1,
                                   style: theme.textTheme.labelSmall?.copyWith(
-                                    color: VendorDashboardTheme.mutedText(context),
+                                    color: VendorDashboardTheme.mutedText(
+                                      context,
+                                    ),
                                     fontWeight: FontWeight.w500,
+                                    fontSize: hourlyChart ? 10 : null,
                                   ),
                                 ),
                               );
@@ -1710,18 +1921,12 @@ class _SalesPreviewCard extends ConsumerWidget {
                       ),
                       borderData: FlBorderData(show: false),
                       minX: 0,
-                      maxX: lastIndex.toDouble().clamp(0, 100),
+                      maxX: hourlyChart
+                          ? 24
+                          : lastIndex.toDouble().clamp(0, 100),
                       minY: 0,
                       maxY: maxY,
                       lineBarsData: <LineChartBarData>[
-                        LineChartBarData(
-                          spots: priorSpots,
-                          isCurved: true,
-                          curveSmoothness: 0.35,
-                          color: priorLine,
-                          barWidth: 2,
-                          dotData: const FlDotData(show: false),
-                        ),
                         LineChartBarData(
                           spots: currentSpots,
                           isCurved: true,
@@ -1749,4 +1954,16 @@ class _SalesPreviewCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _vTxt(
+  BuildContext context, {
+  required String en,
+  required String si,
+  String? ta,
+}) {
+  final String languageCode = Localizations.localeOf(context).languageCode;
+  if (languageCode == 'si') return si;
+  if (languageCode == 'ta') return ta ?? vendorTamilFallback(en);
+  return en;
 }

@@ -79,3 +79,17 @@ flutter build appbundle --release
 ```
 
 The Play upload artifact is written to `build/app/outputs/bundle/release/app-release.aab`.
+
+Release builds enable R8 minify + resource shrinking (`android/app/build.gradle.kts`)
+with Flutter/Firebase/Play Core keep rules in `android/app/proguard-rules.pro`.
+
+## Play Console submit pack
+
+See [`store/PLAY_CONSOLE.md`](store/PLAY_CONSOLE.md) for listing copy, Data safety
+answers, reviewer-account steps, and graphics checklist.
+
+Store assets:
+
+- `store/feature-graphic.png` (1024×500)
+- `store/icon-512.png` (512×512)
+- `store/screenshots/` — capture phone screenshots here before upload

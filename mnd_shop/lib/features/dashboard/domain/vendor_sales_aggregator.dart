@@ -1,5 +1,6 @@
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_sales_summary.dart';
+import 'package:mnd_shop/features/orders/domain/vendor_order_status.dart';
 
 /// Derives dashboard sales KPIs from recent order documents (same snapshot as the order board).
 abstract final class VendorSalesAggregator {
@@ -28,24 +29,25 @@ abstract final class VendorSalesAggregator {
         continue;
       }
       final String status = o.statusKey;
-      final bool isCompleted = status == 'completed';
-      final bool isCancelled = status == 'cancelled';
+      final bool isCompleted = VendorOrderStatus.isCompleted(status);
+      final bool isCancelled = VendorOrderStatus.isCancelled(status);
 
       if (isCompleted) {
+        final double shopTotal = o.shopTotal;
         if (!_isBeforeDay(at, startOfToday)) {
-          todayGross += o.total;
+          todayGross += shopTotal;
           ordersToday++;
         }
         if (!_isBeforeDay(at, weekStart)) {
-          weekGross += o.total;
+          weekGross += shopTotal;
           ordersWeek++;
         }
         if (!_isBeforeDay(at, monthStart)) {
-          monthGross += o.total;
+          monthGross += shopTotal;
           ordersMonth++;
         }
         if (_isBeforeDay(at, weekStart) && !_isBeforeDay(at, priorWeekStart)) {
-          priorWeekGross += o.total;
+          priorWeekGross += shopTotal;
         }
       }
 
@@ -70,6 +72,7 @@ abstract final class VendorSalesAggregator {
     return VendorSalesSummary(
       todayGross: todayGross,
       weekGross: weekGross,
+      priorWeekGross: priorWeekGross,
       monthGross: monthGross,
       ordersToday: ordersToday,
       ordersWeek: ordersWeek,
