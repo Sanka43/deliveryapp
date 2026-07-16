@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "140652528868",
+    "project_id": "mnd-masterndelivery",
+    "storage_bucket": "mnd-masterndelivery.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:140652528868:android:8b4a93223bc4a26ab458f1",
+        "android_client_info": {
+          "package_name": "com.example.mnd_delivery_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "140652528868-ejb6m15gnljqj13ohsedtu7ssr8vtrdm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mnd_delivery_app",
+            "certificate_hash": "e929a2fa361f2c62b98342e9e1a60d6e52cb08e0"
+          }
+        },
+        {
+          "client_id": "140652528868-q9aoqmt1cnic519dabo3mrdp9483ub5m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9jKCRCr7PKqskhk7SNBI12rogIhcHlp4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "140652528868-q9aoqmt1cnic519dabo3mrdp9483ub5m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "140652528868-k0k0tbgekqo3v90usmptrqha39k1si19.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.mndDeliveryApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:140652528868:android:bf295389ca227583b458f1",
+        "android_client_info": {
+          "package_name": "com.mnd.mnd_shop"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "140652528868-q9aoqmt1cnic519dabo3mrdp9483ub5m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9jKCRCr7PKqskhk7SNBI12rogIhcHlp4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "140652528868-q9aoqmt1cnic519dabo3mrdp9483ub5m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "140652528868-k0k0tbgekqo3v90usmptrqha39k1si19.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.mndDeliveryApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

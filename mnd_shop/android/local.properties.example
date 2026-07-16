@@ -1,0 +1,3 @@
+# Copy to android/local.properties (not committed) and set your SDK path + Maps key.
+sdk.dir=C:\\Users\\YOUR_USER\\AppData\\Local\\Android\\sdk
+GOOGLE_MAPS_KEY=your_google_maps_api_key_here
