@@ -43,6 +43,7 @@
         <button type="button" class="nav-btn" data-nav="rider-approvals">Rider approvals <span id="nav-pending-riders" class="nav-badge" hidden>0</span></button>
         <button type="button" class="nav-btn" data-nav="riders">Riders</button>
         <button type="button" class="nav-btn" data-nav="customers">Customers</button>
+        <button type="button" class="nav-btn" data-nav="ratings">Rating Management</button>
         <button type="button" class="nav-btn" data-nav="help">Setup</button>
         <div class="sidebar-footer">
           <small id="topbar-email"></small>
@@ -455,6 +456,49 @@
             </div>
           </section>
 
+          <section data-view="ratings" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Rating Management</h3>
+              </div>
+              <p style="color: var(--muted); margin-top: 0">
+                Customer ratings for shops after delivery. Hide removes a rating from the public average; delete removes it permanently.
+              </p>
+              <div class="toolbar">
+                <input type="search" id="filter-ratings" placeholder="Search shop, customer, comment…" />
+                <select id="filter-rating-stars">
+                  <option value="">All stars</option>
+                  <option value="5">5 stars</option>
+                  <option value="4">4 stars</option>
+                  <option value="3">3 stars</option>
+                  <option value="2">2 stars</option>
+                  <option value="1">1 star</option>
+                </select>
+                <select id="filter-rating-status">
+                  <option value="">All statuses</option>
+                  <option value="visible">Visible</option>
+                  <option value="hidden">Hidden</option>
+                </select>
+              </div>
+              <div class="table-wrap">
+                <table id="table-ratings">
+                  <thead>
+                    <tr>
+                      <th>Shop</th>
+                      <th>Customer</th>
+                      <th>Stars</th>
+                      <th>Comment</th>
+                      <th>Status</th>
+                      <th>Date</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
           <section data-view="help" class="view" hidden>
             <div class="panel">
               <h3 style="margin-top: 0">Admin setup</h3>
@@ -477,6 +521,10 @@
                 </li>
                 <li>
                   <strong>Job approvals:</strong> approve customer app job posts (<code>jobs</code> collection).
+                </li>
+                <li>
+                  <strong>Rating Management:</strong> moderate customer shop ratings (<code>store_ratings</code>).
+                  Vendor <code>rating</code> / <code>ratingCount</code> are recomputed by Cloud Functions.
                 </li>
                 <li>
                   <strong>Rider approvals:</strong> approve MND Rider registrations (<code>riders/{uid}</code>).

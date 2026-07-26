@@ -220,13 +220,17 @@ service cloud.firestore {
       function vendorOwnVendorDocUpdateOk() {
         let b = resource.data;
         let a = request.resource.data;
-        return (!('approvalStatus' in b) || !(b.approvalStatus is string))
+        let approvalOk = (!('approvalStatus' in b) || !(b.approvalStatus is string))
           ? true
           : (
               b.approvalStatus == 'approved'
                 ? (!('approvalStatus' in a) || a.approvalStatus == 'approved')
                 : (a.active == false && (!('approvalStatus' in a) || a.approvalStatus == b.approvalStatus))
             );
+        // rating / ratingCount are owned by Cloud Functions (store_ratings aggregation).
+        let ratingFieldsUnchanged = !a.diff(b).affectedKeys()
+          .hasAny(['rating', 'ratingCount']);
+        return approvalOk && ratingFieldsUnchanged;
       }
 
       function vendorNonAdminStoreOwner(vendorId) {
@@ -990,6 +994,58 @@ service cloud.firestore {
         && request.resource.data.reason is string
         && request.resource.data.createdAt is timestamp;
       allow update, delete: if isAdmin();
+    }
+
+    // Customer → shop ratings (one doc per delivered order; doc id == orderId).
+    match /store_ratings/{orderId} {
+      function storeRatingOrder() {
+        return get(/databases/$(database)/documents/orders/$(orderId)).data;
+      }
+
+      function storeRatingOrderExists() {
+        return exists(/databases/$(database)/documents/orders/$(orderId));
+      }
+
+      function validStoreRatingCreate() {
+        let d = request.resource.data;
+        let o = storeRatingOrder();
+        return isSignedIn()
+          && storeRatingOrderExists()
+          && d.orderId == orderId
+          && d.customerId == request.auth.uid
+          && o.customerId == request.auth.uid
+          && o.status == 'delivered'
+          && (!('storeRated' in o) || o.storeRated != true)
+          && d.vendorId is string
+          && d.vendorId.size() > 0
+          && d.vendorId.size() <= 128
+          && d.vendorId == o.vendorId
+          && d.storeName is string
+          && d.storeName.size() > 0
+          && d.storeName.size() <= 120
+          && d.stars is int
+          && d.stars >= 1
+          && d.stars <= 5
+          && d.comment is string
+          && d.comment.size() <= 500
+          && d.status == 'visible'
+          && d.createdAt is timestamp
+          && d.updatedAt is timestamp;
+      }
+
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.customerId == request.auth.uid)
+        || (isSignedIn() && resource.data.status == 'visible');
+
+      allow create: if validStoreRatingCreate();
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['visible', 'hidden']
+        && request.resource.data.updatedAt is timestamp;
+
+      allow delete: if isAdmin();
     }
 
     // Device tokens: owner manages own token docs (FCM registry).

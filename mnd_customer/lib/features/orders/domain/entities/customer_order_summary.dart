@@ -9,6 +9,7 @@ class CustomerOrderSummary {
     required this.totalLkr,
     required this.createdAt,
     this.trackingNumber,
+    this.storeRated = false,
   });
 
   final String id;
@@ -17,6 +18,13 @@ class CustomerOrderSummary {
   final int totalLkr;
   final DateTime? createdAt;
   final String? trackingNumber;
+
+  /// True after the customer submitted a shop rating for this order.
+  final bool storeRated;
+
+  bool get canRateStore {
+    return statusRaw.toLowerCase().trim() == 'delivered' && !storeRated;
+  }
 
   /// User-visible order reference (never the Firestore document id).
   String get referenceForDisplay {
@@ -82,6 +90,7 @@ class CustomerOrderSummary {
       totalLkr: totalLkr,
       createdAt: ts?.toDate(),
       trackingNumber: (tn == null || tn.isEmpty) ? null : tn,
+      storeRated: data['storeRated'] == true,
     );
   }
 }

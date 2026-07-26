@@ -15,6 +15,11 @@ export {
   onOrderCreatedVendorStats,
   onOrderUpdatedVendorStats,
 } from "./vendorStats";
+export {
+  onStoreRatingCreated,
+  onStoreRatingUpdated,
+  onStoreRatingDeleted,
+} from "./storeRatings";
 export {paymentWebhook} from "./paymentWebhook";
 export {devRiderOtpSignIn} from "./devRiderAuth";
 export {

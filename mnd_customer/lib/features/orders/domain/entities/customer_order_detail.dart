@@ -164,6 +164,8 @@ class CustomerOrderDetail {
     this.cancelledBy,
     this.riderId,
     this.trackingNumber,
+    this.storeRated = false,
+    this.storeRatingStars,
   });
 
   final String id;
@@ -193,6 +195,12 @@ class CustomerOrderDetail {
 
   /// Public tracking code (e.g. `MND2600012`); absent on legacy orders.
   final String? trackingNumber;
+
+  /// True after the customer submitted a shop rating for this order.
+  final bool storeRated;
+
+  /// Stars the customer gave (1–5), when [storeRated] is true.
+  final int? storeRatingStars;
 
   /// User-visible order reference (never the Firestore document id).
   String get referenceForDisplay {
@@ -262,7 +270,22 @@ class CustomerOrderDetail {
       cancelledBy: (data['cancelledBy'] as String?)?.trim(),
       riderId: _readOptionalId(data['riderId'] ?? data['assignedRiderId']),
       trackingNumber: _readOptionalId(data['trackingNumber']),
+      storeRated: data['storeRated'] == true,
+      storeRatingStars: _readOptionalStars(data['storeRatingStars']),
     );
+  }
+
+  static int? _readOptionalStars(dynamic v) {
+    if (v is int && v >= 1 && v <= 5) {
+      return v;
+    }
+    if (v is num) {
+      final int n = v.toInt();
+      if (n >= 1 && n <= 5) {
+        return n;
+      }
+    }
+    return null;
   }
 
   static String? _readOptionalId(dynamic v) {

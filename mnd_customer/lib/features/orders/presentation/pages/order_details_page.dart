@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/money_format.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_brand_watermark.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_detail.dart';
 import 'package:mnd_delivery_app/features/orders/domain/order_cancellation.dart';
@@ -12,26 +13,15 @@ import 'package:mnd_delivery_app/features/orders/presentation/providers/order_de
 import 'package:mnd_delivery_app/features/orders/presentation/utils/reorder_helper.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/cancel_order_bottom_sheet.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/animated_order_status_tracker.dart';
+import 'package:mnd_delivery_app/features/orders/presentation/widgets/store_rating_card.dart';
 
 class OrderDetailsPage extends ConsumerWidget {
   const OrderDetailsPage({super.key, required this.orderId});
 
   final String orderId;
 
-  static String formatLkr(int amount) {
-    final String s = amount.toString();
-    if (s.length <= 3) {
-      return 'LKR $s';
-    }
-    final StringBuffer b = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) {
-        b.write(',');
-      }
-      b.write(s[i]);
-    }
-    return 'LKR $b';
-  }
+  static String formatLkr(int amount) =>
+      MoneyFormat.lkr(amount, showDecimals: false);
 
   static String? formatDate(DateTime? d) {
     if (d == null) {
@@ -93,7 +83,7 @@ class OrderDetailsPage extends ConsumerWidget {
               Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
                   side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
                 ),
                 child: Padding(
@@ -121,7 +111,7 @@ class OrderDetailsPage extends ConsumerWidget {
                         Text(
                           formatDate(detail.createdAt)!,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.black54,
+                                color: AppColors.textSecondary,
                               ),
                         ),
                       ],
@@ -140,21 +130,55 @@ class OrderDetailsPage extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          icon: const Icon(Icons.replay_rounded),
-                          label: const Text('Reorder'),
-                          onPressed: () => handleReorder(context, ref, detail),
+                      if (detail.riderId != null &&
+                          detail.riderId!.trim().isNotEmpty &&
+                          OrderTimelineLogic.isActiveForLiveRiderMap(
+                            detail.statusRaw,
+                          )) ...<Widget>[
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.map_outlined),
+                            label: const Text('Track rider on map'),
+                            onPressed: () => context.push(
+                              AppRoutes.customerOrderLiveTracking(detail.id),
+                            ),
+                          ),
                         ),
-                      ),
-                      if (OrderCancellationPolicy.customerMayCancel(detail.statusRaw)) ...<Widget>[
+                        const SizedBox(height: AppSpacing.sm),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.replay_rounded),
+                            label: const Text('Reorder'),
+                            onPressed: () =>
+                                handleReorder(context, ref, detail),
+                          ),
+                        ),
+                      ] else ...<Widget>[
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.replay_rounded),
+                            label: const Text('Reorder'),
+                            onPressed: () =>
+                                handleReorder(context, ref, detail),
+                          ),
+                        ),
+                      ],
+                      if (OrderCancellationPolicy.customerMayCancel(
+                        detail.statusRaw,
+                      )) ...<Widget>[
                         const SizedBox(height: AppSpacing.sm),
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: Theme.of(context).colorScheme.error,
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.error,
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
                             ),
                             icon: const Icon(Icons.cancel_outlined),
                             label: const Text('Cancel order'),
@@ -172,12 +196,19 @@ class OrderDetailsPage extends ConsumerWidget {
               if (OrderTimelineLogic.isCancelled(detail.statusRaw)) ...<Widget>[
                 const SizedBox(height: AppSpacing.md),
                 Card(
-                  color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.35),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .errorContainer
+                      .withValues(alpha: 0.35),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius:
+                        BorderRadius.circular(AppColors.cardRadiusSm),
                     side: BorderSide(
-                      color: Theme.of(context).colorScheme.error.withValues(alpha: 0.25),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .error
+                          .withValues(alpha: 0.25),
                     ),
                   ),
                   child: Padding(
@@ -195,7 +226,10 @@ class OrderDetailsPage extends ConsumerWidget {
                             Expanded(
                               child: Text(
                                 'Order cancelled',
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(
                                       fontWeight: FontWeight.w700,
                                     ),
                               ),
@@ -210,13 +244,16 @@ class OrderDetailsPage extends ConsumerWidget {
                           ),
                         ],
                         if (detail.cancellationReasonDetail != null &&
-                            detail.cancellationReasonDetail!.trim().isNotEmpty) ...<Widget>[
+                            detail.cancellationReasonDetail!
+                                .trim()
+                                .isNotEmpty) ...<Widget>[
                           const SizedBox(height: AppSpacing.xs),
                           Text(
                             detail.cancellationReasonDetail!.trim(),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.black87,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
                           ),
                         ],
                       ],
@@ -225,22 +262,9 @@ class OrderDetailsPage extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: AppSpacing.lg),
+              StoreRatingCard(detail: detail),
+              const SizedBox(height: AppSpacing.lg),
               AnimatedOrderStatusTracker(statusRaw: detail.statusRaw),
-              if (detail.riderId != null &&
-                  detail.riderId!.trim().isNotEmpty &&
-                  OrderTimelineLogic.isActiveForLiveRiderMap(detail.statusRaw)) ...<Widget>[
-                const SizedBox(height: AppSpacing.md),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    icon: const Icon(Icons.map_outlined),
-                    label: const Text('Track rider on map'),
-                    onPressed: () => context.push(
-                      AppRoutes.customerOrderLiveTracking(detail.id),
-                    ),
-                  ),
-                ),
-              ],
               const SizedBox(height: AppSpacing.lg),
               Text(
                 'Delivery',
@@ -252,7 +276,7 @@ class OrderDetailsPage extends ConsumerWidget {
               Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
                   side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
                 ),
                 child: Padding(
@@ -285,7 +309,7 @@ class OrderDetailsPage extends ConsumerWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        const Icon(Icons.note_outlined, size: 20, color: Colors.black54),
+                        const Icon(Icons.note_outlined, size: 20, color: AppColors.textSecondary),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: Text(
@@ -300,7 +324,7 @@ class OrderDetailsPage extends ConsumerWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      const Icon(Icons.info_outline_rounded, size: 20, color: Colors.black54),
+                      const Icon(Icons.info_outline_rounded, size: 20, color: AppColors.textSecondary),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
@@ -329,7 +353,7 @@ class OrderDetailsPage extends ConsumerWidget {
               Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
                   side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
                 ),
                 child: Padding(
@@ -346,7 +370,7 @@ class OrderDetailsPage extends ConsumerWidget {
                           label: 'Discount',
                           value: '- ${formatLkr(detail.discount)}',
                           valueStyle: TextStyle(
-                            color: Colors.green.shade700,
+                            color: AppColors.success,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -358,7 +382,7 @@ class OrderDetailsPage extends ConsumerWidget {
                           child: Text(
                             'Coupon ${detail.couponCode}',
                             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: Colors.black54,
+                                  color: AppColors.textSecondary,
                                 ),
                           ),
                         ),
@@ -443,7 +467,7 @@ class _LineItemTile extends StatelessWidget {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
         side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
       ),
       child: Padding(
@@ -508,21 +532,21 @@ class _LineItemTile extends StatelessWidget {
                     Text(
                       item.selectedSize,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.black54,
+                            color: AppColors.textSecondary,
                           ),
                     ),
                   if (extrasText.isNotEmpty)
                     Text(
                       extrasText,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.black54,
+                            color: AppColors.textSecondary,
                           ),
                     ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
                     '×${item.quantity}',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: Colors.black45,
+                          color: AppColors.textSecondary,
                         ),
                   ),
                 ],

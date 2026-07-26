@@ -6,26 +6,18 @@ import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/money_format.dart';
+import 'package:mnd_delivery_app/core/utils/order_status_style.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_gradient_badge.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_section_header.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_empty_state.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_summary.dart';
+import 'package:mnd_delivery_app/features/orders/domain/order_timeline.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
 
 class OrdersHistoryPage extends ConsumerWidget {
   const OrdersHistoryPage({super.key});
-
-  static String _formatLkr(int amount) {
-    final String s = amount.toString();
-    if (s.length <= 3) {
-      return 'LKR $s';
-    }
-    final StringBuffer b = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) {
-        b.write(',');
-      }
-      b.write(s[i]);
-    }
-    return 'LKR $b';
-  }
 
   static String? _formatDate(DateTime? d) {
     if (d == null) {
@@ -38,54 +30,42 @@ class OrdersHistoryPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<User?> auth = ref.watch(authStateUserProvider);
-    final AsyncValue<List<CustomerOrderSummary>> orders = ref.watch(customerOrdersStreamProvider);
+    final AsyncValue<List<CustomerOrderSummary>> orders =
+        ref.watch(customerOrdersStreamProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.backgroundCanvas,
       appBar: AppBar(
         title: const Text('My orders'),
       ),
       body: auth.when(
         data: (User? user) {
           if (user == null) {
-            return _SignInPrompt(
-              onSignIn: () => context.push(AppRoutes.login),
+            return MndEmptyState(
+              icon: Icons.lock_outline_rounded,
+              title: 'Sign in to see your orders',
+              subtitle: 'Your order history is saved to your account.',
+              actionLabel: 'Sign in',
+              onAction: () => context.push(AppRoutes.login),
             );
           }
           return orders.when(
             data: (List<CustomerOrderSummary> list) {
-              final List<CustomerOrderSummary> active =
-                  list.where((CustomerOrderSummary o) => !o.isCompleted).toList();
-              final List<CustomerOrderSummary> completed =
-                  list.where((CustomerOrderSummary o) => o.isCompleted).toList();
+              final List<CustomerOrderSummary> active = list
+                  .where((CustomerOrderSummary o) => !o.isCompleted)
+                  .toList();
+              final List<CustomerOrderSummary> completed = list
+                  .where((CustomerOrderSummary o) => o.isCompleted)
+                  .toList();
 
               if (list.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(
-                          Icons.receipt_long_outlined,
-                          size: 56,
-                          color: Colors.black.withValues(alpha: 0.35),
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        Text(
-                          'No orders yet',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        Text(
-                          'When you place an order, it will show up here.',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.black54,
-                              ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
+                return MndEmptyState(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'No orders yet',
+                  subtitle:
+                      'When you place an order, it will show up here.',
+                  actionLabel: 'Order food',
+                  onAction: () => context.go(AppRoutes.customerFood),
                 );
               }
 
@@ -97,33 +77,35 @@ class OrdersHistoryPage extends ConsumerWidget {
                   AppSpacing.xl,
                 ),
                 children: <Widget>[
-                  _SectionTitle(label: 'Active', count: active.length),
+                  MndSectionHeader(
+                    title: 'Active (${active.length})',
+                  ),
                   const SizedBox(height: AppSpacing.sm),
                   if (active.isEmpty)
-                    _EmptyHint(text: 'No active orders right now.')
+                    const _EmptyHint(text: 'No active orders right now.')
                   else
                     ...active.map(
                       (CustomerOrderSummary o) => Padding(
                         padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                         child: _OrderCard(
                           order: o,
-                          formatTotal: _formatLkr,
                           formatDate: _formatDate,
                         ),
                       ),
                     ),
                   const SizedBox(height: AppSpacing.lg),
-                  _SectionTitle(label: 'Completed', count: completed.length),
+                  MndSectionHeader(
+                    title: 'Completed (${completed.length})',
+                  ),
                   const SizedBox(height: AppSpacing.sm),
                   if (completed.isEmpty)
-                    _EmptyHint(text: 'No completed orders yet.')
+                    const _EmptyHint(text: 'No completed orders yet.')
                   else
                     ...completed.map(
                       (CustomerOrderSummary o) => Padding(
                         padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                         child: _OrderCard(
                           order: o,
-                          formatTotal: _formatLkr,
                           formatDate: _formatDate,
                         ),
                       ),
@@ -159,92 +141,6 @@ class OrdersHistoryPage extends ConsumerWidget {
   }
 }
 
-class _SignInPrompt extends StatelessWidget {
-  const _SignInPrompt({required this.onSignIn});
-
-  final VoidCallback onSignIn;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(
-              Icons.lock_outline_rounded,
-              size: 48,
-              color: Colors.black.withValues(alpha: 0.4),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'Sign in to see your orders',
-              style: Theme.of(context).textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Your order history is saved to your account.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.black54,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton(
-              onPressed: onSignIn,
-              child: const Text('Sign in'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.label,
-    required this.count,
-  });
-
-  final String label;
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        Text(
-          label,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: 2,
-          ),
-          decoration: BoxDecoration(
-            color: AppColors.primaryBlue.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            '$count',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: AppColors.primaryBlue,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _EmptyHint extends StatelessWidget {
   const _EmptyHint({required this.text});
 
@@ -257,7 +153,7 @@ class _EmptyHint extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.black45,
+              color: AppColors.textSecondary,
             ),
       ),
     );
@@ -267,92 +163,94 @@ class _EmptyHint extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   const _OrderCard({
     required this.order,
-    required this.formatTotal,
     required this.formatDate,
   });
 
   final CustomerOrderSummary order;
-  final String Function(int) formatTotal;
   final String? Function(DateTime?) formatDate;
 
   @override
   Widget build(BuildContext context) {
-    final Color chipBg = order.isCompleted
-        ? Colors.black.withValues(alpha: 0.06)
-        : AppColors.primaryBlue.withValues(alpha: 0.12);
-    final Color chipFg = order.isCompleted
-        ? Colors.black54
-        : AppColors.primaryBlue;
+    final bool canTrack =
+        !order.isCompleted &&
+        OrderTimelineLogic.isActiveForLiveRiderMap(order.statusRaw);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
+    return MndPremiumCard(
+      borderRadius: AppColors.cardRadiusSm,
       onTap: () => context.push('${AppRoutes.customerOrders}/${order.id}'),
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      order.storeName,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      order.displayStatus,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: chipFg,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                formatTotal(order.totalLkr),
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              if (formatDate(order.createdAt) != null) ...<Widget>[
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  formatDate(order.createdAt)!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.black54,
+              Expanded(
+                child: Text(
+                  order.storeName,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
                 ),
-              ],
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Tracking ${order.referenceForDisplay}',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.black38,
-                      fontFamily: 'monospace',
-                    ),
+              ),
+              MndGradientBadge(
+                label: order.displayStatus,
+                style: OrderStatusStyle.badgeStyleFor(order.statusRaw),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            MoneyFormat.lkr(order.totalLkr, showDecimals: false),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          if (formatDate(order.createdAt) != null) ...<Widget>[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              formatDate(order.createdAt)!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Tracking ${order.referenceForDisplay}',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.2,
+                ),
+          ),
+          if (canTrack || order.canRateStore) ...<Widget>[
+            const SizedBox(height: AppSpacing.sm),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: AppSpacing.sm,
+                children: <Widget>[
+                  if (order.canRateStore)
+                    TextButton.icon(
+                      onPressed: () => context.push(
+                        '${AppRoutes.customerOrders}/${order.id}',
+                      ),
+                      icon: const Icon(Icons.star_outline_rounded, size: 18),
+                      label: const Text('Rate'),
+                    ),
+                  if (canTrack)
+                    TextButton.icon(
+                      onPressed: () => context.push(
+                        AppRoutes.customerOrderLiveTracking(order.id),
+                      ),
+                      icon: const Icon(Icons.map_outlined, size: 18),
+                      label: const Text('Track'),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

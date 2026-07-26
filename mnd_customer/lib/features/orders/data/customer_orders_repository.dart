@@ -141,4 +141,100 @@ class CustomerOrdersRepository {
       return OrderCancellationResult.failure(e.toString());
     }
   }
+
+  /// Submit a 1–5 star shop rating for a delivered order (one rating per order).
+  Future<StoreRatingResult> submitStoreRating({
+    required String orderId,
+    required int stars,
+    String? comment,
+  }) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      return StoreRatingResult.failure('Sign in to rate this store.');
+    }
+    if (stars < 1 || stars > 5) {
+      return StoreRatingResult.failure('Choose a rating from 1 to 5 stars.');
+    }
+
+    final String trimmedComment = (comment ?? '').trim();
+    if (trimmedComment.length > 500) {
+      return StoreRatingResult.failure('Comment must be 500 characters or less.');
+    }
+
+    try {
+      await _firestore.runTransaction((Transaction transaction) async {
+        final DocumentReference<Map<String, dynamic>> orderRef =
+            _firestore.collection(FirebaseCollections.orders).doc(orderId);
+        final DocumentReference<Map<String, dynamic>> ratingRef =
+            _firestore.collection(FirebaseCollections.storeRatings).doc(orderId);
+
+        final DocumentSnapshot<Map<String, dynamic>> orderSnap =
+            await transaction.get(orderRef);
+        if (!orderSnap.exists || orderSnap.data() == null) {
+          throw StateError('Order not found.');
+        }
+        final Map<String, dynamic> order = orderSnap.data()!;
+        if (order['customerId'] != user.uid) {
+          throw StateError('You cannot rate this order.');
+        }
+        final String status =
+            (order['status'] as String?)?.trim().toLowerCase() ?? '';
+        if (status != 'delivered') {
+          throw StateError('You can rate only after delivery.');
+        }
+        if (order['storeRated'] == true) {
+          throw StateError('You already rated this order.');
+        }
+
+        final DocumentSnapshot<Map<String, dynamic>> existingRating =
+            await transaction.get(ratingRef);
+        if (existingRating.exists) {
+          throw StateError('You already rated this order.');
+        }
+
+        final String vendorId = (order['vendorId'] as String?)?.trim() ?? '';
+        if (vendorId.isEmpty) {
+          throw StateError('Store is missing on this order.');
+        }
+        final String storeName =
+            (order['storeName'] as String?)?.trim() ?? 'Store';
+
+        transaction.set(ratingRef, <String, dynamic>{
+          'orderId': orderId,
+          'customerId': user.uid,
+          'vendorId': vendorId,
+          'storeName': storeName,
+          'stars': stars,
+          'comment': trimmedComment,
+          'status': 'visible',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        transaction.update(orderRef, <String, dynamic>{
+          'storeRated': true,
+          'storeRatingStars': stars,
+        });
+      });
+      return StoreRatingResult.success();
+    } on FirebaseException catch (e) {
+      return StoreRatingResult.failure(e.message ?? 'Could not submit rating.');
+    } on StateError catch (e) {
+      return StoreRatingResult.failure(e.message);
+    } catch (e) {
+      return StoreRatingResult.failure(e.toString());
+    }
+  }
+}
+
+class StoreRatingResult {
+  const StoreRatingResult._({required this.ok, this.message});
+
+  factory StoreRatingResult.success() =>
+      const StoreRatingResult._(ok: true);
+
+  factory StoreRatingResult.failure(String message) =>
+      StoreRatingResult._(ok: false, message: message);
+
+  final bool ok;
+  final String? message;
 }

@@ -91,14 +91,15 @@ This document describes the **current** data storage used by the MND workspace (
 | `name` | string | Store name in search |
 | `tag` | string? | **Shop type** label (e.g. Restaurant, Rice and curry) — shown on customer cards |
 | `category` | string? | **Shop category** label (e.g. Food, Grocery) — broad bucket; not the same as `tag` |
-| `rating` | number | Search card |
+| `rating` | number | Average of **visible** `store_ratings` (Cloud Function); shown on search cards |
+| `ratingCount` | number | Count of visible ratings (Cloud Function) |
 | `eta` | string | ETA label |
 | `imageUrl` | string? | Hero / card image |
 | `deliveryFee` | string or number | Display as fee string |
 | `location` | GeoPoint? | Pickup coords for delivery fee / distance |
 | `latitude` / `longitude` | number? | Alternative to `location` |
 
-**Rules:** Any signed-in user read; write admin or vendor.
+**Rules:** Any signed-in user read; write admin or vendor. Non-admin vendor updates cannot change `rating` / `ratingCount` (owned by Cloud Functions).
 
 ---
 
@@ -252,6 +253,8 @@ This document describes the **current** data storage used by the MND workspace (
 | `openForRiders` | bool — `true` when vendor marks `ready`; `false` on rider accept/cancel |
 | `riderAcceptedAt` | timestamp — set when rider claims job (`mnd_rider`) |
 | `pickupLatitude`, `pickupLongitude` | number? — optional snapshot from vendor at claim |
+| `storeRated` | bool — `true` after customer submits a shop rating |
+| `storeRatingStars` | int? — 1–5 stars denormalized for order UI |
 
 **Rider self-accept (`mnd_rider`):** Query `openForRiders == true` && `status == 'ready'`. Claim transaction sets `assignedRiderId`, `riderId`, `openForRiders: false`, `status: 'out_for_delivery'`, `riderAcceptedAt`.
 
@@ -260,6 +263,31 @@ This document describes the **current** data storage used by the MND workspace (
 **Queries:** `where('customerId', isEqualTo: uid).orderBy('createdAt', descending: true)` — composite index defined.
 
 **Rules:** Customer read/update own; admin/rider/vendor broader read/update (see `firestore.rules`). Create validated with `validOrderCreate` / admin variant.
+
+---
+
+### 3.7.1 `store_ratings` / `{orderId}`
+
+**Purpose:** Customer → shop ratings after delivery. Document id equals the order id (one rating per order).
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `orderId` | string | Same as document id |
+| `customerId` | string | Auth UID of rater |
+| `vendorId` | string | Shop id |
+| `storeName` | string | Denormalized for admin list |
+| `stars` | int | 1–5 |
+| `comment` | string | Optional, ≤500 chars |
+| `status` | string | `visible` \| `hidden` (admin moderation) |
+| `createdAt` / `updatedAt` | timestamp | |
+
+**Create (customer):** Order must be `delivered`, owned by the customer, and not already rated (`storeRated != true`). Same transaction sets `orders.storeRated` / `storeRatingStars`.
+
+**Aggregation:** Cloud Functions `onStoreRatingCreated` / `Updated` / `Deleted` recompute `vendors.rating` (1 decimal) and `vendors.ratingCount` from visible ratings.
+
+**Admin:** `mnd_web` Rating Management — hide/unhide (`status`) or delete.
+
+**Rules:** Customer create with validation; signed-in read of visible (or own); admin update status / delete.
 
 ---
 
@@ -302,6 +330,9 @@ This document describes the **current** data storage used by the MND workspace (
 | `orders` | `assignedRiderId` ASC, `createdAt` DESC | Rider assigned jobs (`mnd_rider`) |
 | `orders` | `openForRiders` ASC, `status` ASC, `createdAt` DESC | Open jobs pool (`mnd_rider`) |
 | `orders` | `riderId` ASC, `status` ASC, `createdAt` DESC | Rider earnings/history (`mnd_rider`) |
+| `store_ratings` | `vendorId` ASC, `createdAt` DESC | Ratings by shop |
+| `store_ratings` | `status` ASC, `createdAt` DESC | Admin filter |
+| `store_ratings` | `vendorId` ASC, `status` ASC | CF aggregation query |
 
 **Vendor onboarding (required for `mnd_shop` order reads/updates):** In Firestore `customers/{vendorAuthUid}`, set `role` to `vendor` and add string field `vendorStoreId` equal to the same id used in `vendors/{id}` and in customer orders as `vendorId`. The shop app can write this field via **Sync store ID to profile** after you set the store id under Products.
 

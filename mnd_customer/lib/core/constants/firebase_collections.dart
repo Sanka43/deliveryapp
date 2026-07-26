@@ -13,6 +13,8 @@ class FirebaseCollections {
   /// Specific kinds under [shopCategories] — `label`, `order`, `active`, `categoryId`.
   static const String shopTypes = 'shop_types';
   static const String orders = 'orders';
+  /// Customer→shop ratings after delivery; doc id = order id (one rating per order).
+  static const String storeRatings = 'store_ratings';
   /// Global counters / config (`order_sequence` doc holds monotonic `value` for tracking numbers).
   static const String system = 'system';
   static const String orderSequenceDocId = 'order_sequence';

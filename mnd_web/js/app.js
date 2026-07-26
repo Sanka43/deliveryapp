@@ -1,6 +1,6 @@
 ﻿/**
  * MND web admin â€” Firestore CRUD aligned with mnd_customer:
- * collections: orders, customers, vendors, products, banners, shop_categories, shop_types, riders (see firebase_collections.dart).
+ * collections: orders, customers, vendors, products, banners, shop_categories, shop_types, riders, store_ratings (see firebase_collections.dart).
  * Auth: Firebase Email/Password; Firestore customers/{uid}.role must be "admin".
  */
 (function () {
@@ -13,6 +13,7 @@
     shopCategories: "shop_categories",
     shopTypes: "shop_types",
     orders: "orders",
+    storeRatings: "store_ratings",
     jobs: "jobs",
     jobApplications: "job_applications",
   };
@@ -64,6 +65,7 @@
     customers: [],
     jobs: [],
     jobApplications: [],
+    ratings: [],
   };
 
   const elLogin = document.getElementById("login-screen");
@@ -478,6 +480,7 @@
     "rider-approvals": "Rider approvals",
     riders: "Riders",
     customers: "Customers",
+    ratings: "Rating Management",
     help: "Setup",
   };
 
@@ -509,6 +512,7 @@
       await loadRiders();
     }
     if (name === "customers") await loadCustomers();
+    if (name === "ratings") await loadRatings();
     if (name === "dashboard") renderDashboard();
     if (name === "orders") renderOrders();
     if (name === "vendors") renderVendors();
@@ -526,6 +530,7 @@
     if (name === "rider-approvals") renderRiderApprovals();
     if (name === "riders") renderRiders();
     if (name === "customers") renderCustomers();
+    if (name === "ratings") renderRatings();
   }
 
   async function loadOrders() {
@@ -697,6 +702,17 @@
   async function loadCustomers() {
     const snap = await db.collection(COL.customers).limit(300).get();
     cache.customers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+
+  async function loadRatings() {
+    try {
+      const q = db.collection(COL.storeRatings).orderBy("createdAt", "desc").limit(300);
+      const snap = await q.get();
+      cache.ratings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (_) {
+      const snap = await db.collection(COL.storeRatings).limit(300).get();
+      cache.ratings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
   }
 
   function renderDashboard() {
@@ -1479,6 +1495,100 @@
     });
   }
 
+  function renderRatings() {
+    const tbody = document.querySelector("#table-ratings tbody");
+    if (!tbody) return;
+    const q = (document.getElementById("filter-ratings")?.value || "").toLowerCase().trim();
+    const starsFilter = document.getElementById("filter-rating-stars")?.value || "";
+    const statusFilter = document.getElementById("filter-rating-status")?.value || "";
+    let list = cache.ratings.slice();
+    if (starsFilter) {
+      const n = Number(starsFilter);
+      list = list.filter((r) => Number(r.stars) === n);
+    }
+    if (statusFilter) {
+      list = list.filter((r) => String(r.status || "").toLowerCase() === statusFilter);
+    }
+    if (q) {
+      list = list.filter((r) => {
+        const hay = [
+          r.storeName,
+          r.customerId,
+          r.vendorId,
+          r.comment,
+          r.orderId,
+          r.id,
+        ]
+          .map((x) => String(x || "").toLowerCase())
+          .join(" ");
+        return hay.includes(q);
+      });
+    }
+    tbody.innerHTML =
+      list.length === 0
+        ? `<tr><td colspan="7"><div class="empty-state">No ratings found.</div></td></tr>`
+        : list
+            .map((r) => {
+              const status = String(r.status || "visible").toLowerCase();
+              const stars = Number(r.stars) || 0;
+              const starLabel = "★".repeat(Math.max(0, Math.min(5, stars))) +
+                "☆".repeat(Math.max(0, 5 - Math.max(0, Math.min(5, stars))));
+              const hideLabel = status === "hidden" ? "Unhide" : "Hide";
+              const nextStatus = status === "hidden" ? "visible" : "hidden";
+              return `<tr>
+        <td>
+          <strong>${escapeHtml(r.storeName || "—")}</strong><br>
+          <code style="font-size:11px">${escapeHtml(r.vendorId || "")}</code>
+        </td>
+        <td><code>${escapeHtml(r.customerId || "—")}</code></td>
+        <td title="${stars}/5">${escapeHtml(starLabel)} <span style="color:var(--muted)">${stars}</span></td>
+        <td style="max-width:220px;white-space:normal">${escapeHtml(r.comment || "—")}</td>
+        <td><span class="badge">${escapeHtml(status)}</span></td>
+        <td>${escapeHtml(fmtTs(r.createdAt))}</td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-rating-status="${escapeHtml(nextStatus)}" data-rating-id="${escapeHtml(r.id)}">${hideLabel}</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-del-rating="${escapeHtml(r.id)}">Delete</button>
+        </td>
+      </tr>`;
+            })
+            .join("");
+    tbody.querySelectorAll("[data-rating-status]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setRatingStatus(btn.getAttribute("data-rating-id"), btn.getAttribute("data-rating-status"))
+      );
+    });
+    tbody.querySelectorAll("[data-del-rating]").forEach((btn) => {
+      btn.addEventListener("click", () => deleteRating(btn.getAttribute("data-del-rating")));
+    });
+  }
+
+  async function setRatingStatus(id, status) {
+    if (!id || !db) return;
+    const next = status === "hidden" ? "hidden" : "visible";
+    try {
+      await db.collection(COL.storeRatings).doc(id).update({
+        status: next,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      await loadRatings();
+      renderRatings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function deleteRating(id) {
+    if (!id || !db) return;
+    if (!confirm("Delete this rating permanently? Shop average will be recalculated.")) return;
+    try {
+      await db.collection(COL.storeRatings).doc(id).delete();
+      await loadRatings();
+      renderRatings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
   function openCustomerView(uid) {
     const u = cache.customers.find((x) => x.id === uid);
     if (!u) return;
@@ -1564,7 +1674,9 @@
       `<div class="form-group"><label>Name</label><input type="text" id="f-v-name" value="${escapeHtml(v?.name || "")}" required></div>
       <div class="form-group"><label>Tag / category</label><input type="text" id="f-v-tag" value="${escapeHtml(v?.tag || v?.category || "")}"></div>
       <div class="form-group"><label>ETA text</label><input type="text" id="f-v-eta" value="${escapeHtml(v?.eta || "")}"></div>
-      <div class="form-group"><label>Rating</label><input type="number" id="f-v-rat" step="0.1" min="0" value="${Number(v?.rating) || 0}"></div>
+      <div class="form-group"><label>Rating (computed from reviews)</label><input type="number" id="f-v-rat" step="0.1" min="0" value="${Number(v?.rating) || 0}" readonly disabled></div>
+      <div class="form-group"><label>Rating count</label><input type="number" id="f-v-rat-count" value="${Number(v?.ratingCount) || 0}" readonly disabled></div>
+      <p style="color:var(--muted);font-size:0.85rem;margin:0 0 12px">Shop averages update automatically from visible customer ratings. Moderate reviews in Rating Management.</p>
       <div class="form-group"><label>Image URL</label><input type="text" id="f-v-img" value="${escapeHtml(v?.imageUrl || "")}"></div>
       <div class="form-group"><label>Delivery fee (LKR number)</label><input type="number" id="f-v-fee" min="0" step="1" value="${typeof v?.deliveryFee === "number" ? v.deliveryFee : parseInt(String(v?.deliveryFee || "").replace(/\D/g, ""), 10) || 0}"></div>
       <div class="form-group"><label>Latitude (optional)</label><input type="text" id="f-v-lat" value="${lat}"></div>
@@ -1731,7 +1843,6 @@
       const name = document.getElementById("f-v-name").value.trim();
       const tag = document.getElementById("f-v-tag").value.trim();
       const eta = document.getElementById("f-v-eta").value.trim();
-      const rating = Number(document.getElementById("f-v-rat").value) || 0;
       const imageUrl = document.getElementById("f-v-img").value.trim();
       const fee = Number(document.getElementById("f-v-fee").value) || 0;
       const latStr = document.getElementById("f-v-lat").value.trim();
@@ -1743,11 +1854,14 @@
         tag: tag || "General",
         category: tag || "General",
         eta: eta || "N/A",
-        rating,
         imageUrl,
         deliveryFee: fee,
         active,
       };
+      if (!modalEditId) {
+        data.rating = 0;
+        data.ratingCount = 0;
+      }
       const lat = parseFloat(latStr);
       const lng = parseFloat(lngStr);
       if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
@@ -2213,6 +2327,9 @@
   document.getElementById("btn-new-order")?.addEventListener("click", openOrderCreate);
   document.getElementById("filter-orders")?.addEventListener("input", () => renderOrders());
   document.getElementById("filter-order-status")?.addEventListener("change", () => renderOrders());
+  document.getElementById("filter-ratings")?.addEventListener("input", () => renderRatings());
+  document.getElementById("filter-rating-stars")?.addEventListener("change", () => renderRatings());
+  document.getElementById("filter-rating-status")?.addEventListener("change", () => renderRatings());
   document.getElementById("btn-new-vendor")?.addEventListener("click", () => openVendorModal(null));
   document.getElementById("btn-new-product")?.addEventListener("click", () => openProductModal(null));
   document.getElementById("btn-new-banner")?.addEventListener("click", () => openBannerModal(null));
