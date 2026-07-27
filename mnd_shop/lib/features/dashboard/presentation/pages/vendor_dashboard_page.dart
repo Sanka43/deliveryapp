@@ -22,6 +22,7 @@ import 'package:mnd_shop/features/notifications/presentation/providers/vendor_no
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_dashboard_ui.dart';
+import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_products_stream_provider.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_store_from_profile_provider.dart';
 
@@ -165,6 +166,7 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
     ref.watch(shopAuthStateProvider);
     ref.watch(vendorAccountDocDataProvider);
     final String storeId = ref.watch(vendorEffectiveStoreIdProvider).trim();
+    final String? storeAccessError = ref.watch(vendorStoreAccessErrorProvider);
     final String shopName = ref.watch(vendorShopDisplayNameProvider);
     final int unreadNotifications =
         ref.watch(vendorUnreadNotificationCountProvider).valueOrNull ?? 0;
@@ -172,6 +174,12 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
     final ThemeData theme = Theme.of(context);
     final ColorScheme cs = theme.colorScheme;
     final DateTime now = DateTime.now();
+    final double gutter = vendorResponsiveHorizontalPadding(context);
+    final double bottomScrollPadding = VendorPillBottomNav.scrollBottomPadding(
+      context,
+      extra: 0,
+      includeOuterMargin: false,
+    );
 
     final Map<String, dynamic>? vendorDoc = ref
         .watch(vendorAccountDocDataProvider)
@@ -187,159 +195,182 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
 
     return Scaffold(
       backgroundColor: VendorDashboardTheme.canvas(context),
-      body: Stack(
-        children: <Widget>[
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  MediaQuery.paddingOf(context).top + 12,
-                  20,
-                  12,
+      body: VendorResponsiveContent(
+        child: Stack(
+          children: <Widget>[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    gutter,
+                    MediaQuery.paddingOf(context).top + 12,
+                    gutter,
+                    12,
+                  ),
+                  child: VendorDashboardHeader(
+                    greeting: _greeting(context, now),
+                    shopName: shopName,
+                    unreadCount: unreadNotifications,
+                    onNotificationTap: () {
+                      Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext ctx) =>
+                              const VendorNotificationsPage(),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-                child: VendorDashboardHeader(
-                  greeting: _greeting(context, now),
-                  shopName: shopName,
-                  unreadCount: unreadNotifications,
-                  onNotificationTap: () {
-                    Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (BuildContext ctx) =>
-                            const VendorNotificationsPage(),
+                Expanded(
+                  child: RefreshIndicator(
+                    color: cs.primary,
+                    edgeOffset: 8,
+                    onRefresh: _onRefresh,
+                    child: CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
                       ),
-                    );
-                  },
-                ),
-              ),
-              Expanded(
-                child: RefreshIndicator(
-                  color: cs.primary,
-                  edgeOffset: 8,
-                  onRefresh: _onRefresh,
-                  child: CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(
-                      parent: BouncingScrollPhysics(),
-                    ),
-                    slivers: <Widget>[
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: <Widget>[
-                              if (profileStoreSync.isLoading)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 16),
-                                  child: _SyncBanner(theme: theme, cs: cs),
-                                ),
-                              _StoreStatusHeroCard(
-                                isOpen: isOpen,
-                                pulseAnimation: _pulseController,
-                                sales: sales,
-                                board: orderBoard,
-                                catalog: catalog,
-                                canToggle: canToggleLive,
-                                storeId: storeId,
-                                onToggle: (bool value) async {
-                                  if (storeId.isEmpty) {
-                                    _snack(
-                                      context,
-                                      _vTxt(
-                                        context,
-                                        en: 'Set store ID first.',
-                                        si: 'මුලින් store ID සකසන්න.',
-                                      ),
-                                      error: true,
-                                    );
-                                    return;
-                                  }
-                                  final String? err = await ref
-                                      .read(vendorOrdersRepositoryProvider)
-                                      .setVendorActive(storeId, value);
-                                  if (context.mounted && err != null) {
-                                    _snack(context, err, error: true);
-                                  }
-                                },
-                              ),
-                              const SizedBox(height: 12),
-                              if (pendingApproval || rejected)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 16),
-                                  child: _ApprovalBanner(
-                                    pendingApproval: pendingApproval,
-                                    theme: theme,
-                                    cs: cs,
+                      slivers: <Widget>[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                if (profileStoreSync.isLoading)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: _SyncBanner(theme: theme, cs: cs),
                                   ),
-                                ),
-                              const SizedBox(height: 12),
-                              _IncomingOrdersSection(
-                                storeId: storeId,
-                                board: board,
-                                ref: ref,
-                              ),
-                              const SizedBox(height: 12),
-                              board.when(
-                                data: (VendorOrderBoard b) => _WorkflowGrid(
-                                  board: b,
-                                  onOrderTap: (VendorPendingOrder o) =>
-                                      _VendorDashboardPageState._openOrderDetailReadOnly(
+                                if (storeAccessError != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: _DashboardWarningBanner(
+                                      message: storeAccessError,
+                                      theme: theme,
+                                      cs: cs,
+                                    ),
+                                  ),
+                                if (orderBoard.isTruncated)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: _DashboardWarningBanner(
+                                      message: _vTxt(
                                         context,
-                                        o,
+                                        en:
+                                            'Showing recent orders only (last 30 days). Older orders are hidden.',
+                                        si:
+                                            'මෑත ඇණවුම් පමණක් පෙන්වයි (දින 30). පැරණි ඇණවුම් සඟවා ඇත.',
                                       ),
-                                  onViewAll: () {
-                                    ref
-                                            .read(
-                                              vendorShellTabIndexProvider
-                                                  .notifier,
-                                            )
-                                            .state =
-                                        2;
+                                      theme: theme,
+                                      cs: cs,
+                                    ),
+                                  ),
+                                _StoreStatusHeroCard(
+                                  isOpen: isOpen,
+                                  pulseAnimation: _pulseController,
+                                  sales: sales,
+                                  board: orderBoard,
+                                  catalog: catalog,
+                                  canToggle: canToggleLive,
+                                  storeId: storeId,
+                                  onToggle: (bool value) async {
+                                    if (storeId.isEmpty) {
+                                      _snack(
+                                        context,
+                                        _vTxt(
+                                          context,
+                                          en: 'Set store ID first.',
+                                          si: 'මුලින් store ID සකසන්න.',
+                                        ),
+                                        error: true,
+                                      );
+                                      return;
+                                    }
+                                    final String? err = await ref
+                                        .read(vendorOrdersRepositoryProvider)
+                                        .setVendorActive(storeId, value);
+                                    if (context.mounted && err != null) {
+                                      _snack(context, err, error: true);
+                                    }
                                   },
                                 ),
-                                loading: () => const SizedBox(height: 120),
-                                error: (Object e, StackTrace s) =>
-                                    const SizedBox.shrink(),
-                              ),
-                              const SizedBox(height: 12),
-                              const _SalesPreviewCard(),
-                              SizedBox(
-                                height:
-                                    MediaQuery.paddingOf(context).bottom + 112,
-                              ),
-                            ],
+                                const SizedBox(height: 12),
+                                if (pendingApproval || rejected)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: _ApprovalBanner(
+                                      pendingApproval: pendingApproval,
+                                      theme: theme,
+                                      cs: cs,
+                                    ),
+                                  ),
+                                const SizedBox(height: 12),
+                                _IncomingOrdersSection(
+                                  storeId: storeId,
+                                  board: board,
+                                  ref: ref,
+                                ),
+                                const SizedBox(height: 12),
+                                board.when(
+                                  data: (VendorOrderBoard b) => _WorkflowGrid(
+                                    board: b,
+                                    onOrderTap: (VendorPendingOrder o) =>
+                                        _VendorDashboardPageState._openOrderDetailReadOnly(
+                                          context,
+                                          o,
+                                        ),
+                                    onViewAll: () {
+                                      ref
+                                              .read(
+                                                vendorShellTabIndexProvider
+                                                    .notifier,
+                                              )
+                                              .state =
+                                          2;
+                                    },
+                                  ),
+                                  loading: () => const SizedBox(height: 120),
+                                  error: (Object e, StackTrace s) =>
+                                      const SizedBox.shrink(),
+                                ),
+                                const SizedBox(height: 12),
+                                const _SalesPreviewCard(),
+                                SizedBox(height: bottomScrollPadding),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (pendingApproval)
-            IgnorePointer(
-              child: Center(
-                child: Transform.rotate(
-                  angle: -0.28,
-                  child: Text(
-                    _vTxt(
-                      context,
-                      en: 'ADMIN STILL NOT APPROVED YOUR SHOP',
-                      si: 'ඔබේ සාප්පුව තවම ADMIN අනුමත කර නැත',
-                    ),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: cs.error.withValues(alpha: 0.14),
+                      ],
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-        ],
+            if (pendingApproval)
+              IgnorePointer(
+                child: Center(
+                  child: Transform.rotate(
+                    angle: -0.28,
+                    child: Text(
+                      _vTxt(
+                        context,
+                        en: 'ADMIN STILL NOT APPROVED YOUR SHOP',
+                        si: 'ඔබේ සාප්පුව තවම ADMIN අනුමත කර නැත',
+                      ),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.3,
+                        color: cs.error.withValues(alpha: 0.14),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -578,6 +609,46 @@ class _SyncBanner extends StatelessWidget {
               ),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: cs.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardWarningBanner extends StatelessWidget {
+  const _DashboardWarningBanner({
+    required this.message,
+    required this.theme,
+    required this.cs,
+  });
+
+  final String message;
+  final ThemeData theme;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.error.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(Icons.warning_amber_rounded, color: cs.error, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onErrorContainer,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -869,7 +940,6 @@ class _StoreStatusHeroCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Expanded(
-                    flex: 11,
                     child: VendorStatMiniCard(
                       label: _vTxt(
                         context,
@@ -884,9 +954,8 @@ class _StoreStatusHeroCard extends StatelessWidget {
                       density: VendorStatMiniCardDensity.hero,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
-                    flex: 9,
                     child: VendorStatMiniCard(
                       label: _vTxt(
                         context,
@@ -952,23 +1021,6 @@ class _StoreStatusHeroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Expanded(
-                  child: VendorHeroInsightChip(
-                    expand: true,
-                    icon: sales.weekOverWeekGrowthPercent >= 0
-                        ? Icons.trending_up_rounded
-                        : Icons.trending_down_rounded,
-                    label: _vTxt(context, en: 'Week growth', si: 'සති වර්ධනය'),
-                    value:
-                        '${sales.weekOverWeekGrowthPercent >= 0 ? '+' : ''}${sales.weekOverWeekGrowthPercent.toStringAsFixed(1)}%',
-                    fillColor: Colors.white.withValues(alpha: 0.28),
-                    borderColor: Colors.white.withValues(alpha: 0.48),
-                    iconColor: Colors.white,
-                    labelColor: Colors.white.withValues(alpha: 0.95),
-                    valueColor: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
                   child: catalog.lowCount > 0
                       ? VendorHeroInsightChip(
                           expand: true,
@@ -1000,6 +1052,24 @@ class _StoreStatusHeroCard extends StatelessWidget {
                           labelColor: Colors.white.withValues(alpha: 0.95),
                           valueColor: Colors.white,
                         ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: VendorHeroInsightChip(
+                    expand: true,
+                    icon: Icons.task_alt_rounded,
+                    label: _vTxt(
+                      context,
+                      en: 'Completion today',
+                      si: 'අද සම්පූර්ණ වීම',
+                    ),
+                    value: '${sales.completionRatePercent.toStringAsFixed(0)}%',
+                    fillColor: Colors.white.withValues(alpha: 0.28),
+                    borderColor: Colors.white.withValues(alpha: 0.48),
+                    iconColor: Colors.white,
+                    labelColor: Colors.white.withValues(alpha: 0.95),
+                    valueColor: Colors.white,
+                  ),
                 ),
               ],
             ),

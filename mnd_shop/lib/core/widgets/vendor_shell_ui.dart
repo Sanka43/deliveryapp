@@ -5,6 +5,76 @@ import 'package:mnd_shop/core/constants/app_colors.dart';
 /// Horizontal gutter aligned with vendor Home tab.
 const double kVendorScreenPadding = 20;
 
+/// Width where the vendor shell switches from phone chrome to tablet chrome.
+const double kVendorTabletBreakpoint = 700;
+
+/// Keeps tablet content readable instead of stretching phone cards edge to edge.
+const double kVendorTabletContentMaxWidth = 1080;
+
+bool vendorUsesTabletLayout(BuildContext context) {
+  final Size size = MediaQuery.sizeOf(context);
+  return size.width >= kVendorTabletBreakpoint;
+}
+
+double vendorResponsiveHorizontalPadding(BuildContext context) {
+  final double width = MediaQuery.sizeOf(context).width;
+  if (width >= 1100) {
+    return 32;
+  }
+  if (width >= kVendorTabletBreakpoint) {
+    return 28;
+  }
+  return kVendorScreenPadding;
+}
+
+class VendorResponsiveContent extends StatelessWidget {
+  const VendorResponsiveContent({
+    super.key,
+    required this.child,
+    this.maxWidth = kVendorTabletContentMaxWidth,
+  });
+
+  final Widget child;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!vendorUsesTabletLayout(context)) {
+      return child;
+    }
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: child,
+      ),
+    );
+  }
+}
+
+class VendorResponsiveAppFrame extends StatelessWidget {
+  const VendorResponsiveAppFrame({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!vendorUsesTabletLayout(context)) {
+      return child;
+    }
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1280),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 /// Primary section / product card corner radius.
 const double kVendorCardRadius = 24;
 
@@ -41,7 +111,9 @@ class VendorSectionTitle extends StatelessWidget {
       style: theme.textTheme.titleMedium?.copyWith(
         fontWeight: FontWeight.w800,
         letterSpacing: -0.45,
-        color: color ?? (dark ? theme.colorScheme.onSurface : AppColors.textCharcoal),
+        color:
+            color ??
+            (dark ? theme.colorScheme.onSurface : AppColors.textCharcoal),
         height: 1.2,
       ),
     );
@@ -94,29 +166,27 @@ class VendorStatMiniCard extends StatelessWidget {
         ? 16.5
         : baseTitleSize * (valueCompact ? 0.88 : 1.02);
 
-    final TextStyle valueStyle = (theme.textTheme.titleLarge ?? const TextStyle()).copyWith(
-      fontWeight: hero ? FontWeight.w800 : FontWeight.w900,
-      letterSpacing: hero ? -0.35 : -0.5,
-      height: 1.08,
-      color: resolvedValue,
-      fontSize: valueFontSize,
-    );
+    final TextStyle valueStyle =
+        (theme.textTheme.titleLarge ?? const TextStyle()).copyWith(
+          fontWeight: hero ? FontWeight.w800 : FontWeight.w900,
+          letterSpacing: hero ? -0.35 : -0.5,
+          height: 1.08,
+          color: resolvedValue,
+          fontSize: valueFontSize,
+        );
 
     final Widget valueChild = SizedBox(
       width: double.infinity,
       child: FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.center,
-        child: Text(
-          value,
-          maxLines: 1,
-          softWrap: false,
-          style: valueStyle,
-        ),
+        child: Text(value, maxLines: 1, softWrap: false, style: valueStyle),
       ),
     );
 
-    final double cardRadius = hero ? kVendorHeroStatCardRadius : kVendorStatCardRadius;
+    final double cardRadius = hero
+        ? kVendorHeroStatCardRadius
+        : kVendorStatCardRadius;
     final EdgeInsets cardPadding = hero
         ? const EdgeInsets.fromLTRB(12, 9, 12, 9)
         : const EdgeInsets.fromLTRB(10, 12, 10, 12);
@@ -126,10 +196,7 @@ class VendorStatMiniCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: selected
-              ? <Color>[
-                  accent.withValues(alpha: 0.14),
-                  gradient.last,
-                ]
+              ? <Color>[accent.withValues(alpha: 0.14), gradient.last]
               : gradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -232,7 +299,8 @@ class VendorHeroInsightChip extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme cs = theme.colorScheme;
     final Color bg = fillColor ?? cs.surface.withValues(alpha: 0.55);
-    final Color border = borderColor ?? cs.outlineVariant.withValues(alpha: 0.35);
+    final Color border =
+        borderColor ?? cs.outlineVariant.withValues(alpha: 0.35);
     final Color iconTint = iconColor ?? cs.primary;
     final Color labelTint = labelColor ?? AppColors.textMuted;
     final Color valueTint = valueColor ?? cs.onSurface;
@@ -250,13 +318,15 @@ class VendorHeroInsightChip extends StatelessWidget {
           Icon(icon, size: 17, color: iconTint),
           const SizedBox(width: 9),
           if (expand)
-            Expanded(child: _HeroChipTextColumn(
-              theme: theme,
-              label: label,
-              value: value,
-              labelTint: labelTint,
-              valueTint: valueTint,
-            ))
+            Expanded(
+              child: _HeroChipTextColumn(
+                theme: theme,
+                label: label,
+                value: value,
+                labelTint: labelTint,
+                valueTint: valueTint,
+              ),
+            )
           else
             _HeroChipTextColumn(
               theme: theme,
@@ -428,7 +498,9 @@ class VendorDashboardHeader extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final bool dark = theme.brightness == Brightness.dark;
     final ColorScheme cs = theme.colorScheme;
-    final Color greetingColor = dark ? cs.onSurfaceVariant : AppColors.textMuted;
+    final Color greetingColor = dark
+        ? cs.onSurfaceVariant
+        : AppColors.textMuted;
     final Color titleColor = dark ? cs.onSurface : AppColors.textCharcoal;
     final Color iconColor = dark ? cs.onSurface : AppColors.textCharcoal;
     return Row(
@@ -473,7 +545,10 @@ class VendorDashboardHeader extends StatelessWidget {
                 isLabelVisible: unreadCount > 0,
                 label: Text(
                   '${unreadCount > 9 ? '9+' : unreadCount}',
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 backgroundColor: AppColors.orderRejectRed,
                 child: Icon(
@@ -507,7 +582,9 @@ class VendorPlainStatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final bool dark = theme.brightness == Brightness.dark;
-    final Color textColor = dark ? theme.colorScheme.onSurface : AppColors.textCharcoal;
+    final Color textColor = dark
+        ? theme.colorScheme.onSurface
+        : AppColors.textCharcoal;
     final Color bg = dark ? const Color(0xFF1E2433) : Colors.white;
     final List<BoxShadow> shadows = dark
         ? <BoxShadow>[
@@ -616,12 +693,7 @@ class VendorCatalogMetrics extends StatelessWidget {
 }
 
 /// Order list filter driven by pipeline metric tiles.
-enum VendorOrderPipelineFilter {
-  newOrders,
-  kitchen,
-  ready,
-  active,
-}
+enum VendorOrderPipelineFilter { newOrders, kitchen, ready, active }
 
 /// Four-tile order pipeline snapshot (New / Kitchen / Ready / Active).
 class VendorOrderPipelineMetrics extends StatelessWidget {
@@ -645,8 +717,9 @@ class VendorOrderPipelineMetrics extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool dark = Theme.of(context).brightness == Brightness.dark;
-    final List<Color> baseGradient =
-        dark ? AppColors.statTileGradientDark : AppColors.statTileGradientLight;
+    final List<Color> baseGradient = dark
+        ? AppColors.statTileGradientDark
+        : AppColors.statTileGradientLight;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -657,7 +730,9 @@ class VendorOrderPipelineMetrics extends StatelessWidget {
             value: '$incomingCount',
             gradient: baseGradient,
             hint: incomingCount == 0 ? '—' : 'incoming',
-            valueColor: incomingCount > 0 ? AppColors.vendorHeroBlue : AppColors.textCharcoal,
+            valueColor: incomingCount > 0
+                ? AppColors.vendorHeroBlue
+                : AppColors.textCharcoal,
             valueCompact: true,
             selected: selectedFilter == VendorOrderPipelineFilter.newOrders,
             onTap: () => onFilterSelected(VendorOrderPipelineFilter.newOrders),
@@ -670,7 +745,9 @@ class VendorOrderPipelineMetrics extends StatelessWidget {
             value: '$kitchenCount',
             gradient: baseGradient,
             hint: kitchenCount == 0 ? '—' : 'prepping',
-            valueColor: kitchenCount > 0 ? AppColors.pendingAmber : AppColors.textCharcoal,
+            valueColor: kitchenCount > 0
+                ? AppColors.pendingAmber
+                : AppColors.textCharcoal,
             valueCompact: true,
             selected: selectedFilter == VendorOrderPipelineFilter.kitchen,
             onTap: () => onFilterSelected(VendorOrderPipelineFilter.kitchen),
@@ -683,7 +760,9 @@ class VendorOrderPipelineMetrics extends StatelessWidget {
             value: '$readyCount',
             gradient: baseGradient,
             hint: readyCount == 0 ? '—' : 'pickup',
-            valueColor: readyCount > 0 ? AppColors.openGreen : AppColors.textCharcoal,
+            valueColor: readyCount > 0
+                ? AppColors.openGreen
+                : AppColors.textCharcoal,
             valueCompact: true,
             selected: selectedFilter == VendorOrderPipelineFilter.ready,
             onTap: () => onFilterSelected(VendorOrderPipelineFilter.ready),
@@ -696,7 +775,9 @@ class VendorOrderPipelineMetrics extends StatelessWidget {
             value: '$activeCount',
             gradient: baseGradient,
             hint: activeCount == 0 ? '—' : 'open',
-            valueColor: activeCount > 0 ? AppColors.textCharcoal : AppColors.textMuted,
+            valueColor: activeCount > 0
+                ? AppColors.textCharcoal
+                : AppColors.textMuted,
             valueCompact: true,
             selected: selectedFilter == VendorOrderPipelineFilter.active,
             onTap: () => onFilterSelected(VendorOrderPipelineFilter.active),
@@ -730,10 +811,10 @@ class VendorHeroFilledButton extends StatelessWidget {
       label: Text(
         label,
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-              color: Colors.white,
-            ),
+          fontWeight: FontWeight.w700,
+          fontSize: 16,
+          color: Colors.white,
+        ),
       ),
       style: FilledButton.styleFrom(
         elevation: 0,
@@ -742,9 +823,7 @@ class VendorHeroFilledButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         minimumSize: expanded ? const Size(double.infinity, 48) : Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
     if (expanded) {
@@ -769,7 +848,9 @@ Future<bool?> showVendorConfirmDialog(
       final ThemeData t = Theme.of(ctx);
       final ColorScheme cs = t.colorScheme;
       return AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kVendorDialogRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(kVendorDialogRadius),
+        ),
         title: Text(
           title,
           style: t.textTheme.titleLarge?.copyWith(
@@ -779,7 +860,10 @@ Future<bool?> showVendorConfirmDialog(
         ),
         content: Text(
           message,
-          style: t.textTheme.bodyMedium?.copyWith(color: AppColors.textMuted, height: 1.4),
+          style: t.textTheme.bodyMedium?.copyWith(
+            color: AppColors.textMuted,
+            height: 1.4,
+          ),
         ),
         actions: <Widget>[
           TextButton(
@@ -788,7 +872,9 @@ Future<bool?> showVendorConfirmDialog(
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: destructive ? cs.error : AppColors.vendorHeroBlue,
+              backgroundColor: destructive
+                  ? cs.error
+                  : AppColors.vendorHeroBlue,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
@@ -809,10 +895,8 @@ Future<int?> showVendorStockDialog(
   return showDialog<int>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.42),
-    builder: (BuildContext ctx) => _VendorStockDialog(
-      productName: productName,
-      initialQty: initialQty,
-    ),
+    builder: (BuildContext ctx) =>
+        _VendorStockDialog(productName: productName, initialQty: initialQty),
   );
 }
 
@@ -852,7 +936,9 @@ class _VendorStockDialogState extends State<_VendorStockDialog> {
     final int current = int.tryParse(_controller.text.trim()) ?? 0;
     final int next = (current + delta).clamp(0, 999999);
     _controller.text = '$next';
-    _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+    _controller.selection = TextSelection.collapsed(
+      offset: _controller.text.length,
+    );
     setState(() {});
   }
 
@@ -860,10 +946,18 @@ class _VendorStockDialogState extends State<_VendorStockDialog> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color titleColor = isDark ? theme.colorScheme.onSurface : AppColors.textCharcoal;
-    final Color mutedColor = isDark ? theme.colorScheme.onSurfaceVariant : AppColors.textMuted;
-    final Color fieldFill = isDark ? theme.colorScheme.surfaceContainerHigh : AppColors.surfaceMuted.withValues(alpha: 0.55);
-    final Color accent = isDark ? const Color(0xFF8B7EFF) : AppColors.vendorHeroBlue;
+    final Color titleColor = isDark
+        ? theme.colorScheme.onSurface
+        : AppColors.textCharcoal;
+    final Color mutedColor = isDark
+        ? theme.colorScheme.onSurfaceVariant
+        : AppColors.textMuted;
+    final Color fieldFill = isDark
+        ? theme.colorScheme.surfaceContainerHigh
+        : AppColors.surfaceMuted.withValues(alpha: 0.55);
+    final Color accent = isDark
+        ? const Color(0xFF8B7EFF)
+        : AppColors.vendorHeroBlue;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -944,17 +1038,24 @@ class _VendorStockDialogState extends State<_VendorStockDialog> {
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.5,
                   color: titleColor,
-                  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                  fontFeatures: const <FontFeature>[
+                    FontFeature.tabularFigures(),
+                  ],
                 ),
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: fieldFill,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(kVendorFormFieldRadius),
                     borderSide: BorderSide(
                       color: isDark
-                          ? theme.colorScheme.outlineVariant.withValues(alpha: 0.7)
+                          ? theme.colorScheme.outlineVariant.withValues(
+                              alpha: 0.7,
+                            )
                           : AppColors.borderLight,
                     ),
                   ),
@@ -962,7 +1063,9 @@ class _VendorStockDialogState extends State<_VendorStockDialog> {
                     borderRadius: BorderRadius.circular(kVendorFormFieldRadius),
                     borderSide: BorderSide(
                       color: isDark
-                          ? theme.colorScheme.outlineVariant.withValues(alpha: 0.7)
+                          ? theme.colorScheme.outlineVariant.withValues(
+                              alpha: 0.7,
+                            )
                           : AppColors.borderLight,
                     ),
                   ),
@@ -995,7 +1098,9 @@ class _VendorStockDialogState extends State<_VendorStockDialog> {
                         foregroundColor: titleColor,
                         side: BorderSide(
                           color: isDark
-                              ? theme.colorScheme.outlineVariant.withValues(alpha: 0.85)
+                              ? theme.colorScheme.outlineVariant.withValues(
+                                  alpha: 0.85,
+                                )
                               : AppColors.borderLight,
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 13),
@@ -1005,7 +1110,9 @@ class _VendorStockDialogState extends State<_VendorStockDialog> {
                       ),
                       child: Text(
                         'Cancel',
-                        style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -1050,7 +1157,9 @@ class _StockStepChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color accent = isDark ? const Color(0xFF8B7EFF) : AppColors.vendorHeroBlue;
+    final Color accent = isDark
+        ? const Color(0xFF8B7EFF)
+        : AppColors.vendorHeroBlue;
     return Material(
       color: Colors.transparent,
       child: InkWell(

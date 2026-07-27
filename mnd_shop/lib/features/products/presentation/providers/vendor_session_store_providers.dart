@@ -97,6 +97,21 @@ final Provider<String> vendorEffectiveStoreIdProvider = Provider<String>((Ref re
   );
 });
 
+/// Non-null when the signed-in vendor cannot access the resolved store id.
+final Provider<String?> vendorStoreAccessErrorProvider = Provider<String?>((Ref ref) {
+  final User? user = ref.watch(shopAuthStateProvider).valueOrNull;
+  if (user == null) {
+    return null;
+  }
+  final AsyncValue<String> async = ref.watch(vendorCatalogStoreIdProvider);
+  return async.when(
+    data: (_) => null,
+    loading: () => null,
+    error: (_, StackTrace _) =>
+        'Could not verify your shop access. Please sign in again.',
+  );
+});
+
 /// Dashboard / header label from `vendors/{uid}.name` (or legacy `displayName` if present).
 final Provider<String> vendorShopDisplayNameProvider = Provider<String>((Ref ref) {
   ref.watch(shopAuthStateProvider);

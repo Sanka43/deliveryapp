@@ -5,20 +5,36 @@ import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/firebase_collections.dart';
 import 'package:mnd_shop/features/products/domain/vendor_product.dart';
 
+/// Hard cap on catalogue size for a single shop.
+const int vendorMaxProductsPerShop = 30;
+
 final Provider<VendorProductRepository> vendorProductRepositoryProvider =
     Provider<VendorProductRepository>((Ref ref) {
-  return VendorProductRepository(
-    firestore: ref.watch(firestoreProvider),
-    storage: ref.watch(firebaseStorageProvider),
-  );
-});
+      return VendorProductRepository(
+        firestore: ref.watch(firestoreProvider),
+        storage: ref.watch(firebaseStorageProvider),
+      );
+    });
+
+/// Thrown when [VendorProductRepository.createProduct] would exceed the
+/// per-shop catalogue cap.
+class VendorProductLimitExceededException implements Exception {
+  const VendorProductLimitExceededException({
+    this.max = vendorMaxProductsPerShop,
+  });
+
+  final int max;
+
+  @override
+  String toString() => 'Maximum $max products per shop';
+}
 
 class VendorProductRepository {
   VendorProductRepository({
     required FirebaseFirestore firestore,
     required FirebaseStorage storage,
-  })  : _firestore = firestore,
-        _storage = storage;
+  }) : _firestore = firestore,
+       _storage = storage;
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
@@ -26,30 +42,29 @@ class VendorProductRepository {
   CollectionReference<Map<String, dynamic>> get _products =>
       _firestore.collection(FirebaseCollections.products);
 
+  CollectionReference<Map<String, dynamic>> _stockMovements(String productId) =>
+      _products.doc(productId).collection('stock_movements');
+
   Stream<List<VendorProduct>> watchByStore(String storeId) {
     return _products
         .where('storeId', isEqualTo: storeId)
+        .orderBy('name')
         .snapshots()
-        .map(
-          (QuerySnapshot<Map<String, dynamic>> snap) {
-            final List<VendorProduct> list = snap.docs
-                .map(
-                  (QueryDocumentSnapshot<Map<String, dynamic>> d) =>
-                      VendorProduct.fromDoc(d),
-                )
-                .toList(growable: false);
-            list.sort(
-              (VendorProduct a, VendorProduct b) =>
-                  a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-            );
-            return list;
-          },
-        );
+        .map((QuerySnapshot<Map<String, dynamic>> snap) {
+          return snap.docs
+              .map(
+                (QueryDocumentSnapshot<Map<String, dynamic>> d) =>
+                    VendorProduct.fromDoc(d),
+              )
+              .toList(growable: false);
+        });
   }
 
   Future<String> fetchVendorDisplayName(String storeId) async {
-    final DocumentSnapshot<Map<String, dynamic>> doc =
-        await _firestore.collection(FirebaseCollections.vendors).doc(storeId).get();
+    final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
+        .collection(FirebaseCollections.vendors)
+        .doc(storeId)
+        .get();
     final Map<String, dynamic>? data = doc.data();
     if (data == null) {
       return 'Store';
@@ -72,6 +87,17 @@ class VendorProductRepository {
   /// New Firestore document id (no write) — use before Storage upload so paths match.
   String allocateProductId() => _products.doc().id;
 
+  Future<int> countByStore(String storeId) async {
+    final String id = storeId.trim();
+    if (id.isEmpty) {
+      return 0;
+    }
+    final QuerySnapshot<Map<String, dynamic>> snap = await _products
+        .where('storeId', isEqualTo: id)
+        .get();
+    return snap.docs.length;
+  }
+
   Future<void> createProduct({
     required String productId,
     required String storeId,
@@ -85,7 +111,13 @@ class VendorProductRepository {
     required int stockQty,
     required String etaLabel,
   }) async {
-    final DocumentReference<Map<String, dynamic>> doc = _products.doc(productId);
+    final int existing = await countByStore(storeId);
+    if (existing >= vendorMaxProductsPerShop) {
+      throw const VendorProductLimitExceededException();
+    }
+    final DocumentReference<Map<String, dynamic>> doc = _products.doc(
+      productId,
+    );
     final String lookupKey = buildLookupKey(name, doc.id);
     await doc.set(
       VendorProduct(
@@ -118,7 +150,9 @@ class VendorProductRepository {
     required String etaLabel,
   }) async {
     final String lookupKey = buildLookupKey(name, existing.id);
-    await _products.doc(existing.id).update(
+    await _products
+        .doc(existing.id)
+        .update(
           VendorProduct(
             id: existing.id,
             storeId: existing.storeId,
@@ -140,9 +174,24 @@ class VendorProductRepository {
   Future<void> setProductStock({
     required String productId,
     required int quantity,
+    String reason = 'manual_set',
   }) async {
     final int q = quantity.clamp(0, 9999999);
-    await _products.doc(productId).update(<String, dynamic>{'stockQty': q});
+    final DocumentReference<Map<String, dynamic>> ref = _products.doc(
+      productId,
+    );
+    await _firestore.runTransaction((Transaction tx) async {
+      final DocumentSnapshot<Map<String, dynamic>> snap = await tx.get(ref);
+      final int previous = (snap.data()?['stockQty'] as num?)?.round() ?? 0;
+      tx.update(ref, <String, dynamic>{'stockQty': q});
+      _writeStockMovement(
+        tx: tx,
+        productId: productId,
+        previousQty: previous,
+        nextQty: q,
+        reason: reason,
+      );
+    });
   }
 
   /// Toggle catalogue visibility (`active` flag).
@@ -157,15 +206,116 @@ class VendorProductRepository {
   Future<void> adjustProductStock({
     required String productId,
     required int delta,
+    String reason = 'manual_adjust',
   }) async {
-    final DocumentReference<Map<String, dynamic>> ref = _products.doc(productId);
+    final DocumentReference<Map<String, dynamic>> ref = _products.doc(
+      productId,
+    );
     await _firestore.runTransaction((Transaction tx) async {
       final DocumentSnapshot<Map<String, dynamic>> snap = await tx.get(ref);
       final Map<String, dynamic>? data = snap.data();
       final int current = (data?['stockQty'] as num?)?.round() ?? 0;
       final int next = (current + delta).clamp(0, 9999999);
       tx.update(ref, <String, dynamic>{'stockQty': next});
+      _writeStockMovement(
+        tx: tx,
+        productId: productId,
+        previousQty: current,
+        nextQty: next,
+        reason: reason,
+      );
     });
+  }
+
+  Future<void> setManyProductStock({
+    required Map<String, int> quantitiesByProductId,
+    String reason = 'bulk_set',
+  }) async {
+    final Map<String, int> clean = <String, int>{
+      for (final MapEntry<String, int> entry in quantitiesByProductId.entries)
+        if (entry.key.trim().isNotEmpty)
+          entry.key.trim(): entry.value.clamp(0, 9999999),
+    };
+    if (clean.isEmpty) {
+      return;
+    }
+    final WriteBatch batch = _firestore.batch();
+    for (final MapEntry<String, int> entry in clean.entries) {
+      final DocumentReference<Map<String, dynamic>> ref = _products.doc(
+        entry.key,
+      );
+      final DocumentSnapshot<Map<String, dynamic>> snap = await ref.get();
+      final int previous = (snap.data()?['stockQty'] as num?)?.round() ?? 0;
+      batch.update(ref, <String, dynamic>{'stockQty': entry.value});
+      _writeStockMovement(
+        batch: batch,
+        productId: entry.key,
+        previousQty: previous,
+        nextQty: entry.value,
+        reason: reason,
+      );
+    }
+    await batch.commit();
+  }
+
+  Future<void> autoHideOutOfStockProducts(String storeId) async {
+    final QuerySnapshot<Map<String, dynamic>> snap = await _products
+        .where('storeId', isEqualTo: storeId)
+        .where('stockQty', isEqualTo: 0)
+        .get();
+    if (snap.docs.isEmpty) {
+      return;
+    }
+    final WriteBatch batch = _firestore.batch();
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
+      batch.update(doc.reference, <String, dynamic>{'active': false});
+    }
+    await batch.commit();
+  }
+
+  Stream<List<Map<String, dynamic>>> watchStockMovements(String productId) {
+    final String id = productId.trim();
+    if (id.isEmpty) {
+      return Stream<List<Map<String, dynamic>>>.value(
+        const <Map<String, dynamic>>[],
+      );
+    }
+    return _stockMovements(id)
+        .orderBy('createdAt', descending: true)
+        .limit(20)
+        .snapshots()
+        .map(
+          (QuerySnapshot<Map<String, dynamic>> snap) => snap.docs
+              .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+                return <String, dynamic>{'id': doc.id, ...doc.data()};
+              })
+              .toList(growable: false),
+        );
+  }
+
+  void _writeStockMovement({
+    Transaction? tx,
+    WriteBatch? batch,
+    required String productId,
+    required int previousQty,
+    required int nextQty,
+    required String reason,
+  }) {
+    final DocumentReference<Map<String, dynamic>> ref = _stockMovements(
+      productId,
+    ).doc();
+    final Map<String, dynamic> data = <String, dynamic>{
+      'previousQty': previousQty,
+      'nextQty': nextQty,
+      'delta': nextQty - previousQty,
+      'reason': reason,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+    if (tx != null) {
+      tx.set(ref, data);
+      return;
+    }
+    batch?.set(ref, data);
   }
 
   Future<void> deleteProduct(VendorProduct product) async {

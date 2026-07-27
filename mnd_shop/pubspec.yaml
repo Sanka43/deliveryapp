@@ -1,4 +1,4 @@
-name: mnd_shop
+﻿name: mnd_shop
 description: MND Vendor (shop) app — dashboard, sales, pending orders.
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.2+6
 
 environment:
   sdk: ^3.11.5
@@ -40,7 +40,13 @@ dependencies:
   firebase_core: ^3.13.1
   firebase_auth: ^5.5.4
   cloud_firestore: ^5.6.8
+  cloud_functions: ^5.6.2
+  firebase_messaging: ^15.2.6
   firebase_storage: ^12.4.10
+  firebase_crashlytics: ^4.3.10
+  pdf: ^3.10.8
+  printing: ^5.14.2
+  flutter_local_notifications: ^22.0.1
   image_picker: ^1.1.2
   permission_handler: ^11.3.1
   shared_preferences: ^2.5.3
@@ -53,6 +59,8 @@ dependencies:
   audioplayers: ^6.6.0
   package_info_plus: ^8.3.0
   url_launcher: ^6.3.1
+  crop_your_image: ^2.0.0
+  image: ^4.8.0
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +72,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
   fake_cloud_firestore: ^3.1.0
   firebase_auth_mocks: ^0.14.2
   firebase_storage_mocks: ^0.7.0
@@ -80,7 +89,32 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/app_icon.png
+    - assets/shop_auth_logo.png
+    - assets/shop_login_bg.png
     - assets/sounds/new_order.mp3
+    - assets/sounds/you_have_a_new_order.mp3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/app_icon.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/app_icon.png
+  remove_alpha_ios: true
+  background_color_ios: "#FFFFFF"
+  web:
+    generate: true
+    image_path: assets/app_icon.png
+    background_color: "#FFFFFF"
+    theme_color: "#1463FF"
+  macos:
+    generate: true
+    image_path: assets/app_icon.png
+  windows:
+    generate: true
+    image_path: assets/app_icon.png
+    icon_size: 256
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

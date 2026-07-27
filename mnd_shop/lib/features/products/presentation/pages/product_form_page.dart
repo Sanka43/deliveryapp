@@ -587,6 +587,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       if (mounted) {
         Navigator.of(context).pop<void>();
       }
+    } on VendorProductLimitExceededException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e')),
+        );
+      }
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

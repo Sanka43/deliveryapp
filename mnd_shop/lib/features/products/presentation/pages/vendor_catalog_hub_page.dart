@@ -3,7 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
+import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
+import 'package:mnd_shop/features/inventory/presentation/pages/vendor_inventory_page.dart';
 import 'package:mnd_shop/features/products/data/vendor_product_repository.dart';
 import 'package:mnd_shop/features/products/domain/vendor_product.dart';
 import 'package:mnd_shop/features/products/presentation/pages/product_form_page.dart';
@@ -37,7 +40,7 @@ class VendorCatalogHubPage extends ConsumerWidget {
     return Material(
       color: VendorProductsTheme.canvas(context),
       clipBehavior: Clip.none,
-      child: const _VendorCatalogUnifiedBody(),
+      child: const VendorResponsiveContent(child: _VendorCatalogUnifiedBody()),
     );
   }
 }
@@ -46,10 +49,12 @@ class _VendorCatalogUnifiedBody extends ConsumerStatefulWidget {
   const _VendorCatalogUnifiedBody();
 
   @override
-  ConsumerState<_VendorCatalogUnifiedBody> createState() => _VendorCatalogUnifiedBodyState();
+  ConsumerState<_VendorCatalogUnifiedBody> createState() =>
+      _VendorCatalogUnifiedBodyState();
 }
 
-class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnifiedBody> {
+class _VendorCatalogUnifiedBodyState
+    extends ConsumerState<_VendorCatalogUnifiedBody> {
   final Set<String> _busyIds = <String>{};
   final TextEditingController _searchController = TextEditingController();
 
@@ -73,15 +78,22 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
     }
     if (q < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a whole number ≥ 0')),
+        SnackBar(
+          content: Text(
+            _vTxt(
+              context,
+              en: 'Enter a whole number >= 0',
+              si: '0 හෝ වැඩි පූර්ණ සංඛ්‍යාවක් ඇතුල් කරන්න',
+            ),
+          ),
+        ),
       );
       return;
     }
     await _runStockOp(p.id, () async {
-      await ref.read(vendorProductRepositoryProvider).setProductStock(
-            productId: p.id,
-            quantity: q,
-          );
+      await ref
+          .read(vendorProductRepositoryProvider)
+          .setProductStock(productId: p.id, quantity: q);
     });
   }
 
@@ -92,7 +104,11 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Update failed: $e')),
+          SnackBar(
+            content: Text(
+              '${_vTxt(context, en: 'Update failed', si: 'යාවත්කාලීන කිරීම අසාර්ථකයි')}: $e',
+            ),
+          ),
         );
       }
     } finally {
@@ -104,13 +120,27 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
 
   void _openEdit(VendorProduct p) {
     Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => ProductFormPage(product: p),
-      ),
+      MaterialPageRoute<void>(builder: (_) => ProductFormPage(product: p)),
     );
   }
 
   void _openAddProduct() {
+    final List<VendorProduct>? list =
+        ref.read(vendorProductsStreamProvider).asData?.value;
+    if (list != null && list.length >= vendorMaxProductsPerShop) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _vTxt(
+              context,
+              en: 'Maximum $vendorMaxProductsPerShop products',
+              si: 'උපරිම නිෂ්පාදන $vendorMaxProductsPerShop',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
     HapticFeedback.lightImpact();
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -160,14 +190,28 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
             color: Theme.of(context).colorScheme.error,
             borderRadius: BorderRadius.circular(kVendorCardRadius),
           ),
-          child: Icon(Icons.delete_outline_rounded, color: Theme.of(context).colorScheme.onError),
+          child: Icon(
+            Icons.delete_outline_rounded,
+            color: Theme.of(context).colorScheme.onError,
+          ),
         ),
         confirmDismiss: (DismissDirection dir) async {
+          final ScaffoldMessengerState messenger = ScaffoldMessenger.of(
+            context,
+          );
           final bool? ok = await showVendorConfirmDialog(
             context,
-            title: 'Delete product?',
-            message: 'Remove "${p.name}" from the catalogue?',
-            confirmLabel: 'Delete',
+            title: _vTxt(
+              context,
+              en: 'Delete product?',
+              si: 'නිෂ්පාදනය මකන්නද?',
+            ),
+            message: _vTxt(
+              context,
+              en: 'Remove "${p.name}" from the catalogue?',
+              si: '"${p.name}" catalogue එකෙන් ඉවත් කරන්නද?',
+            ),
+            confirmLabel: _vTxt(context, en: 'Delete', si: 'මකන්න'),
             destructive: true,
           );
           if (ok != true) {
@@ -175,16 +219,24 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
           }
           try {
             await ref.read(vendorProductRepositoryProvider).deleteProduct(p);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Deleted · ${p.name}')),
+            if (mounted) {
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '${_vTxt(context, en: 'Deleted', si: 'මකා දැමීය')} · ${p.name}',
+                  ),
+                ),
               );
             }
             return true;
           } on Exception catch (e) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Delete failed: $e')),
+            if (mounted) {
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '${_vTxt(context, en: 'Delete failed', si: 'මැකීම අසාර්ථකයි')}: $e',
+                  ),
+                ),
               );
             }
             return false;
@@ -206,10 +258,14 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
   @override
   Widget build(BuildContext context) {
     ref.watch(vendorStoreFromProfileProvider);
-    final String catalogStoreId = ref.watch(vendorProductCatalogStoreIdProvider).trim();
-    final AsyncValue<List<VendorProduct>> products = ref.watch(vendorProductsStreamProvider);
-    final bool showAddProduct = vendorCatalogCanAddProducts(catalogStoreId);
+    final String catalogStoreId = ref
+        .watch(vendorProductCatalogStoreIdProvider)
+        .trim();
+    final AsyncValue<List<VendorProduct>> products = ref.watch(
+      vendorProductsStreamProvider,
+    );
     final double topInset = MediaQuery.paddingOf(context).top;
+    final double gutter = vendorResponsiveHorizontalPadding(context);
 
     if (catalogStoreId.isEmpty) {
       return Column(
@@ -234,11 +290,22 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
       children: <Widget>[
         products.when(
           data: (List<VendorProduct> list) {
-            final int out = list.where((VendorProduct p) => p.stockQty == 0).length;
-            final int low = list
-                .where((VendorProduct p) => p.stockQty > 0 && p.stockQty <= vendorLowStockMax)
+            final int out = list
+                .where((VendorProduct p) => p.stockQty == 0)
                 .length;
-            final int activeCount = list.where((VendorProduct p) => p.active).length;
+            final int low = list
+                .where(
+                  (VendorProduct p) =>
+                      p.stockQty > 0 && p.stockQty <= vendorLowStockMax,
+                )
+                .length;
+            final int activeCount = list
+                .where((VendorProduct p) => p.active)
+                .length;
+            final bool showAddProduct = vendorCatalogCanAddProducts(
+              catalogStoreId,
+              productCount: list.length,
+            );
             return _CatalogStaticHeader(
               topInset: topInset,
               metrics: VendorCatalogMetrics(
@@ -250,6 +317,7 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
               searchController: _searchController,
               onSearchChanged: (_) => setState(() {}),
               showAddProduct: showAddProduct,
+              atProductLimit: list.length >= vendorMaxProductsPerShop,
               onAddProduct: _openAddProduct,
             );
           },
@@ -258,14 +326,20 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
             metrics: _CatalogMetricsSkeleton(),
             searchController: _searchController,
             onSearchChanged: (_) => setState(() {}),
-            showAddProduct: showAddProduct,
+            showAddProduct: vendorCatalogCanAddProducts(
+              catalogStoreId,
+              productCount: 0,
+            ),
             onAddProduct: _openAddProduct,
           ),
-          error: (_, __) => _CatalogStaticHeader(
+          error: (Object error, StackTrace stackTrace) => _CatalogStaticHeader(
             topInset: topInset,
             searchController: _searchController,
             onSearchChanged: (_) => setState(() {}),
-            showAddProduct: showAddProduct,
+            showAddProduct: vendorCatalogCanAddProducts(
+              catalogStoreId,
+              productCount: 0,
+            ),
             onAddProduct: _openAddProduct,
           ),
         ),
@@ -286,9 +360,14 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
                   );
                 }
 
-                final int out = list.where((VendorProduct p) => p.stockQty == 0).length;
+                final int out = list
+                    .where((VendorProduct p) => p.stockQty == 0)
+                    .length;
                 final int low = list
-                    .where((VendorProduct p) => p.stockQty > 0 && p.stockQty <= vendorLowStockMax)
+                    .where(
+                      (VendorProduct p) =>
+                          p.stockQty > 0 && p.stockQty <= vendorLowStockMax,
+                    )
                     .length;
                 final List<VendorProduct> visible = _applyQuerySortFilter(list);
 
@@ -311,19 +390,23 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
 
                 return ListView.builder(
                   padding: EdgeInsets.fromLTRB(
-                    kVendorScreenPadding,
+                    gutter,
                     _kCatalogVerticalGap,
-                    kVendorScreenPadding,
-                    96,
+                    gutter,
+                    VendorPillBottomNav.scrollBottomPadding(context, extra: 0),
                   ),
-                  physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                   itemCount: visible.length + ((low > 0 || out > 0) ? 1 : 0),
                   itemBuilder: (BuildContext context, int index) {
                     int i = index;
                     if (low > 0 || out > 0) {
                       if (i == 0) {
                         return Padding(
-                          padding: EdgeInsets.only(bottom: _kCatalogVerticalGap * 2),
+                          padding: EdgeInsets.only(
+                            bottom: _kCatalogVerticalGap * 2,
+                          ),
                           child: _InventoryAlertBanner(
                             lowCount: low,
                             outCount: out,
@@ -345,7 +428,9 @@ class _VendorCatalogUnifiedBodyState extends ConsumerState<_VendorCatalogUnified
                     const Padding(
                       padding: EdgeInsets.only(top: 24, bottom: 48),
                       child: Center(
-                        child: CircularProgressIndicator.adaptive(strokeWidth: 2.8),
+                        child: CircularProgressIndicator.adaptive(
+                          strokeWidth: 2.8,
+                        ),
                       ),
                     ),
                   ],
@@ -375,6 +460,7 @@ class _CatalogStaticHeader extends StatelessWidget {
     this.metrics,
     this.showSearch = true,
     this.showAddProduct = false,
+    this.atProductLimit = false,
     this.onAddProduct,
   });
 
@@ -384,10 +470,12 @@ class _CatalogStaticHeader extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final bool showSearch;
   final bool showAddProduct;
+  final bool atProductLimit;
   final VoidCallback? onAddProduct;
 
   @override
   Widget build(BuildContext context) {
+    final double gutter = vendorResponsiveHorizontalPadding(context);
     return Material(
       color: VendorProductsTheme.canvas(context),
       child: Column(
@@ -396,34 +484,35 @@ class _CatalogStaticHeader extends StatelessWidget {
         children: <Widget>[
           Padding(
             padding: EdgeInsets.fromLTRB(
-              kVendorScreenPadding,
+              gutter,
               topInset + 12,
-              kVendorScreenPadding,
+              gutter,
               showSearch ? 10 : _kCatalogVerticalGap,
             ),
             child: const _CatalogTitleRow(),
           ),
           if (showSearch)
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                kVendorScreenPadding,
+              padding: EdgeInsets.fromLTRB(
+                gutter,
                 0,
-                kVendorScreenPadding,
+                gutter,
                 _kCatalogVerticalGap,
               ),
               child: _CatalogSearchAddRow(
                 searchController: searchController,
                 onSearchChanged: onSearchChanged,
                 showAddProduct: showAddProduct,
+                atProductLimit: atProductLimit,
                 onAddProduct: onAddProduct,
               ),
             ),
           if (metrics != null)
             Padding(
               padding: EdgeInsets.fromLTRB(
-                kVendorScreenPadding,
+                gutter,
                 showSearch ? 0 : _kCatalogVerticalGap,
-                kVendorScreenPadding,
+                gutter,
                 _kCatalogVerticalGap,
               ),
               child: metrics,
@@ -448,11 +537,28 @@ class _CatalogTitleRow extends StatelessWidget {
       color: VendorProductsTheme.primaryText(context),
     ).copyWith(fontFamilyFallback: const <String>['Poppins']);
 
-    return Text(
-      'Products',
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: titleStyle,
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            _vTxt(context, en: 'Products', si: 'නිෂ්පාදන'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: titleStyle,
+          ),
+        ),
+        IconButton.filledTonal(
+          tooltip: _vTxt(context, en: 'Inventory', si: 'තොගය'),
+          onPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const VendorInventoryPage(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.warehouse_outlined),
+        ),
+      ],
     );
   }
 }
@@ -463,12 +569,14 @@ class _CatalogSearchAddRow extends StatelessWidget {
     required this.searchController,
     required this.onSearchChanged,
     required this.showAddProduct,
+    this.atProductLimit = false,
     this.onAddProduct,
   });
 
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
   final bool showAddProduct;
+  final bool atProductLimit;
   final VoidCallback? onAddProduct;
 
   @override
@@ -486,8 +594,36 @@ class _CatalogSearchAddRow extends StatelessWidget {
         if (showAddProduct && onAddProduct != null) ...<Widget>[
           const SizedBox(width: 10),
           _CatalogHeaderAddButton(onPressed: onAddProduct),
+        ] else if (atProductLimit) ...<Widget>[
+          const SizedBox(width: 10),
+          _CatalogProductLimitHint(),
         ],
       ],
+    );
+  }
+}
+
+class _CatalogProductLimitHint extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final Color muted = VendorProductsTheme.mutedText(context);
+    return SizedBox(
+      height: _kCatalogSearchRowHeight,
+      child: Align(
+        alignment: Alignment.center,
+        child: Text(
+          _vTxt(
+            context,
+            en: 'Max $vendorMaxProductsPerShop products',
+            si: 'උපරිම $vendorMaxProductsPerShop',
+          ),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: muted,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -509,18 +645,16 @@ class _CatalogHeaderAddButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         minimumSize: const Size(0, _kCatalogSearchRowHeight),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       child: Text(
-        'Add product',
+        _vTxt(context, en: 'Add product', si: 'නිෂ්පාදනය එක් කරන්න'),
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: Colors.white,
-              height: 1.1,
-            ),
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          color: Colors.white,
+          height: 1.1,
+        ),
       ),
     );
   }
@@ -589,11 +723,7 @@ class _CatalogHeaderSearchState extends State<_CatalogHeaderSearch> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                Icon(
-                  Icons.search_rounded,
-                  size: 20,
-                  color: primary,
-                ),
+                Icon(Icons.search_rounded, size: 20, color: primary),
                 const SizedBox(width: 6),
                 Expanded(
                   child: TextField(
@@ -616,7 +746,11 @@ class _CatalogHeaderSearchState extends State<_CatalogHeaderSearch> {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      hintText: 'Search products',
+                      hintText: _vTxt(
+                        context,
+                        en: 'Search products',
+                        si: 'නිෂ්පාදන සොයන්න',
+                      ),
                       hintStyle: theme.textTheme.labelLarge?.copyWith(
                         color: muted.withValues(alpha: 0.85),
                         fontWeight: FontWeight.w500,
@@ -672,9 +806,14 @@ class _CatalogScrollBody extends StatelessWidget {
       builder: (BuildContext context, BoxConstraints constraints) {
         final double bodyHeight = constraints.maxHeight;
         return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: bodyHeight, maxHeight: bodyHeight),
+            constraints: BoxConstraints(
+              minHeight: bodyHeight,
+              maxHeight: bodyHeight,
+            ),
             child: child,
           ),
         );
@@ -689,11 +828,11 @@ class _CatalogMetricsSkeleton extends StatelessWidget {
     final Color base = VendorProductsTheme.isDark(context)
         ? Theme.of(context).colorScheme.surfaceContainerHigh
         : Color.lerp(
-              AppColors.surfaceMuted,
-              Theme.of(context).colorScheme.onSurface,
-              0.06,
-            ) ??
-            AppColors.surfaceMuted;
+                AppColors.surfaceMuted,
+                Theme.of(context).colorScheme.onSurface,
+                0.06,
+              ) ??
+              AppColors.surfaceMuted;
     return SizedBox(
       height: 72,
       child: Row(
@@ -705,7 +844,9 @@ class _CatalogMetricsSkeleton extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: base,
-                  borderRadius: BorderRadius.circular(VendorPlainStatTile.radius),
+                  borderRadius: BorderRadius.circular(
+                    VendorPlainStatTile.radius,
+                  ),
                 ),
               ),
             ),
@@ -724,11 +865,11 @@ class _CatalogListSkeleton extends StatelessWidget {
     final Color base = VendorProductsTheme.isDark(context)
         ? Theme.of(context).colorScheme.surfaceContainerHigh
         : Color.lerp(
-              AppColors.surfaceMuted,
-              Theme.of(context).colorScheme.onSurface,
-              0.06,
-            ) ??
-            AppColors.surfaceMuted;
+                AppColors.surfaceMuted,
+                Theme.of(context).colorScheme.onSurface,
+                0.06,
+              ) ??
+              AppColors.surfaceMuted;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(
         kVendorScreenPadding,
@@ -746,7 +887,9 @@ class _CatalogListSkeleton extends StatelessWidget {
             color: VendorProductsTheme.cardSurface(context),
             borderRadius: BorderRadius.circular(kVendorCardRadius),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.25),
+              color: Theme.of(
+                context,
+              ).colorScheme.outlineVariant.withValues(alpha: 0.25),
             ),
           ),
           child: SizedBox(
@@ -768,12 +911,18 @@ class _CatalogListSkeleton extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         DecoratedBox(
-                          decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(
+                            color: base,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           child: const SizedBox(height: 14, width: 140),
                         ),
                         const SizedBox(height: 10),
                         DecoratedBox(
-                          decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(
+                            color: base,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           child: const SizedBox(height: 12, width: 90),
                         ),
                       ],
@@ -818,7 +967,11 @@ class _InventoryAlertBanner extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Icon(Icons.lightbulb_outline_rounded, color: AppColors.pendingAmber, size: 22),
+            Icon(
+              Icons.lightbulb_outline_rounded,
+              color: AppColors.pendingAmber,
+              size: 22,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -856,16 +1009,24 @@ class _NoSearchResults extends StatelessWidget {
             color: VendorProductsTheme.accent(context).withValues(alpha: 0.75),
           ),
           const SizedBox(height: 14),
-          const VendorSectionTitle('No matches'),
+          VendorSectionTitle(
+            _vTxt(context, en: 'No matches', si: 'ගැලපෙන ප්‍රතිඵල නැත'),
+          ),
           const SizedBox(height: 8),
           Text(
-            'Try another search or clear filters.',
+            _vTxt(
+              context,
+              en: 'Try another search or clear filters.',
+              si: 'වෙනත් සෙවීමක් කරන්න හෝ සෙවුම හිස් කරන්න.',
+            ),
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: VendorProductsTheme.mutedText(context)),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: VendorProductsTheme.mutedText(context),
+            ),
           ),
           const SizedBox(height: 18),
           VendorHeroFilledButton(
-            label: 'Clear search',
+            label: _vTxt(context, en: 'Clear search', si: 'සෙවුම හිස් කරන්න'),
             icon: Icons.clear_rounded,
             onPressed: onClear,
           ),
@@ -889,7 +1050,11 @@ class _SignInRequiredPane extends StatelessWidget {
           DecoratedBox(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: VendorProductsTheme.softAccentFill(context, lightAlpha: 0.12, darkAlpha: 0.2),
+              color: VendorProductsTheme.softAccentFill(
+                context,
+                lightAlpha: 0.12,
+                darkAlpha: 0.2,
+              ),
             ),
             child: Padding(
               padding: const EdgeInsets.all(22),
@@ -901,10 +1066,20 @@ class _SignInRequiredPane extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 22),
-          const VendorSectionTitle('Sign in to manage products'),
+          VendorSectionTitle(
+            _vTxt(
+              context,
+              en: 'Sign in to manage products',
+              si: 'නිෂ්පාදන කළමනාකරණයට පිවිසෙන්න',
+            ),
+          ),
           const SizedBox(height: 10),
           Text(
-            'Your catalogue and inventory controls will show here once your shop session is active.',
+            _vTxt(
+              context,
+              en: 'Your catalogue and inventory controls will show here once your shop session is active.',
+              si: 'ඔබේ shop session එක සක්‍රීය වූ පසු catalogue සහ inventory පාලනය මෙහි පෙන්වේ.',
+            ),
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: VendorProductsTheme.mutedText(context),
@@ -933,7 +1108,9 @@ class _EmptyCatalogIllustration extends StatelessWidget {
               borderRadius: BorderRadius.circular(kVendorCardRadius),
               color: VendorProductsTheme.softAccentFill(context),
               border: Border.all(
-                color: VendorProductsTheme.accent(context).withValues(alpha: 0.28),
+                color: VendorProductsTheme.accent(
+                  context,
+                ).withValues(alpha: 0.28),
               ),
             ),
             child: Padding(
@@ -941,15 +1118,23 @@ class _EmptyCatalogIllustration extends StatelessWidget {
               child: Icon(
                 Icons.inventory_2_outlined,
                 size: 56,
-                color: VendorProductsTheme.accent(context).withValues(alpha: 0.9),
+                color: VendorProductsTheme.accent(
+                  context,
+                ).withValues(alpha: 0.9),
               ),
             ),
           ),
           const SizedBox(height: 24),
-          const VendorSectionTitle('No products yet'),
+          VendorSectionTitle(
+            _vTxt(context, en: 'No products yet', si: 'තවම නිෂ්පාදන නැත'),
+          ),
           const SizedBox(height: 10),
           Text(
-            'Tap Add product to create your first listing. Set price, photos, and stock anytime.',
+            _vTxt(
+              context,
+              en: 'Tap Add product to create your first listing. Set price, photos, and stock anytime.',
+              si: 'පළමු listing එක සෑදීමට Add product ඔබන්න. මිල, ඡායාරූප සහ තොග ඕනෑම වේලාවක සකසන්න.',
+            ),
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: VendorProductsTheme.mutedText(context),
@@ -987,7 +1172,13 @@ class _CatalogErrorPane extends StatelessWidget {
               children: <Widget>[
                 Icon(Icons.cloud_off_outlined, color: cs.error, size: 36),
                 const SizedBox(height: 12),
-                const VendorSectionTitle('Could not load products'),
+                VendorSectionTitle(
+                  _vTxt(
+                    context,
+                    en: 'Could not load products',
+                    si: 'නිෂ්පාදන පූරණය කළ නොහැක',
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   message,
@@ -1007,7 +1198,6 @@ class _CatalogErrorPane extends StatelessWidget {
 
 /// Short description for product cards (~2 lines in the narrow text column).
 const int _kProductCardSubtitleMax = 40;
-
 
 String _categorySubtitle(VendorProduct p) {
   final String d = p.description.trim();
@@ -1132,19 +1322,25 @@ class _ModernProductCard extends StatelessWidget {
                                 if (!product.active) ...<Widget>[
                                   const SizedBox(height: 6),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 4,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: mutedColor.withValues(alpha: isDark ? 0.2 : 0.12),
+                                      color: mutedColor.withValues(
+                                        alpha: isDark ? 0.2 : 0.12,
+                                      ),
                                       borderRadius: BorderRadius.circular(999),
                                     ),
                                     child: Text(
                                       'Offline',
-                                      style: theme.textTheme.labelSmall?.copyWith(
-                                        color: mutedColor,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 9.5,
-                                        letterSpacing: 0.2,
-                                      ),
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: mutedColor,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 9.5,
+                                            letterSpacing: 0.2,
+                                          ),
                                     ),
                                   ),
                                 ],
@@ -1175,7 +1371,9 @@ class _ModernProductCard extends StatelessWidget {
                             letterSpacing: -0.45,
                             height: 1.05,
                             fontSize: 16,
-                            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                            fontFeatures: const <FontFeature>[
+                              FontFeature.tabularFigures(),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -1236,8 +1434,12 @@ class _ProductStockButtonState extends State<_ProductStockButton> {
     const Color fg = Colors.white;
 
     final String label = widget.busy
-        ? 'Updating…'
-        : 'Stock · ${widget.stockQty}';
+        ? _vTxt(context, en: 'Updating…', si: 'යාවත්කාලීන කරමින්…')
+        : _vTxt(
+            context,
+            en: 'Stock · ${widget.stockQty}',
+            si: 'තොගය · ${widget.stockQty}',
+          );
 
     return AnimatedScale(
       scale: _pressed && !widget.busy ? 0.97 : 1,
@@ -1253,7 +1455,9 @@ class _ProductStockButtonState extends State<_ProductStockButton> {
                   HapticFeedback.lightImpact();
                   widget.onPressed();
                 },
-          onHighlightChanged: widget.busy ? null : (bool v) => setState(() => _pressed = v),
+          onHighlightChanged: widget.busy
+              ? null
+              : (bool v) => setState(() => _pressed = v),
           borderRadius: BorderRadius.circular(12),
           splashColor: Colors.white.withValues(alpha: 0.22),
           highlightColor: Colors.white.withValues(alpha: 0.12),
@@ -1270,7 +1474,9 @@ class _ProductStockButtonState extends State<_ProductStockButton> {
                         offset: Offset(0, _pressed ? 2 : 5),
                       ),
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.25 : 0.08,
+                        ),
                         blurRadius: _pressed ? 2 : 6,
                         offset: Offset(0, _pressed ? 1 : 2),
                       ),
@@ -1313,4 +1519,16 @@ class _ProductStockButtonState extends State<_ProductStockButton> {
       ),
     );
   }
+}
+
+String _vTxt(
+  BuildContext context, {
+  required String en,
+  required String si,
+  String? ta,
+}) {
+  final String languageCode = Localizations.localeOf(context).languageCode;
+  if (languageCode == 'si') return si;
+  if (languageCode == 'ta') return ta ?? vendorTamilFallback(en);
+  return en;
 }

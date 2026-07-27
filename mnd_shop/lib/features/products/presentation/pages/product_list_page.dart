@@ -11,8 +11,12 @@ const int vendorLowStockMax = 9;
 /// Whole rupees stored as int; always show two decimals (e.g. `Rs. 350.00`).
 String vendorPriceLabelLkr(int lkr) => 'Rs. ${lkr.toDouble().toStringAsFixed(2)}';
 
-bool vendorCatalogCanAddProducts(String effectiveStoreId) {
-  return effectiveStoreId.trim().isNotEmpty;
+bool vendorCatalogCanAddProducts(
+  String effectiveStoreId, {
+  required int productCount,
+}) {
+  return effectiveStoreId.trim().isNotEmpty &&
+      productCount < vendorMaxProductsPerShop;
 }
 
 Future<void> confirmDeleteVendorProduct(

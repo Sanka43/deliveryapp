@@ -6,14 +6,15 @@ import 'package:mnd_shop/core/constants/firebase_collections.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_sales_aggregator.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_sales_summary.dart';
+import 'package:mnd_shop/features/orders/domain/vendor_order_status.dart';
 
 final Provider<VendorOrdersRepository> vendorOrdersRepositoryProvider =
     Provider<VendorOrdersRepository>((Ref ref) {
-  return VendorOrdersRepository(
-    firestore: ref.watch(firestoreProvider),
-    auth: ref.watch(firebaseAuthProvider),
-  );
-});
+      return VendorOrdersRepository(
+        firestore: ref.watch(firestoreProvider),
+        auth: ref.watch(firebaseAuthProvider),
+      );
+    });
 
 class VendorOrderBoard {
   const VendorOrderBoard({
@@ -22,16 +23,23 @@ class VendorOrderBoard {
     required this.readyForPickup,
     required this.outForDelivery,
     required this.completed,
+    required this.cancelled,
     required this.salesSummary,
+    this.isTruncated = false,
   });
 
   final List<VendorPendingOrder> incoming;
   final List<VendorPendingOrder> kitchen;
   final List<VendorPendingOrder> readyForPickup;
+
   /// Reserved for a future `shipping` / out-for-delivery status; empty with current schema.
   final List<VendorPendingOrder> outForDelivery;
   final List<VendorPendingOrder> completed;
+  final List<VendorPendingOrder> cancelled;
   final VendorSalesSummary salesSummary;
+
+  /// True when the Firestore query hit the safety limit and older orders may be hidden.
+  final bool isTruncated;
 
   static const VendorOrderBoard empty = VendorOrderBoard(
     incoming: <VendorPendingOrder>[],
@@ -39,6 +47,7 @@ class VendorOrderBoard {
     readyForPickup: <VendorPendingOrder>[],
     outForDelivery: <VendorPendingOrder>[],
     completed: <VendorPendingOrder>[],
+    cancelled: <VendorPendingOrder>[],
     salesSummary: VendorSalesSummary.zero,
   );
 
@@ -54,8 +63,8 @@ class VendorOrdersRepository {
   VendorOrdersRepository({
     required FirebaseFirestore firestore,
     required FirebaseAuth auth,
-  })  : _firestore = firestore,
-        _auth = auth;
+  }) : _firestore = firestore,
+       _auth = auth;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
@@ -79,7 +88,9 @@ class VendorOrdersRepository {
     if (id == uid) {
       return true;
     }
-    final DocumentSnapshot<Map<String, dynamic>> snap = await _vendors.doc(id).get();
+    final DocumentSnapshot<Map<String, dynamic>> snap = await _vendors
+        .doc(id)
+        .get();
     final String owner = (snap.data()?['uid'] as String?)?.trim() ?? '';
     return snap.exists && owner == uid;
   }
@@ -89,7 +100,9 @@ class VendorOrdersRepository {
     if (user == null) {
       return false;
     }
-    final DocumentSnapshot<Map<String, dynamic>> snap = await _orders.doc(orderId).get();
+    final DocumentSnapshot<Map<String, dynamic>> snap = await _orders
+        .doc(orderId)
+        .get();
     if (!snap.exists) {
       return false;
     }
@@ -97,15 +110,20 @@ class VendorOrdersRepository {
     return _isAuthorizedVendorId(vendorId);
   }
 
-  /// Whether the store is accepting orders (`active != false`). Defaults to true if doc missing.
+  /// Whether the store is accepting orders (`active != false`).
+  ///
+  /// Missing vendor docs default to closed so an unlinked or deleted storefront
+  /// cannot accidentally keep accepting orders.
   Stream<bool> watchVendorActive(String vendorId) {
     final String id = vendorId.trim();
     if (id.isEmpty) {
-      return Stream<bool>.value(true);
+      return Stream<bool>.value(false);
     }
-    return _vendors.doc(id).snapshots().map((DocumentSnapshot<Map<String, dynamic>> s) {
+    return _vendors.doc(id).snapshots().map((
+      DocumentSnapshot<Map<String, dynamic>> s,
+    ) {
       if (!s.exists || s.data() == null) {
-        return true;
+        return false;
       }
       final dynamic a = s.data()!['active'];
       return a != false;
@@ -125,10 +143,9 @@ class VendorOrdersRepository {
       if (!allowed) {
         return 'You are not allowed to update this store.';
       }
-      await _vendors.doc(id).set(
-        <String, dynamic>{'active': active},
-        SetOptions(merge: true),
-      );
+      await _vendors.doc(id).set(<String, dynamic>{
+        'active': active,
+      }, SetOptions(merge: true));
       return null;
     } on FirebaseException catch (e) {
       return e.message ?? 'Could not update store.';
@@ -143,45 +160,57 @@ class VendorOrdersRepository {
     if (id.isEmpty || _auth.currentUser == null) {
       return Stream<VendorOrderBoard>.value(VendorOrderBoard.empty);
     }
+    final DateTime lookbackStart = DateTime.now().subtract(const Duration(days: 30));
+    final Timestamp lookbackTimestamp = Timestamp.fromDate(lookbackStart);
     return _orders
         .where('vendorId', isEqualTo: id)
+        .where('createdAt', isGreaterThanOrEqualTo: lookbackTimestamp)
         .orderBy('createdAt', descending: true)
-        .limit(150)
+        .limit(1000)
         .snapshots()
         .map((QuerySnapshot<Map<String, dynamic>> snap) {
-      final List<VendorPendingOrder> incoming = <VendorPendingOrder>[];
-      final List<VendorPendingOrder> kitchen = <VendorPendingOrder>[];
-      final List<VendorPendingOrder> ready = <VendorPendingOrder>[];
-      final List<VendorPendingOrder> outForDelivery = <VendorPendingOrder>[];
-      final List<VendorPendingOrder> completed = <VendorPendingOrder>[];
-      final List<VendorPendingOrder> all = <VendorPendingOrder>[];
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
-        final VendorPendingOrder o = VendorPendingOrder.fromFirestore(doc.id, doc.data());
-        all.add(o);
-        final String s = o.statusKey.toLowerCase();
-        if (s == 'placed') {
-          incoming.add(o);
-        } else if (s == 'confirmed' || s == 'preparing') {
-          kitchen.add(o);
-        } else if (s == 'ready') {
-          ready.add(o);
-        } else if (s == 'completed') {
-          completed.add(o);
-        }
-      }
-      final VendorSalesSummary salesSummary = VendorSalesAggregator.fromOrders(
-        all,
-        now: DateTime.now(),
-      );
-      return VendorOrderBoard(
-        incoming: incoming,
-        kitchen: kitchen,
-        readyForPickup: ready,
-        outForDelivery: outForDelivery,
-        completed: completed,
-        salesSummary: salesSummary,
-      );
-    });
+          final bool isTruncated = snap.docs.length >= 1000;
+          final List<VendorPendingOrder> incoming = <VendorPendingOrder>[];
+          final List<VendorPendingOrder> kitchen = <VendorPendingOrder>[];
+          final List<VendorPendingOrder> ready = <VendorPendingOrder>[];
+          final List<VendorPendingOrder> outForDelivery =
+              <VendorPendingOrder>[];
+          final List<VendorPendingOrder> completed = <VendorPendingOrder>[];
+          final List<VendorPendingOrder> cancelled = <VendorPendingOrder>[];
+          final List<VendorPendingOrder> all = <VendorPendingOrder>[];
+          for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+              in snap.docs) {
+            final VendorPendingOrder o = VendorPendingOrder.fromFirestore(
+              doc.id,
+              doc.data(),
+            );
+            all.add(o);
+            final String s = o.statusKey;
+            if (VendorOrderStatus.isIncoming(s)) {
+              incoming.add(o);
+            } else if (VendorOrderStatus.isKitchen(s)) {
+              kitchen.add(o);
+            } else if (VendorOrderStatus.isReadyForPickup(s)) {
+              ready.add(o);
+            } else if (VendorOrderStatus.isCompleted(s)) {
+              completed.add(o);
+            } else if (VendorOrderStatus.isCancelled(s)) {
+              cancelled.add(o);
+            }
+          }
+          final VendorSalesSummary salesSummary =
+              VendorSalesAggregator.fromOrders(all, now: DateTime.now());
+          return VendorOrderBoard(
+            incoming: incoming,
+            kitchen: kitchen,
+            readyForPickup: ready,
+            outForDelivery: outForDelivery,
+            completed: completed,
+            cancelled: cancelled,
+            salesSummary: salesSummary,
+            isTruncated: isTruncated,
+          );
+        });
   }
 
   Future<String?> updateOrderStatus({
@@ -192,8 +221,7 @@ class VendorOrdersRepository {
       return 'Sign in to update orders.';
     }
     final String normalizedStatus = nextStatus.trim().toLowerCase();
-    const Set<String> allowedStatuses = <String>{'placed', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'};
-    if (!allowedStatuses.contains(normalizedStatus)) {
+    if (!VendorOrderStatus.isKnown(normalizedStatus)) {
       return 'Invalid order status.';
     }
     try {
@@ -201,17 +229,28 @@ class VendorOrdersRepository {
       if (!allowed) {
         return 'You are not allowed to update this order.';
       }
+      final DocumentSnapshot<Map<String, dynamic>> orderSnap = await _orders
+          .doc(orderId)
+          .get();
+      final String currentStatus =
+          (orderSnap.data()?['status'] as String?)?.trim().toLowerCase() ?? '';
+      if (!VendorOrderStatus.canVendorTransition(
+        from: currentStatus,
+        to: normalizedStatus,
+      )) {
+        return 'Invalid order status transition.';
+      }
+      final String fulfillmentMode =
+          (orderSnap.data()?['fulfillmentMode'] as String?)?.trim() ??
+          'delivery';
       final Map<String, dynamic> patch = <String, dynamic>{
         'status': normalizedStatus,
         'vendorStatusUpdatedAt': FieldValue.serverTimestamp(),
       };
-      if (normalizedStatus == 'ready') {
-        patch['openForRiders'] = true;
-      } else if (normalizedStatus == 'cancelled') {
-        patch['openForRiders'] = false;
-      } else if (normalizedStatus != 'ready') {
-        patch['openForRiders'] = false;
-      }
+      patch['openForRiders'] = VendorOrderStatus.opensRiderMatching(
+        status: normalizedStatus,
+        fulfillmentMode: fulfillmentMode,
+      );
       await _orders.doc(orderId).update(patch);
       return null;
     } on FirebaseException catch (e) {

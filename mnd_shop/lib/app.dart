@@ -1,13 +1,17 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/locale_provider.dart';
 import 'package:mnd_shop/app/providers/shop_auth_state_provider.dart';
 import 'package:mnd_shop/app/providers/theme_mode_provider.dart';
+import 'package:mnd_shop/app/widgets/shop_push_notification_bootstrap.dart';
 import 'package:mnd_shop/core/locale/app_language_option.dart';
 import 'package:mnd_shop/core/theme/app_theme.dart';
+import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/shop_login_page.dart';
+import 'package:mnd_shop/features/auth/presentation/pages/vendor_account_gate_page.dart';
 import 'package:mnd_shop/features/dashboard/presentation/pages/vendor_shell_page.dart';
 import 'package:mnd_shop/features/orders/presentation/widgets/vendor_incoming_order_snackbar_host.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
@@ -35,6 +39,26 @@ class MndShopApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: (BuildContext context, Widget? child) {
+        final Brightness brightness = Theme.of(context).brightness;
+        final bool dark = brightness == Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness:
+                dark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarDividerColor: Colors.transparent,
+            systemNavigationBarIconBrightness:
+                dark ? Brightness.light : Brightness.dark,
+            systemNavigationBarContrastEnforced: false,
+          ),
+          child: VendorResponsiveAppFrame(
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
       home: auth.when(
         data: (User? user) {
           if (user == null) {
@@ -46,8 +70,11 @@ class MndShopApp extends ConsumerWidget {
               return Stack(
                 clipBehavior: Clip.none,
                 children: <Widget>[
-                  const VendorShellPage(),
-                  VendorIncomingOrderSnackbarHost(key: ValueKey<String>(storeKey)),
+                  const VendorAccountGate(child: VendorShellPage()),
+                  const ShopPushNotificationBootstrap(),
+                  VendorIncomingOrderSnackbarHost(
+                    key: ValueKey<String>(storeKey),
+                  ),
                 ],
               );
             },
@@ -105,9 +132,5 @@ class MndShopApp extends ConsumerWidget {
 }
 
 void runMndShopApp() {
-  runApp(
-    const ProviderScope(
-      child: MndShopApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: MndShopApp()));
 }

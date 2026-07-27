@@ -18,7 +18,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Vendor app'), findsOneWidget);
-    expect(find.text('Sign in'), findsWidgets);
+    expect(find.text('Welcome Back'), findsOneWidget);
+    expect(find.text('Sign In'), findsWidgets);
   });
 }

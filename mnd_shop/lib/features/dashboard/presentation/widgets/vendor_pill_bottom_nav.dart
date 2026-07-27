@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 
 /// One tab in [VendorPillBottomNav].
 class VendorNavItem {
@@ -31,11 +32,31 @@ class VendorPillBottomNav extends StatefulWidget {
   static const double barInset = 8;
   static const double slotHeight = 44;
   static const double barHeight = slotHeight + (barInset * 2);
+
+  /// Gap between last scroll item and the floating nav (keep small; nav height is already included).
+  static const double scrollContentExtraBottom = 12;
+
+  /// Bottom padding for scroll views in shell tabs (clears floating nav + safe area).
+  static double scrollBottomPadding(
+    BuildContext context, {
+    double extra = scrollContentExtraBottom,
+    bool includeOuterMargin = true,
+  }) {
+    if (vendorUsesTabletLayout(context)) {
+      return MediaQuery.paddingOf(context).bottom + 24 + extra;
+    }
+    return MediaQuery.paddingOf(context).bottom +
+        barHeight +
+        (includeOuterMargin ? outerMarginBottom : 0) +
+        extra;
+  }
+
   static const double minInactiveSlotWidth = 40;
   static const double activeIconSize = 22;
   static const double chipHPad = 14;
   static const double chipVPad = 8;
   static const double iconLabelGap = 6;
+
   /// Moves horizontal padding from outer edge to label side on corner tabs.
   static const double chipPaddingShift = 4;
 
@@ -154,7 +175,9 @@ class _VendorPillBottomNavState extends State<VendorPillBottomNav>
     TextStyle style,
     Alignment pillAlignment,
   ) {
-    final EdgeInsets chipPad = VendorPillBottomNav.chipPaddingFor(pillAlignment);
+    final EdgeInsets chipPad = VendorPillBottomNav.chipPaddingFor(
+      pillAlignment,
+    );
     final TextPainter painter = TextPainter(
       text: TextSpan(text: item.label, style: style),
       maxLines: 1,
@@ -169,8 +192,7 @@ class _VendorPillBottomNavState extends State<VendorPillBottomNav>
 
   double get _trackWidth {
     final double screenWidth = MediaQuery.sizeOf(context).width;
-    final double safeWidth =
-        screenWidth.isFinite ? screenWidth : 400;
+    final double safeWidth = screenWidth.isFinite ? screenWidth : 400;
     final double barWidth = safeWidth - (VendorPillBottomNav.outerMarginH * 2);
     return barWidth - (VendorPillBottomNav.barInset * 2);
   }
@@ -184,8 +206,7 @@ class _VendorPillBottomNavState extends State<VendorPillBottomNav>
       return <double>[_trackWidth];
     }
 
-    final TextStyle labelStyle =
-        _labelStyle(Theme.of(context).textTheme);
+    final TextStyle labelStyle = _labelStyle(Theme.of(context).textTheme);
     final Alignment pillAlignment = VendorPillBottomNav.pillAlignmentFor(
       selectedIndex,
       count,
@@ -199,8 +220,10 @@ class _VendorPillBottomNavState extends State<VendorPillBottomNav>
     final int inactiveCount = count - 1;
     final double minInactiveTotal =
         VendorPillBottomNav.minInactiveSlotWidth * inactiveCount;
-    final double maxActive = (_trackWidth - minInactiveTotal)
-        .clamp(VendorPillBottomNav.iconOnlyChipWidth(), _trackWidth);
+    final double maxActive = (_trackWidth - minInactiveTotal).clamp(
+      VendorPillBottomNav.iconOnlyChipWidth(),
+      _trackWidth,
+    );
 
     double activeWidth = selectedChipWidth.clamp(
       VendorPillBottomNav.iconOnlyChipWidth(),
@@ -228,8 +251,7 @@ class _VendorPillBottomNavState extends State<VendorPillBottomNav>
   }
 
   List<double> _currentAnimatedShares() {
-    final double t =
-        VendorPillBottomNav.animCurve.transform(_controller.value);
+    final double t = VendorPillBottomNav.animCurve.transform(_controller.value);
     return List<double>.generate(widget.items.length, (int i) {
       return _fromShares[i] + (_toShares[i] - _fromShares[i]) * t;
     }, growable: false);
@@ -284,8 +306,9 @@ class _VendorPillBottomNavState extends State<VendorPillBottomNav>
                       width: trackWidth,
                       height: VendorPillBottomNav.slotHeight,
                       child: Row(
-                        children:
-                            List<Widget>.generate(widget.items.length, (int i) {
+                        children: List<Widget>.generate(widget.items.length, (
+                          int i,
+                        ) {
                           final double slotWidth = shares[i] * trackWidth;
                           final bool selected = i == widget.currentIndex;
 
@@ -384,8 +407,9 @@ class _ActivePill extends StatelessWidget {
         final double maxW = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : VendorPillBottomNav.iconOnlyChipWidth();
-        final EdgeInsets chipPad =
-            VendorPillBottomNav.chipPaddingFor(pillAlignment);
+        final EdgeInsets chipPad = VendorPillBottomNav.chipPaddingFor(
+          pillAlignment,
+        );
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(999),
@@ -415,11 +439,7 @@ class _ActivePill extends StatelessWidget {
                           const SizedBox(
                             width: VendorPillBottomNav.iconLabelGap,
                           ),
-                          Text(
-                            item.label,
-                            style: labelStyle,
-                            maxLines: 1,
-                          ),
+                          Text(item.label, style: labelStyle, maxLines: 1),
                         ],
                       ),
                     ),

@@ -1,54 +1,83 @@
-/// Single day row for charts (demo or from analytics API / Firestore later).
 class DailySalesPoint {
   const DailySalesPoint({
     required this.shortLabel,
+    required this.dateKey,
     required this.grossLkr,
     required this.orders,
+    this.cancelledOrders = 0,
   });
 
   final String shortLabel;
+  final String dateKey;
   final double grossLkr;
   final int orders;
+  final int cancelledOrders;
 }
 
-/// Bundle of series used on the vendor reports screen.
+class ProductSalesPoint {
+  const ProductSalesPoint({
+    required this.productKey,
+    required this.productName,
+    required this.quantity,
+    required this.grossLkr,
+    required this.completedOrders,
+  });
+
+  final String productKey;
+  final String productName;
+  final int quantity;
+  final double grossLkr;
+  final int completedOrders;
+}
+
 class VendorReportSnapshot {
   const VendorReportSnapshot({
     required this.last7Days,
     required this.categoryLabels,
     required this.categoryValuesLkr,
+    this.productRows = const <ProductSalesPoint>[],
+    this.grossLkr = 0,
+    this.netSalesLkr = 0,
+    this.discountLkr = 0,
+    this.deliveryFeeLkr = 0,
+    this.completedOrders = 0,
+    this.cancelledOrders = 0,
+    this.rangeLabel = 'Last 7 days',
   });
 
   final List<DailySalesPoint> last7Days;
   final List<String> categoryLabels;
-  /// Same length as [categoryLabels]; values ≥ 0.
   final List<double> categoryValuesLkr;
+  final List<ProductSalesPoint> productRows;
+  final double grossLkr;
+  final double netSalesLkr;
+  final double discountLkr;
+  final double deliveryFeeLkr;
+  final int completedOrders;
+  final int cancelledOrders;
+  final String rangeLabel;
 
-  static VendorReportSnapshot demo() {
-    return VendorReportSnapshot(
-      last7Days: const <DailySalesPoint>[
-        DailySalesPoint(shortLabel: 'Mon', grossLkr: 12400, orders: 8),
-        DailySalesPoint(shortLabel: 'Tue', grossLkr: 18200, orders: 11),
-        DailySalesPoint(shortLabel: 'Wed', grossLkr: 15600, orders: 9),
-        DailySalesPoint(shortLabel: 'Thu', grossLkr: 22100, orders: 14),
-        DailySalesPoint(shortLabel: 'Fri', grossLkr: 26800, orders: 16),
-        DailySalesPoint(shortLabel: 'Sat', grossLkr: 31200, orders: 19),
-        DailySalesPoint(shortLabel: 'Sun', grossLkr: 28900, orders: 17),
-      ],
-      categoryLabels: const <String>[
-        'Mains',
-        'Beverages',
-        'Sides & snacks',
-        'Desserts',
-      ],
-      categoryValuesLkr: const <double>[
-        185000,
-        42000,
-        38000,
-        22000,
-      ],
-    );
-  }
+  static final VendorReportSnapshot empty = VendorReportSnapshot(
+    last7Days: List<DailySalesPoint>.generate(
+      7,
+      (int i) => DailySalesPoint(
+        shortLabel: const <String>[
+          'Mon',
+          'Tue',
+          'Wed',
+          'Thu',
+          'Fri',
+          'Sat',
+          'Sun',
+        ][i],
+        dateKey: '',
+        grossLkr: 0,
+        orders: 0,
+      ),
+    ),
+    categoryLabels: const <String>['No product sales yet'],
+    categoryValuesLkr: const <double>[0],
+  );
 
   double get totalCategoryLkr {
     double s = 0;
@@ -56,5 +85,37 @@ class VendorReportSnapshot {
       s += v;
     }
     return s;
+  }
+
+  bool get hasSalesData {
+    if (grossLkr > 0 || totalCategoryLkr > 0) {
+      return true;
+    }
+    for (final DailySalesPoint day in last7Days) {
+      if (day.grossLkr > 0 || day.orders > 0 || day.cancelledOrders > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  double get averageOrderValueLkr =>
+      completedOrders <= 0 ? 0 : grossLkr / completedOrders;
+
+  double get cancellationRatePercent {
+    final int total = completedOrders + cancelledOrders;
+    return total <= 0 ? 0 : (cancelledOrders / total) * 100;
+  }
+
+  ProductSalesPoint? get bestSellingProduct {
+    if (productRows.isEmpty) {
+      return null;
+    }
+    final List<ProductSalesPoint> rows = productRows.toList(growable: false)
+      ..sort((ProductSalesPoint a, ProductSalesPoint b) {
+        final int revenue = b.grossLkr.compareTo(a.grossLkr);
+        return revenue != 0 ? revenue : b.quantity.compareTo(a.quantity);
+      });
+    return rows.first;
   }
 }
