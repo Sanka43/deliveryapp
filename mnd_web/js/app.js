@@ -1,6 +1,6 @@
 ﻿/**
  * MND web admin — Firestore CRUD aligned with mnd_customer:
- * collections: orders, customers, vendors, products, banners, shop_categories, shop_types, riders (see firebase_collections.dart).
+ * collections: orders, customers, vendors, products, banners, shop_categories, shop_types, riders, store_ratings, ride_fare_config (see firebase_collections.dart).
  * Auth: Firebase Email/Password; Firestore customers/{uid}.role must be "admin".
  */
 (function () {
@@ -17,6 +17,8 @@
     jobApplications: "job_applications",
     platformConfig: "platform_config",
     platformFeesDoc: "fees",
+    rideFareConfig: "ride_fare_config",
+    storeRatings: "store_ratings",
   };
 
   const PLATFORM_FEES_DEFAULTS = {
@@ -26,6 +28,36 @@
     pricePerKmLkr: 50,
     shopMonthlyCommissionPercent: 1,
   };
+
+  const DEFAULT_RIDE_FARES = {
+    bike: { baseLkr: 100, perKmLkr: 25, minLkr: 150 },
+    wheel: { baseLkr: 150, perKmLkr: 40, minLkr: 250 },
+    car: { baseLkr: 200, perKmLkr: 50, minLkr: 400 },
+  };
+
+  const RIDE_FARE_VEHICLES = [
+    {
+      id: "bike",
+      label: "Bike",
+      capacity: 1,
+      blurb: "Fast solo trips",
+      icon: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="16.5" r="3.25"/><circle cx="17.5" cy="16.5" r="3.25"/><path d="M6.5 16.5 10 8h3.5l2.5 5.5M10 8l-2 5.5h5"/></svg>`,
+    },
+    {
+      id: "wheel",
+      label: "Wheel",
+      capacity: 3,
+      blurb: "Tuk / three-wheeler",
+      icon: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="17" r="2.75"/><circle cx="17" cy="17" r="2.75"/><path d="M4.5 17H3l1.2-6.5A2 2 0 0 1 6.16 9H11l1.5 4h4.2a2 2 0 0 1 1.9 1.37L19.5 17H17M11 9V6.5A1.5 1.5 0 0 1 12.5 5H15"/></svg>`,
+    },
+    {
+      id: "car",
+      label: "Car",
+      capacity: 4,
+      blurb: "Comfort rides",
+      icon: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V14l1.5-5A2 2 0 0 1 7.4 7.5h9.2A2 2 0 0 1 18.5 9l1.5 5v2.5"/><path d="M4 14h16"/><circle cx="7.5" cy="17" r="1.75"/><circle cx="16.5" cy="17" r="1.75"/></svg>`,
+    },
+  ];
 
   const JOB_CATEGORIES = [
     "Part Time",
@@ -91,6 +123,8 @@
     jobApplications: [],
     platformFees: { ...PLATFORM_FEES_DEFAULTS },
     monthlyInvoices: [],
+    ratings: [],
+    rideFares: null,
   };
 
   const elAuthGate = document.getElementById("auth-gate");
@@ -884,6 +918,8 @@
     "rider-approvals": "Rider approvals",
     riders: "Riders",
     customers: "Customers",
+    "ride-fares": "Ride fares",
+    ratings: "Rating Management",
     "platform-fees": "Fees & commissions",
     help: "Setup",
   };
@@ -936,6 +972,8 @@
       await loadRiders();
     }
     if (name === "customers") await Promise.all([loadCustomers(), loadOrders()]);
+    if (name === "ride-fares") await loadRideFares();
+    if (name === "ratings") await loadRatings();
     if (name === "platform-fees") {
       await Promise.all([loadPlatformFees(), loadVendors()]);
       seedInvoiceMonthInput();
@@ -958,6 +996,8 @@
     if (name === "rider-approvals") renderRiderApprovals();
     if (name === "riders") renderRiders();
     if (name === "customers") renderCustomers();
+    if (name === "ride-fares") renderRideFares();
+    if (name === "ratings") renderRatings();
     if (name === "platform-fees") {
       renderPlatformFeesForm();
       renderMonthlyInvoices();
@@ -3400,6 +3440,281 @@
     await loadViewData("customers");
   }
 
+  async function loadRatings() {
+    try {
+      const q = db.collection(COL.storeRatings).orderBy("createdAt", "desc").limit(300);
+      const snap = await q.get(FS_GET_SERVER);
+      cache.ratings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (_) {
+      const snap = await db.collection(COL.storeRatings).limit(300).get(FS_GET_SERVER);
+      cache.ratings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
+  }
+
+  function renderRatings() {
+    const tbody = document.querySelector("#table-ratings tbody");
+    if (!tbody) return;
+    const q = (document.getElementById("filter-ratings")?.value || "").toLowerCase().trim();
+    const starsFilter = document.getElementById("filter-rating-stars")?.value || "";
+    const statusFilter = document.getElementById("filter-rating-status")?.value || "";
+    let list = cache.ratings.slice();
+    if (starsFilter) {
+      const n = Number(starsFilter);
+      list = list.filter((r) => Number(r.stars) === n);
+    }
+    if (statusFilter) {
+      list = list.filter((r) => String(r.status || "").toLowerCase() === statusFilter);
+    }
+    if (q) {
+      list = list.filter((r) => {
+        const hay = [r.storeName, r.customerId, r.vendorId, r.comment, r.orderId, r.id]
+          .map((x) => String(x || "").toLowerCase())
+          .join(" ");
+        return hay.includes(q);
+      });
+    }
+    tbody.innerHTML =
+      list.length === 0
+        ? `<tr><td colspan="7"><div class="empty-state">No ratings found.</div></td></tr>`
+        : list
+            .map((r) => {
+              const status = String(r.status || "visible").toLowerCase();
+              const stars = Number(r.stars) || 0;
+              const clamped = Math.max(0, Math.min(5, stars));
+              const starLabel = "★".repeat(clamped) + "☆".repeat(5 - clamped);
+              const hideLabel = status === "hidden" ? "Unhide" : "Hide";
+              const nextStatus = status === "hidden" ? "visible" : "hidden";
+              return `<tr>
+        <td>
+          <strong>${escapeHtml(r.storeName || "—")}</strong><br>
+          <code style="font-size:11px">${escapeHtml(r.vendorId || "")}</code>
+        </td>
+        <td><code>${escapeHtml(r.customerId || "—")}</code></td>
+        <td title="${stars}/5">${escapeHtml(starLabel)} <span style="color:var(--muted)">${stars}</span></td>
+        <td style="max-width:220px;white-space:normal">${escapeHtml(r.comment || "—")}</td>
+        <td><span class="badge">${escapeHtml(status)}</span></td>
+        <td>${escapeHtml(fmtTs(r.createdAt))}</td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-rating-status="${escapeHtml(nextStatus)}" data-rating-id="${escapeHtml(r.id)}">${hideLabel}</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-del-rating="${escapeHtml(r.id)}">Delete</button>
+        </td>
+      </tr>`;
+            })
+            .join("");
+    tbody.querySelectorAll("[data-rating-status]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setRatingStatus(btn.getAttribute("data-rating-id"), btn.getAttribute("data-rating-status"))
+      );
+    });
+    tbody.querySelectorAll("[data-del-rating]").forEach((btn) => {
+      btn.addEventListener("click", () => deleteRating(btn.getAttribute("data-del-rating")));
+    });
+  }
+
+  async function setRatingStatus(id, status) {
+    if (!id || !db) return;
+    const next = status === "hidden" ? "hidden" : "visible";
+    try {
+      await db.collection(COL.storeRatings).doc(id).update({
+        status: next,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      await loadRatings();
+      renderRatings();
+      toast(next === "hidden" ? "Rating hidden." : "Rating visible again.", "success");
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+  }
+
+  async function deleteRating(id) {
+    if (!id || !db) return;
+    if (!confirm("Delete this rating permanently? Shop average will be recalculated.")) return;
+    try {
+      await db.collection(COL.storeRatings).doc(id).delete();
+      await loadRatings();
+      renderRatings();
+      toast("Rating deleted.", "success");
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+  }
+
+  function normalizeRideFareVehicle(raw, fallback) {
+    const m = raw && typeof raw === "object" ? raw : {};
+    const base = Math.floor(Number(m.baseLkr));
+    const perKm = Math.floor(Number(m.perKmLkr));
+    const min = Math.floor(Number(m.minLkr));
+    return {
+      baseLkr: Number.isFinite(base) && base >= 0 ? base : fallback.baseLkr,
+      perKmLkr: Number.isFinite(perKm) && perKm >= 0 ? perKm : fallback.perKmLkr,
+      minLkr: Number.isFinite(min) && min >= 0 ? min : fallback.minLkr,
+    };
+  }
+
+  async function loadRideFares() {
+    const snap = await db.collection(COL.rideFareConfig).doc("rates").get(FS_GET_SERVER);
+    if (!snap.exists) {
+      cache.rideFares = {
+        bike: { ...DEFAULT_RIDE_FARES.bike },
+        wheel: { ...DEFAULT_RIDE_FARES.wheel },
+        car: { ...DEFAULT_RIDE_FARES.car },
+      };
+      return;
+    }
+    const data = snap.data() || {};
+    cache.rideFares = {
+      bike: normalizeRideFareVehicle(data.bike, DEFAULT_RIDE_FARES.bike),
+      wheel: normalizeRideFareVehicle(data.wheel, DEFAULT_RIDE_FARES.wheel),
+      car: normalizeRideFareVehicle(data.car, DEFAULT_RIDE_FARES.car),
+    };
+  }
+
+  function estimateRideFareLkr(rates, distanceKm) {
+    const km = Math.max(0, Number(distanceKm) || 0);
+    const raw = rates.baseLkr + Math.ceil(km * rates.perKmLkr);
+    return Math.max(rates.minLkr, raw);
+  }
+
+  function getRideFareSampleKm() {
+    const el = document.getElementById("ride-fare-sample-km");
+    const km = Number(el?.value);
+    if (!Number.isFinite(km) || km <= 0) return 5;
+    return km;
+  }
+
+  function updateRideFarePreviews() {
+    const km = getRideFareSampleKm();
+    for (const v of RIDE_FARE_VEHICLES) {
+      const baseEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="baseLkr"]`);
+      const perEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="perKmLkr"]`);
+      const minEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="minLkr"]`);
+      const preview = document.querySelector(`[data-ride-preview="${v.id}"]`);
+      if (!preview) continue;
+      const rates = {
+        baseLkr: Math.floor(Number(baseEl?.value)),
+        perKmLkr: Math.floor(Number(perEl?.value)),
+        minLkr: Math.floor(Number(minEl?.value)),
+      };
+      if (
+        !Number.isFinite(rates.baseLkr) ||
+        !Number.isFinite(rates.perKmLkr) ||
+        !Number.isFinite(rates.minLkr)
+      ) {
+        preview.textContent = "—";
+        continue;
+      }
+      preview.textContent = fmtMoney(estimateRideFareLkr(rates, km));
+    }
+  }
+
+  function renderRideFares() {
+    const grid = document.getElementById("ride-fare-cards");
+    const status = document.getElementById("ride-fare-save-status");
+    if (!grid) return;
+    const rates = cache.rideFares || DEFAULT_RIDE_FARES;
+    const km = getRideFareSampleKm();
+    grid.innerHTML = RIDE_FARE_VEHICLES.map((v) => {
+      const r = rates[v.id] || DEFAULT_RIDE_FARES[v.id];
+      const sample = estimateRideFareLkr(r, km);
+      return `<article class="ride-fare-card" data-vehicle="${escapeHtml(v.id)}">
+        <div class="ride-fare-card-head">
+          <div class="ride-fare-icon">${v.icon}</div>
+          <div>
+            <h4 class="ride-fare-card-title">${escapeHtml(v.label)}</h4>
+            <p class="ride-fare-card-meta">${escapeHtml(v.blurb)} · ${v.capacity} seat${v.capacity === 1 ? "" : "s"} · <code>${escapeHtml(v.id)}</code></p>
+          </div>
+        </div>
+        <div class="ride-fare-fields">
+          <div class="ride-fare-field">
+            <label for="ride-fare-${escapeHtml(v.id)}-base">Base (LKR)</label>
+            <input id="ride-fare-${escapeHtml(v.id)}-base" type="number" min="0" step="1" data-ride-fare="${escapeHtml(v.id)}" data-field="baseLkr" value="${Number(r.baseLkr)}" />
+          </div>
+          <div class="ride-fare-field">
+            <label for="ride-fare-${escapeHtml(v.id)}-perkm">Per km (LKR)</label>
+            <input id="ride-fare-${escapeHtml(v.id)}-perkm" type="number" min="0" step="1" data-ride-fare="${escapeHtml(v.id)}" data-field="perKmLkr" value="${Number(r.perKmLkr)}" />
+          </div>
+          <div class="ride-fare-field">
+            <label for="ride-fare-${escapeHtml(v.id)}-min">Minimum (LKR)</label>
+            <input id="ride-fare-${escapeHtml(v.id)}-min" type="number" min="0" step="1" data-ride-fare="${escapeHtml(v.id)}" data-field="minLkr" value="${Number(r.minLkr)}" />
+          </div>
+        </div>
+        <div class="ride-fare-preview">
+          <span class="ride-fare-preview-label">Sample fare</span>
+          <span class="ride-fare-preview-value" data-ride-preview="${escapeHtml(v.id)}">${escapeHtml(fmtMoney(sample))}</span>
+        </div>
+      </article>`;
+    }).join("");
+    grid.querySelectorAll("input[data-ride-fare]").forEach((input) => {
+      input.addEventListener("input", updateRideFarePreviews);
+    });
+    if (status) status.textContent = "Edit rates, preview updates live, then Save.";
+  }
+
+  function readRideFaresFromForm() {
+    const out = {};
+    for (const v of RIDE_FARE_VEHICLES) {
+      const baseEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="baseLkr"]`);
+      const perEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="perKmLkr"]`);
+      const minEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="minLkr"]`);
+      const baseLkr = Math.floor(Number(baseEl?.value));
+      const perKmLkr = Math.floor(Number(perEl?.value));
+      const minLkr = Math.floor(Number(minEl?.value));
+      if (
+        !Number.isFinite(baseLkr) ||
+        !Number.isFinite(perKmLkr) ||
+        !Number.isFinite(minLkr) ||
+        baseLkr < 0 ||
+        perKmLkr < 0 ||
+        minLkr < 0
+      ) {
+        throw new Error(`Invalid rates for ${v.label}. Use whole numbers ≥ 0.`);
+      }
+      out[v.id] = { baseLkr, perKmLkr, minLkr };
+    }
+    return out;
+  }
+
+  async function saveRideFares() {
+    const status = document.getElementById("ride-fare-save-status");
+    const btn = document.getElementById("btn-save-ride-fares");
+    try {
+      const rates = readRideFaresFromForm();
+      if (btn) btn.disabled = true;
+      if (status) status.textContent = "Saving…";
+      await db
+        .collection(COL.rideFareConfig)
+        .doc("rates")
+        .set(
+          {
+            ...rates,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: auth.currentUser?.uid || "",
+          },
+          { merge: true }
+        );
+      cache.rideFares = rates;
+      if (status) status.textContent = "Saved. New ride quotes will use these rates.";
+      toast("Ride fares saved.", "success");
+    } catch (err) {
+      if (status) status.textContent = err.message || String(err);
+      toast(err.message || String(err), "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function resetRideFaresToDefaults() {
+    cache.rideFares = {
+      bike: { ...DEFAULT_RIDE_FARES.bike },
+      wheel: { ...DEFAULT_RIDE_FARES.wheel },
+      car: { ...DEFAULT_RIDE_FARES.car },
+    };
+    renderRideFares();
+    const status = document.getElementById("ride-fare-save-status");
+    if (status) status.textContent = "Defaults loaded in the form. Click Save rates to apply.";
+  }
+
   async function loadPlatformFees() {
     try {
       const snap = await db
@@ -3648,6 +3963,17 @@
   document.getElementById("btn-save-platform-fees")?.addEventListener("click", () => {
     savePlatformFeesFromForm().catch((e) => toast(e.message || String(e), "error"));
   });
+  document.getElementById("btn-save-ride-fares")?.addEventListener("click", () => {
+    saveRideFares().catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.getElementById("btn-reset-ride-fares")?.addEventListener("click", () => resetRideFaresToDefaults());
+  document.getElementById("ride-fare-sample-km")?.addEventListener("input", updateRideFarePreviews);
+  const debouncedRenderRatings = ui().debounce
+    ? ui().debounce(() => renderRatings(), 220)
+    : () => renderRatings();
+  document.getElementById("filter-ratings")?.addEventListener("input", debouncedRenderRatings);
+  document.getElementById("filter-rating-stars")?.addEventListener("change", () => renderRatings());
+  document.getElementById("filter-rating-status")?.addEventListener("change", () => renderRatings());
   document.getElementById("btn-generate-monthly-invoices")?.addEventListener("click", () => {
     generateMonthlyInvoices().catch((e) => toast(e.message || String(e), "error"));
   });
