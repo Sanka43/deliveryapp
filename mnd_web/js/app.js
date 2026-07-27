@@ -1,6 +1,6 @@
 ﻿/**
- * MND web admin â€” Firestore CRUD aligned with mnd_customer:
- * collections: orders, customers, vendors, products, banners, shop_categories, shop_types, riders, store_ratings (see firebase_collections.dart).
+ * MND web admin — Firestore CRUD aligned with mnd_customer:
+ * collections: orders, customers, vendors, products, banners, shop_categories, shop_types, riders (see firebase_collections.dart).
  * Auth: Firebase Email/Password; Firestore customers/{uid}.role must be "admin".
  */
 (function () {
@@ -12,11 +12,19 @@
     banners: "banners",
     shopCategories: "shop_categories",
     shopTypes: "shop_types",
-    rideFareConfig: "ride_fare_config",
     orders: "orders",
-    storeRatings: "store_ratings",
     jobs: "jobs",
     jobApplications: "job_applications",
+    platformConfig: "platform_config",
+    platformFeesDoc: "fees",
+  };
+
+  const PLATFORM_FEES_DEFAULTS = {
+    orderCommissionLkr: 0,
+    riderCommissionLkr: 0,
+    minDeliveryFeeLkr: 170,
+    pricePerKmLkr: 50,
+    shopMonthlyCommissionPercent: 1,
   };
 
   const JOB_CATEGORIES = [
@@ -41,7 +49,10 @@
     "Event Staff",
   ];
 
-  const ORDER_STATUSES = [
+  /** One-shot reads; avoids stale cache sync over the Listen channel. */
+  const FS_GET_SERVER = { source: "server" };
+
+  const ORDER_STATUSES_DELIVERY = [
     "placed",
     "confirmed",
     "preparing",
@@ -51,6 +62,18 @@
     "delivered",
     "cancelled",
   ];
+
+  const ORDER_STATUSES_SELF_PICKUP = [
+    "placed",
+    "confirmed",
+    "preparing",
+    "ready",
+    "completed",
+    "cancelled",
+  ];
+
+  /** @deprecated use orderStatusesFor() */
+  const ORDER_STATUSES = ORDER_STATUSES_DELIVERY;
 
   let db = null;
   let auth = null;
@@ -66,44 +89,11 @@
     customers: [],
     jobs: [],
     jobApplications: [],
-    ratings: [],
-    rideFares: null,
+    platformFees: { ...PLATFORM_FEES_DEFAULTS },
+    monthlyInvoices: [],
   };
 
-  const DEFAULT_RIDE_FARES = {
-    bike: { baseLkr: 100, perKmLkr: 25, minLkr: 150 },
-    wheel: { baseLkr: 150, perKmLkr: 40, minLkr: 250 },
-    car: { baseLkr: 200, perKmLkr: 50, minLkr: 400 },
-  };
-
-  const RIDE_FARE_VEHICLES = [
-    {
-      id: "bike",
-      label: "Bike",
-      capacity: 1,
-      blurb: "Fast solo trips",
-      icon: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="16.5" r="3.25"/><circle cx="17.5" cy="16.5" r="3.25"/><path d="M6.5 16.5 10 8h3.5l2.5 5.5M10 8l-2 5.5h5"/></svg>`,
-    },
-    {
-      id: "wheel",
-      label: "Wheel",
-      capacity: 3,
-      blurb: "Tuk / three-wheeler",
-      icon: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="17" r="2.75"/><circle cx="17" cy="17" r="2.75"/><path d="M4.5 17H3l1.2-6.5A2 2 0 0 1 6.16 9H11l1.5 4h4.2a2 2 0 0 1 1.9 1.37L19.5 17H17M11 9V6.5A1.5 1.5 0 0 1 12.5 5H15"/></svg>`,
-    },
-    {
-      id: "car",
-      label: "Car",
-      capacity: 4,
-      blurb: "Comfort rides",
-      icon: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V14l1.5-5A2 2 0 0 1 7.4 7.5h9.2A2 2 0 0 1 18.5 9l1.5 5v2.5"/><path d="M4 14h16"/><circle cx="7.5" cy="17" r="1.75"/><circle cx="16.5" cy="17" r="1.75"/></svg>`,
-    },
-  ];
-
-  const elLogin = document.getElementById("login-screen");
-  const elApp = document.getElementById("app");
-  const elLoginForm = document.getElementById("login-form");
-  const elLoginError = document.getElementById("login-error");
+  const elAuthGate = document.getElementById("auth-gate");
   const elLogout = document.getElementById("btn-logout");
   const elPageTitle = document.getElementById("page-title");
   const elViews = document.querySelectorAll("[data-view]");
@@ -118,31 +108,34 @@
 
   let modalMode = null;
   let modalEditId = null;
+  const productImageUrlCache = new Map();
+  const productImageBlobUrls = [];
 
-  function initFirebase() {
-    if (!window.firebase || !window.__FIREBASE_CONFIG__) {
-      throw new Error("Firebase SDK or config missing.");
-    }
-    if (!firebase.apps.length) {
-      firebase.initializeApp(window.__FIREBASE_CONFIG__);
-    }
-    auth = firebase.auth();
-    db = firebase.firestore();
+  const ui = () => window.MndUI || {};
+
+  function toast(msg, type) {
+    const t = ui().showToast;
+    if (t) t(msg, type);
   }
 
-  async function assertAdmin(uid) {
-    let role = "";
-    const byDocId = await db.collection(COL.customers).doc(uid).get();
-    if (byDocId.exists) {
-      role = String(byDocId.data().role || "").trim().toLowerCase();
-    } else {
-      // This project rules resolve admin role from customers/{authUid}.
-      // If profile was created under a random doc id, admin reads/writes will still fail.
-      throw new Error(`Missing Firestore profile: create customers/${uid} with role "admin".`);
+  function initFirebase() {
+    const boot = window.MndFirebase.initFirebase();
+    auth = boot.auth;
+    db = boot.db;
+  }
+
+  function assertAdmin(uid) {
+    return window.MndFirebase.assertAdmin(uid);
+  }
+
+  function hideAuthGate() {
+    if (elAuthGate) {
+      elAuthGate.classList.add("hidden");
     }
-    if (role !== "admin") {
-      throw new Error(`customers/${uid} must have role "admin".`);
-    }
+  }
+
+  function redirectToLogin(message) {
+    window.MndAuthRoutes.goLogin(message);
   }
 
   function escapeHtml(s) {
@@ -158,12 +151,12 @@
   }
 
   function fmtTs(val) {
-    if (!val) return "â€”";
+    if (!val) return "—";
     try {
       if (typeof val.toDate === "function") return val.toDate().toLocaleString();
       if (val.seconds != null) return new Date(val.seconds * 1000).toLocaleString();
     } catch (_) {}
-    return "â€”";
+    return "—";
   }
 
   function badgeClass(status) {
@@ -171,7 +164,7 @@
     if (s === "placed" || s === "confirmed") return "badge-preparing";
     if (s === "preparing" || s === "ready") return "badge-preparing";
     if (s === "out_for_delivery" || s === "on_the_way") return "badge-out";
-    if (s === "delivered") return "badge-delivered";
+    if (s === "delivered" || s === "completed") return "badge-delivered";
     if (s === "cancelled") return "badge-cancelled";
     return "badge-pending";
   }
@@ -186,16 +179,40 @@
       out_for_delivery: "Out for delivery",
       on_the_way: "On the way",
       delivered: "Delivered",
+      completed: "Collected",
       cancelled: "Cancelled",
     };
-    return map[k] || s || "â€”";
+    return map[k] || s || "—";
+  }
+
+  function isSelfPickupOrder(o) {
+    const mode = String(o?.fulfillmentMode || "")
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, "");
+    return mode === "selfpickup";
+  }
+
+  function orderStatusesFor(o) {
+    return isSelfPickupOrder(o) ? ORDER_STATUSES_SELF_PICKUP : ORDER_STATUSES_DELIVERY;
+  }
+
+  /** Keeps the current status visible even if it no longer fits the fulfillment mode. */
+  function resolveOrderStatusOptions(o) {
+    const base = orderStatusesFor(o);
+    const current = String(o?.status || "").toLowerCase();
+    if (current && !base.includes(current)) {
+      const withoutCancelled = base.filter((s) => s !== "cancelled");
+      return [...withoutCancelled, current, "cancelled"];
+    }
+    return base;
   }
 
   function orderAddrLine(data) {
     const a = data.deliveryAddress;
-    if (!a || typeof a !== "object") return "â€”";
+    if (!a || typeof a !== "object") return "—";
     const p = [a.line1, a.line2, a.city].filter(Boolean).join(", ");
-    return p || "â€”";
+    return p || "—";
   }
 
   /** Firestore GeoPoint or plain lat/lng on vendor / rider docs. */
@@ -248,13 +265,168 @@
     return `<span class="badge badge-pending">Pending</span>`;
   }
 
+  const RIDER_VEHICLE_TYPE_LABELS = {
+    bike: "Bike",
+    three_wheeler: "Three Wheeler",
+    car: "Car",
+    van: "Car",
+  };
+
+  const RIDER_LANGUAGE_LABELS = {
+    en: "English",
+    si: "සිංහල",
+    ta: "தமிழ்",
+  };
+
+  const RIDER_VEHICLE_PHOTO_LABELS = {
+    front: "Front",
+    back: "Back",
+    left: "Left",
+    right: "Right",
+    interior: "Interior",
+  };
+
+  function riderVehicleTypeLabel(raw) {
+    const v = String(raw || "").trim().toLowerCase();
+    return RIDER_VEHICLE_TYPE_LABELS[v] || raw || "—";
+  }
+
+  function riderLanguageLabel(code) {
+    const key = String(code || "").trim().toLowerCase();
+    return RIDER_LANGUAGE_LABELS[key] || code || "—";
+  }
+
+  function riderNestedObject(r, key) {
+    const val = r?.[key];
+    return val && typeof val === "object" ? val : {};
+  }
+
+  function riderLicense(r) {
+    return riderNestedObject(r, "license");
+  }
+
+  function riderInsurance(r) {
+    return riderNestedObject(r, "insurance");
+  }
+
+  function riderRevenueLicence(r) {
+    return riderNestedObject(r, "revenueLicence");
+  }
+
+  function riderOwnership(r) {
+    return riderNestedObject(r, "ownership");
+  }
+
+  function riderVehicleInfo(r) {
+    return riderNestedObject(r, "vehicle");
+  }
+
+  function fmtDate(val) {
+    if (!val) return "—";
+    try {
+      if (typeof val.toDate === "function") return val.toDate().toLocaleDateString();
+      if (val.seconds != null) return new Date(val.seconds * 1000).toLocaleDateString();
+      if (typeof val === "string" && val.trim()) {
+        const d = new Date(val);
+        if (!Number.isNaN(d.getTime())) return d.toLocaleDateString();
+      }
+    } catch (_) {}
+    return "—";
+  }
+
   function riderVehicleLabel(r) {
-    const type = r.vehicleType || r.vehicle || "";
+    const type = riderVehicleTypeLabel(r.vehicleType || (typeof r.vehicle === "string" ? r.vehicle : ""));
     const num = r.vehicleNumber || "";
+    const vehicle = riderVehicleInfo(r);
+    const details = [vehicle.brand, vehicle.model].filter(Boolean).join(" ").trim();
     if (type && num) {
-      return `${type} Â· ${num}`;
+      return details ? `${type} · ${details} · ${num}` : `${type} · ${num}`;
     }
-    return type || num || "â€”";
+    return type || num || details || "—";
+  }
+
+  function riderAvatarHtml(r, className = "") {
+    const url = compactText(r?.profilePhotoUrl);
+    const classes = `rider-avatar ${className}`.trim();
+    if (url) {
+      return `<img class="${escapeHtml(classes)}" src="${escapeHtml(url)}" alt="" loading="lazy" />`;
+    }
+    const name = riderDisplayName(r);
+    const initials = name
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+    return `<div class="${escapeHtml(classes)} rider-avatar--fallback">${escapeHtml(initials || "?")}</div>`;
+  }
+
+  function riderDocLink(url, label) {
+    if (!url) return "—";
+    return `<a class="rider-doc-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+  }
+
+  function riderPhotoThumb(url, label) {
+    if (!url) return "";
+    return `<a class="rider-photo-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(label)}">
+      <img src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" />
+      <span>${escapeHtml(label)}</span>
+    </a>`;
+  }
+
+  function riderIdentityDocsHtml(r) {
+    const license = riderLicense(r);
+    const items = [
+      riderPhotoThumb(r.profilePhotoUrl, "Profile"),
+      riderPhotoThumb(r.nicPhotoUrl, "NIC"),
+      riderPhotoThumb(license.frontUrl || r.licensePhotoUrl, "License (front)"),
+      riderPhotoThumb(license.backUrl, "License (back)"),
+      riderPhotoThumb(riderInsurance(r).photoUrl, "Insurance"),
+      riderPhotoThumb(riderRevenueLicence(r).photoUrl, "Revenue licence"),
+    ].filter(Boolean);
+    if (!items.length) {
+      return `<div class="rider-profile-empty">No document photos uploaded.</div>`;
+    }
+    return `<div class="rider-photo-grid">${items.join("")}</div>`;
+  }
+
+  function riderVehiclePhotosHtml(r) {
+    const photos = riderNestedObject(r, "vehiclePhotos");
+    const items = ["front", "back", "left", "right", "interior"]
+      .filter((side) => photos[side])
+      .map((side) => riderPhotoThumb(photos[side], RIDER_VEHICLE_PHOTO_LABELS[side] || side));
+    if (!items.length) {
+      return `<div class="rider-profile-empty">No vehicle photos uploaded.</div>`;
+    }
+    return `<div class="rider-photo-grid">${items.join("")}</div>`;
+  }
+
+  function riderServicesHtml(r) {
+    const tags = [];
+    if (r.acceptsDelivery !== false) {
+      tags.push('<span class="badge badge-delivered">Delivery</span>');
+    }
+    if (r.acceptsPassengerRides !== false) {
+      tags.push('<span class="badge badge-preparing">Passenger rides</span>');
+    }
+    return tags.length ? tags.join(" ") : '<span class="muted">—</span>';
+  }
+
+  function bindRiderRowOpen(tbody) {
+    tbody.querySelectorAll("[data-view-rider]").forEach((row) => {
+      const open = () => openRiderDetailView(row.getAttribute("data-view-rider"));
+      row.addEventListener("click", (e) => {
+        if (e.target.closest("button, a, input, select, textarea")) return;
+        open();
+      });
+      row.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (e.target.closest("button, a, input, select, textarea")) return;
+        e.preventDefault();
+        open();
+      });
+    });
   }
 
   function vendorApprovalStatus(v) {
@@ -344,11 +516,166 @@
 
   function riderDisplayName(r) {
     const firstLast = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
-    return r.fullName || firstLast || r.displayName || r.name || r.id || "â€”";
+    return r.fullName || firstLast || r.displayName || r.name || r.id || "—";
+  }
+
+  function compactText(...values) {
+    for (const value of values) {
+      const text = String(value || "").trim();
+      if (text) return text;
+    }
+    return "";
+  }
+
+  function customerById(customerId) {
+    const id = String(customerId || "").trim();
+    if (!id) return null;
+    return cache.customers.find((x) => x.id === id || x.uid === id) || null;
+  }
+
+  function customerDisplayName(orderOrCustomer) {
+    const source =
+      orderOrCustomer && (orderOrCustomer.customerId || orderOrCustomer.uid)
+        ? customerById(orderOrCustomer.customerId || orderOrCustomer.uid) || orderOrCustomer
+        : orderOrCustomer;
+    const firstLast = [source?.firstName, source?.lastName].filter(Boolean).join(" ").trim();
+    return compactText(
+      source?.customerName,
+      source?.displayName,
+      source?.fullName,
+      firstLast,
+      source?.name,
+      source?.phoneNumber,
+      source?.phone,
+      "Unknown customer"
+    );
+  }
+
+  function customerRole(u) {
+    return String(u?.role || "customer").trim().toLowerCase() || "customer";
+  }
+
+  function customerRoleBadge(roleRaw) {
+    const role = customerRole({ role: roleRaw });
+    if (role === "admin") return `<span class="badge badge-preparing">Admin</span>`;
+    if (role === "vendor") return `<span class="badge badge-out">Vendor</span>`;
+    return `<span class="badge badge-delivered">Customer</span>`;
+  }
+
+  function customerInitials(u) {
+    const name = customerDisplayName(u);
+    const parts = name
+      .split(/\s+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return "CU";
+  }
+
+  function customerPhone(u) {
+    return compactText(u?.phoneNumber, u?.phone, u?.mobile);
+  }
+
+  function customerEmail(u) {
+    return compactText(u?.email);
+  }
+
+  function customerOrderCount(uid) {
+    const id = String(uid || "").trim();
+    if (!id) return 0;
+    return cache.orders.filter((o) => String(o.customerId || "").trim() === id).length;
+  }
+
+  function customerAvatarHtml(u, className = "") {
+    const url = compactText(u?.photoUrl, u?.photoURL, u?.avatarUrl, u?.imageUrl);
+    const classes = `customer-avatar ${className}`.trim();
+    if (url) {
+      return `<img class="${escapeHtml(classes)}" src="${escapeHtml(url)}" alt="" loading="lazy" />`;
+    }
+    return `<div class="${escapeHtml(classes)}">${escapeHtml(customerInitials(u))}</div>`;
+  }
+
+  function vendorByOrder(order) {
+    const id = compactText(order?.vendorId, order?.vendorStoreId, order?.storeId);
+    if (!id) return null;
+    return cache.vendors.find((x) => x.id === id || x.vendorStoreId === id) || null;
+  }
+
+  function shopDisplayName(order) {
+    const vendor = vendorByOrder(order);
+    return compactText(order?.storeName, vendor?.name, vendor?.storeName, vendor?.displayName, "Unknown shop");
+  }
+
+  function orderDisplayNumber(order) {
+    return compactText(order?.trackingNumber, "Order");
+  }
+
+  function orderItemRows(order) {
+    const items = Array.isArray(order?.items) ? order.items : [];
+    if (!items.length) {
+      return `<div class="order-detail-empty">No item details recorded.</div>`;
+    }
+    const rows = items
+      .map((item) => {
+        const qty = Number(item.quantity) || 1;
+        const name = compactText(item.productName, item.name, item.title, "Item");
+        const size = compactText(item.selectedSize, item.size);
+        const extras = Array.isArray(item.extras)
+          ? item.extras
+              .map((extra) => compactText(extra?.name))
+              .filter(Boolean)
+              .join(", ")
+          : "";
+        const meta = [size, extras].filter(Boolean).join(" · ");
+        const unit = Number(item.unitPrice ?? item.basePrice) || 0;
+        const total = Number(item.lineTotal ?? item.totalPrice) || unit * qty;
+        return `<div class="order-detail-item">
+          <div>
+            <strong>${escapeHtml(name)}</strong>
+            ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
+            <small>${escapeHtml(String(qty))} x ${fmtMoney(unit)}</small>
+          </div>
+          <div class="order-detail-item__price">${fmtMoney(total)}</div>
+        </div>`;
+      })
+      .join("");
+    return `<div class="order-detail-items">
+      <div class="order-detail-item order-detail-item--head">
+        <span>Item</span>
+        <span>Amount</span>
+      </div>
+      ${rows}
+    </div>`;
+  }
+
+  function orderDetailValue(label, value) {
+    return `<div class="order-detail-field">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "—")}</strong>
+    </div>`;
+  }
+
+  function orderDetailLine(label, value, extraClass = "") {
+    return `<div class="order-detail-line ${extraClass}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "—")}</strong>
+    </div>`;
+  }
+
+  function paymentMethodLabel(value) {
+    const key = String(value || "").trim();
+    const map = {
+      cashOnDelivery: "Cash on delivery",
+      cod: "Cash on delivery",
+      card: "Card",
+      online: "Online",
+    };
+    return map[key] || key || "—";
   }
 
   function fmtCoordPair(pt) {
-    if (!pt) return "â€”";
+    if (!pt) return "—";
     return `${Number(pt.lat).toFixed(5)}, ${Number(pt.lng).toFixed(5)}`;
   }
 
@@ -357,7 +684,7 @@
     if (!vid) return null;
     let v = cache.vendors.find((x) => x.id === vid);
     if (v) return v;
-    const snap = await db.collection(COL.vendors).doc(vid).get();
+    const snap = await db.collection(COL.vendors).doc(vid).get(FS_GET_SERVER);
     if (!snap.exists) return null;
     return { id: snap.id, ...snap.data() };
   }
@@ -371,7 +698,7 @@
     const vid = String(o.vendorId || o.vendorStoreId || "").trim();
     const vendor = await getVendorDocForOrder(vid);
     const shopPt = readLatLng(vendor || {});
-    const shopName = String(o.storeName || vendor?.name || "â€”").trim() || "â€”";
+    const shopName = String(o.storeName || vendor?.name || "—").trim() || "—";
     const track = String(o.trackingNumber || "").trim();
     const titleLabel = track || o.id;
 
@@ -398,7 +725,7 @@
             .map(({ r, riderPt, distKm }) => {
               const name = riderDisplayName(r);
               const distLabel =
-                distKm != null && Number.isFinite(distKm) ? `${distKm.toFixed(1)} km` : "â€” (no coordinates)";
+                distKm != null && Number.isFinite(distKm) ? `${distKm.toFixed(1)} km` : "— (no coordinates)";
               const locBlock = `<div class="assign-loc"><span>Rider</span> ${escapeHtml(fmtCoordPair(riderPt))}<br/><span>Shop</span> ${escapeHtml(fmtCoordPair(shopPt))}</div>`;
               return `<tr>
           <td><strong>${escapeHtml(name)}</strong></td>
@@ -412,12 +739,12 @@
 
     const shopWarn =
       !shopPt && vid
-        ? `<p class="assign-warn">Shop has no map coordinates in <code>vendors/${escapeHtml(vid)}</code> â€” distances show as â€”. Add latitude/longitude in vendor Edit.</p>`
+        ? `<p class="assign-warn">Shop has no map coordinates in <code>vendors/${escapeHtml(vid)}</code> — distances show as —. Add latitude/longitude in vendor Edit.</p>`
         : !vid
-          ? `<p class="assign-warn">Order has no <code>vendorId</code> â€” cannot resolve shop location.</p>`
+          ? `<p class="assign-warn">Order has no <code>vendorId</code> — cannot resolve shop location.</p>`
           : "";
 
-    const html = `<p style="margin-top:0;color:var(--muted);font-size:0.9rem">Order <strong>${escapeHtml(titleLabel)}</strong> Â· Pick an online rider (nearest first when both rider and shop have coordinates).</p>
+    const html = `<p style="margin-top:0;color:var(--muted);font-size:0.9rem">Order <strong>${escapeHtml(titleLabel)}</strong> · Pick an online rider (nearest first when both rider and shop have coordinates).</p>
       ${shopWarn}
       <div class="table-wrap assign-rider-wrap">
         <table class="assign-rider-table">
@@ -426,7 +753,7 @@
         </table>
       </div>`;
 
-    openModal(`Assign rider â€” ${titleLabel}`, html, "assign-rider", orderId);
+    openModal(`Assign rider — ${titleLabel}`, html, "assign-rider", orderId);
     modalSave.style.display = "none";
   }
 
@@ -437,7 +764,14 @@
     modalEditId = editId;
     const dialog = modalBackdrop.querySelector(".modal");
     if (dialog) {
-      dialog.classList.toggle("modal--wide", mode === "assign-rider" || mode === "job-applications");
+      dialog.classList.toggle(
+        "modal--wide",
+        mode === "assign-rider" ||
+          mode === "job-applications" ||
+          mode === "order-detail" ||
+          mode === "customer-profile" ||
+          mode === "rider-profile"
+      );
     }
     modalBackdrop.classList.add("visible");
   }
@@ -454,6 +788,9 @@
   modalCancel.addEventListener("click", closeModal);
   modalBackdrop.addEventListener("click", (e) => {
     if (e.target === modalBackdrop) closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modalBackdrop.classList.contains("visible")) closeModal();
   });
 
   modalBody.addEventListener("click", async (e) => {
@@ -475,6 +812,41 @@
       } finally {
         appBtn.disabled = false;
       }
+      return;
+    }
+
+    const approveRiderBtn = e.target.closest("[data-detail-approve-rider]");
+    if (approveRiderBtn && modalMode === "rider-profile" && modalEditId) {
+      approveRiderBtn.disabled = true;
+      try {
+        await approveRider(modalEditId);
+        openRiderDetailView(modalEditId);
+      } catch (err) {
+        alert(err.message || String(err));
+      } finally {
+        approveRiderBtn.disabled = false;
+      }
+      return;
+    }
+
+    const rejectRiderBtn = e.target.closest("[data-detail-reject-rider]");
+    if (rejectRiderBtn && modalMode === "rider-profile" && modalEditId) {
+      rejectRiderBtn.disabled = true;
+      try {
+        await rejectRider(modalEditId);
+        openRiderDetailView(modalEditId);
+      } catch (err) {
+        alert(err.message || String(err));
+      } finally {
+        rejectRiderBtn.disabled = false;
+      }
+      return;
+    }
+
+    const editRiderBtn = e.target.closest("[data-detail-edit-rider]");
+    if (editRiderBtn && modalMode === "rider-profile" && modalEditId) {
+      closeModal();
+      openRiderModal(modalEditId);
       return;
     }
 
@@ -507,13 +879,12 @@
     products: "Products",
     banners: "Banners",
     "shop-types": "Shop types",
-    "ride-fares": "Ride fares",
     "shop-approvals": "Shop approvals",
     "job-approvals": "Job approvals",
     "rider-approvals": "Rider approvals",
     riders: "Riders",
     customers: "Customers",
-    ratings: "Rating Management",
+    "platform-fees": "Fees & commissions",
     help: "Setup",
   };
 
@@ -524,29 +895,52 @@
       v.hidden = v.getAttribute("data-view") !== name;
     });
     elNav.forEach((b) => b.classList.toggle("active", b.getAttribute("data-nav") === name));
-    loadViewData(name).catch((e) => alert(e.message || String(e)));
+    loadViewData(name).catch((e) => {
+      toast(e.message || String(e), "error");
+    });
   }
 
   async function loadViewData(name) {
     if (!db || !auth.currentUser) return;
-    if (name === "dashboard") await loadOrders();
-    if (name === "orders") await loadOrders();
-    if (name === "vendors" || name === "shop-approvals" || name === "dashboard") {
+    const setLoading = ui().setLoading;
+    if (setLoading) setLoading(true, "Loading data…");
+    try {
+      if (window.MndFirebase.ensureFirestoreAuth) {
+        await window.MndFirebase.ensureFirestoreAuth();
+      }
+      await loadViewDataInner(name);
+      if (ui().setLastSync) ui().setLastSync();
+    } finally {
+      if (setLoading) setLoading(false);
+    }
+  }
+
+  async function loadViewDataInner(name) {
+    if (name === "dashboard") {
+      await Promise.all([loadOrders(), loadVendors(), loadCustomers(), loadJobs(), loadRiders()]);
+    }
+    if (name === "orders") await Promise.all([loadOrders(), loadCustomers(), loadVendors()]);
+    if (name === "vendors" || name === "shop-approvals") {
       await loadVendors();
     }
-    if (name === "job-approvals" || name === "dashboard") {
+    if (name === "job-approvals") {
       await loadJobs();
-      if (name === "job-approvals") await loadJobApplications();
+      await loadJobApplications();
     }
-    if (name === "products") await loadProducts();
+    if (name === "products") {
+      await Promise.all([loadProducts(), loadVendors()]);
+    }
     if (name === "banners") await loadBanners();
     if (name === "shop-types") await loadShopTypes();
-    if (name === "ride-fares") await loadRideFares();
     if (name === "riders" || name === "rider-approvals" || name === "dashboard") {
       await loadRiders();
     }
-    if (name === "customers") await loadCustomers();
-    if (name === "ratings") await loadRatings();
+    if (name === "customers") await Promise.all([loadCustomers(), loadOrders()]);
+    if (name === "platform-fees") {
+      await Promise.all([loadPlatformFees(), loadVendors()]);
+      seedInvoiceMonthInput();
+      await loadMonthlyInvoicesForSelectedMonth();
+    }
     if (name === "dashboard") renderDashboard();
     if (name === "orders") renderOrders();
     if (name === "vendors") renderVendors();
@@ -561,30 +955,32 @@
       renderShopCategories();
       renderShopTypes();
     }
-    if (name === "ride-fares") renderRideFares();
     if (name === "rider-approvals") renderRiderApprovals();
     if (name === "riders") renderRiders();
     if (name === "customers") renderCustomers();
-    if (name === "ratings") renderRatings();
+    if (name === "platform-fees") {
+      renderPlatformFeesForm();
+      renderMonthlyInvoices();
+    }
   }
 
   async function loadOrders() {
     try {
       const q = db.collection(COL.orders).orderBy("createdAt", "desc").limit(200);
-      const snap = await q.get();
+      const snap = await q.get(FS_GET_SERVER);
       cache.orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.orders).limit(200).get();
+      const snap = await db.collection(COL.orders).limit(200).get(FS_GET_SERVER);
       cache.orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
   }
 
   async function loadVendors() {
     try {
-      const snap = await db.collection(COL.vendors).orderBy("name").limit(300).get();
+      const snap = await db.collection(COL.vendors).orderBy("name").limit(300).get(FS_GET_SERVER);
       cache.vendors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.vendors).limit(300).get();
+      const snap = await db.collection(COL.vendors).limit(300).get(FS_GET_SERVER);
       cache.vendors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       cache.vendors.sort((a, b) =>
         String(a.name || "").localeCompare(String(b.name || ""))
@@ -595,10 +991,10 @@
 
   async function loadJobs() {
     try {
-      const snap = await db.collection(COL.jobs).orderBy("createdAt", "desc").limit(200).get();
+      const snap = await db.collection(COL.jobs).orderBy("createdAt", "desc").limit(200).get(FS_GET_SERVER);
       cache.jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.jobs).limit(200).get();
+      const snap = await db.collection(COL.jobs).limit(200).get(FS_GET_SERVER);
       cache.jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       cache.jobs.sort((a, b) => {
         const ta = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
@@ -616,10 +1012,10 @@
         .collection(COL.jobApplications)
         .orderBy("appliedAt", "desc")
         .limit(500)
-        .get();
+        .get(FS_GET_SERVER);
       cache.jobApplications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.jobApplications).limit(500).get();
+      const snap = await db.collection(COL.jobApplications).limit(500).get(FS_GET_SERVER);
       cache.jobApplications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       cache.jobApplications.sort((a, b) => {
         const ta = a.appliedAt && a.appliedAt.seconds ? a.appliedAt.seconds : 0;
@@ -664,32 +1060,231 @@
     return `<span class="badge badge-pending">Applied</span>`;
   }
 
+  function revokeProductImageBlobUrls() {
+    productImageBlobUrls.forEach((url) => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (_) {}
+    });
+    productImageBlobUrls.length = 0;
+  }
+
   async function loadProducts() {
+    productImageUrlCache.clear();
+    revokeProductImageBlobUrls();
     try {
-      const snap = await db.collection(COL.products).orderBy("name").limit(500).get();
+      const snap = await db.collection(COL.products).orderBy("name").limit(500).get(FS_GET_SERVER);
       cache.products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.products).limit(500).get();
+      const snap = await db.collection(COL.products).limit(500).get(FS_GET_SERVER);
       cache.products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
+    await enrichProductsWithDisplayImages();
+  }
+
+  function pickCatalogImageUrl(map) {
+    const directKeys = [
+      "imageUrl",
+      "imageURL",
+      "image",
+      "photoUrl",
+      "coverImage",
+      "thumbnailUrl",
+      "thumbUrl",
+    ];
+    for (const key of directKeys) {
+      const raw = map[key];
+      if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (trimmed) return normalizeCatalogImageUrl(trimmed);
+      }
+      if (raw && typeof raw === "object") {
+        const nested =
+          typeof raw.url === "string"
+            ? raw.url
+            : typeof raw.downloadURL === "string"
+              ? raw.downloadURL
+              : "";
+        const trimmed = nested.trim();
+        if (trimmed) return normalizeCatalogImageUrl(trimmed);
+      }
+    }
+    for (const key of ["galleryImageUrls", "gallery", "images", "photos"]) {
+      const raw = map[key];
+      if (!Array.isArray(raw)) continue;
+      for (const entry of raw) {
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          if (trimmed) return normalizeCatalogImageUrl(trimmed);
+        }
+      }
+    }
+    return "";
+  }
+
+  function normalizeCatalogImageUrl(url) {
+    if (url.startsWith("//")) return `https:${url}`;
+    return url;
+  }
+
+  function firebaseStorage() {
+    return window.MndFirebase.storage;
+  }
+
+  function rememberProductBlobUrl(url) {
+    if (url && url.startsWith("blob:")) productImageBlobUrls.push(url);
+    return url;
+  }
+
+  async function fetchStoragePathWithAuth(storagePath) {
+    const user = auth?.currentUser || firebase.auth()?.currentUser;
+    if (!user || !storagePath) return "";
+    try {
+      const token = await user.getIdToken();
+      const bucket = window.__FIREBASE_CONFIG__?.storageBucket;
+      if (!bucket) return "";
+      const encoded = encodeURIComponent(storagePath);
+      const apiUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encoded}?alt=media`;
+      const res = await fetch(apiUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return "";
+      const blob = await res.blob();
+      return rememberProductBlobUrl(URL.createObjectURL(blob));
+    } catch (_) {
+      return "";
+    }
+  }
+
+  async function tryProductStorageDownloadUrl(storeId, productId) {
+    const exts = ["jpg", "jpeg", "png", "webp"];
+    for (const ext of exts) {
+      const path = `vendor_products/${storeId}/${productId}.${ext}`;
+      try {
+        const url = await firebaseStorage().ref(path).getDownloadURL();
+        if (url) return url;
+      } catch (_) {
+        const blobUrl = await fetchStoragePathWithAuth(path);
+        if (blobUrl) return blobUrl;
+      }
+    }
+    try {
+      const folderRef = firebaseStorage().ref(`vendor_products/${storeId}`);
+      const listed = await folderRef.listAll();
+      const match = listed.items.find((item) => {
+        const name = item.name || "";
+        const base = name.replace(/\.[^.]+$/, "");
+        return base === productId || name.startsWith(`${productId}.`);
+      });
+      if (match) {
+        try {
+          return await match.getDownloadURL();
+        } catch (_) {
+          return fetchStoragePathWithAuth(match.fullPath);
+        }
+      }
+    } catch (_) {
+      /* folder list not available */
+    }
+    return "";
+  }
+
+  async function resolveCatalogImageRaw(raw) {
+    const trimmed = String(raw || "").trim();
+    if (!trimmed) return "";
+
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed;
+    }
+
+    if (trimmed.startsWith("gs://")) {
+      try {
+        return await firebaseStorage().refFromURL(trimmed).getDownloadURL();
+      } catch (_) {
+        const path = trimmed.replace(/^gs:\/\/[^/]+\//, "");
+        return fetchStoragePathWithAuth(path);
+      }
+    }
+
+    if (trimmed.startsWith("vendor_products/")) {
+      try {
+        return await firebaseStorage().ref(trimmed).getDownloadURL();
+      } catch (_) {
+        return fetchStoragePathWithAuth(trimmed);
+      }
+    }
+
+    return trimmed;
+  }
+
+  async function resolveProductImageUrl(product) {
+    const id = product?.id;
+    if (!id) return "";
+    if (productImageUrlCache.has(id)) {
+      return productImageUrlCache.get(id);
+    }
+    const task = (async () => {
+      const fromDoc = pickCatalogImageUrl(product);
+      if (fromDoc) {
+        const resolved = await resolveCatalogImageRaw(fromDoc);
+        if (resolved) return resolved;
+      }
+      const storeId = String(product.storeId || "").trim();
+      const productId = String(product.id || "").trim();
+      if (storeId && productId) {
+        return tryProductStorageDownloadUrl(storeId, productId);
+      }
+      return "";
+    })();
+    productImageUrlCache.set(id, task);
+    return task;
+  }
+
+  function productDisplayImageUrl(p) {
+    if (!p) return "";
+    const fromCatalog = pickCatalogImageUrl(p);
+    if (fromCatalog) return fromCatalog;
+    const rawImage = typeof p.imageUrl === "string" ? p.imageUrl.trim() : "";
+    if (rawImage) return normalizeCatalogImageUrl(rawImage);
+    return String(p._displayImageUrl || "").trim();
+  }
+
+  async function enrichProductsWithDisplayImages() {
+    const user = auth?.currentUser;
+    if (user) {
+      try {
+        await user.getIdToken(true);
+      } catch (_) {}
+    }
+    await Promise.all(
+      cache.products.map(async (p) => {
+        if (productDisplayImageUrl(p)) {
+          delete p._displayImageUrl;
+          return;
+        }
+        const resolved = await resolveProductImageUrl(p);
+        if (resolved) p._displayImageUrl = resolved;
+        else delete p._displayImageUrl;
+      })
+    );
   }
 
   async function loadBanners() {
     try {
-      const snap = await db.collection(COL.banners).orderBy("order").limit(100).get();
+      const snap = await db.collection(COL.banners).orderBy("order").limit(100).get(FS_GET_SERVER);
       cache.banners = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.banners).limit(100).get();
+      const snap = await db.collection(COL.banners).limit(100).get(FS_GET_SERVER);
       cache.banners = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
   }
 
   async function loadShopCategories() {
     try {
-      const snap = await db.collection(COL.shopCategories).orderBy("order").limit(200).get();
+      const snap = await db.collection(COL.shopCategories).orderBy("order").limit(200).get(FS_GET_SERVER);
       cache.shopCategories = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.shopCategories).limit(200).get();
+      const snap = await db.collection(COL.shopCategories).limit(200).get(FS_GET_SERVER);
       cache.shopCategories = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       cache.shopCategories.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     }
@@ -698,19 +1293,19 @@
   async function loadShopTypes() {
     await loadShopCategories();
     try {
-      const snap = await db.collection(COL.shopTypes).orderBy("order").limit(400).get();
+      const snap = await db.collection(COL.shopTypes).orderBy("order").limit(400).get(FS_GET_SERVER);
       cache.shopTypes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
-      const snap = await db.collection(COL.shopTypes).limit(400).get();
+      const snap = await db.collection(COL.shopTypes).limit(400).get(FS_GET_SERVER);
       cache.shopTypes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       cache.shopTypes.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     }
   }
 
   function shopCategoryLabelById(categoryId) {
-    if (!categoryId || typeof categoryId !== "string") return "â€”";
+    if (!categoryId || typeof categoryId !== "string") return "—";
     const c = cache.shopCategories.find((x) => x.id === categoryId);
-    return c ? String(c.label || "â€”") : "(missing category)";
+    return c ? String(c.label || "—") : "(missing category)";
   }
 
   function fillShopTypeCategorySelect() {
@@ -719,9 +1314,9 @@
     const active = cache.shopCategories.filter((c) => c.active !== false);
     const cur = sel.value;
     sel.innerHTML =
-      '<option value="">Select categoryâ€¦</option>' +
+      '<option value="">Select category…</option>' +
       active
-        .map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.label || "â€”")}</option>`)
+        .map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.label || "—")}</option>`)
         .join("");
     if (cur && [...sel.options].some((o) => o.value === cur)) {
       sel.value = cur;
@@ -729,25 +1324,14 @@
   }
 
   async function loadRiders() {
-    const snap = await db.collection(COL.riders).limit(200).get();
+    const snap = await db.collection(COL.riders).limit(200).get(FS_GET_SERVER);
     cache.riders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     updateAllApprovalBadges();
   }
 
   async function loadCustomers() {
-    const snap = await db.collection(COL.customers).limit(300).get();
+    const snap = await db.collection(COL.customers).limit(300).get(FS_GET_SERVER);
     cache.customers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  }
-
-  async function loadRatings() {
-    try {
-      const q = db.collection(COL.storeRatings).orderBy("createdAt", "desc").limit(300);
-      const snap = await q.get();
-      cache.ratings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    } catch (_) {
-      const snap = await db.collection(COL.storeRatings).limit(300).get();
-      cache.ratings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    }
   }
 
   function renderDashboard() {
@@ -777,7 +1361,61 @@
     if (elJobs) elJobs.textContent = String(jobsPending);
     if (elRiders) elRiders.textContent = String(ridersPending);
     renderDashboardApprovalPreviews();
+    renderDashboardRecentOrders();
+    updateDashboardQuickActions();
     updateAllApprovalBadges();
+  }
+
+  function updateDashboardQuickActions() {
+    const shops = countPendingVendors();
+    const jobs = countPendingJobs();
+    const riders = countPendingRiders();
+    const setQa = (id, btnId, n) => {
+      const btn = document.getElementById(btnId);
+      const pill = document.getElementById(id);
+      if (!btn) return;
+      if (n > 0) {
+        btn.hidden = false;
+        if (pill) pill.textContent = String(n);
+      } else {
+        btn.hidden = true;
+      }
+    };
+    setQa("qa-shops-n", "qa-shops", shops);
+    setQa("qa-jobs-n", "qa-jobs", jobs);
+    setQa("qa-riders-n", "qa-riders", riders);
+  }
+
+  function renderDashboardRecentOrders() {
+    const tbody = document.querySelector("#table-dashboard-orders tbody");
+    if (!tbody) return;
+    const readyFirst = [...cache.orders].sort((a, b) => {
+      const ar = String(a.status || "").toLowerCase() === "ready" ? 0 : 1;
+      const br = String(b.status || "").toLowerCase() === "ready" ? 0 : 1;
+      if (ar !== br) return ar - br;
+      const ta = a.createdAt?.seconds || 0;
+      const tb = b.createdAt?.seconds || 0;
+      return tb - ta;
+    });
+    const list = readyFirst.slice(0, 8);
+    tbody.innerHTML =
+      list.length === 0
+        ? `<tr><td colspan="5"><div class="empty-state"><div class="empty-state__icon">📦</div>No orders yet.</div></td></tr>`
+        : list
+            .map((o) => {
+              const stRaw = String(o.status || "placed");
+              const stLower = stRaw.toLowerCase();
+              const readyAttention = stLower === "ready" ? " badge-ready-attention" : "";
+              const orderLabel = orderDisplayNumber(o);
+              return `<tr>
+          <td><strong>${escapeHtml(orderLabel)}</strong></td>
+          <td>${escapeHtml(shopDisplayName(o))}</td>
+          <td>${fmtMoney(o.total)}</td>
+          <td><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span></td>
+          <td>${escapeHtml(fmtTs(o.createdAt))}</td>
+        </tr>`;
+            })
+            .join("");
   }
 
   function renderDashboardApprovalPreviews() {
@@ -852,8 +1490,8 @@
       list = list.filter((o) => {
         const id = o.id.toLowerCase();
         const track = String(o.trackingNumber || "").toLowerCase().trim();
-        const cust = String(o.customerId || "").toLowerCase();
-        const store = String(o.storeName || "").toLowerCase();
+        const cust = customerDisplayName(o).toLowerCase();
+        const store = shopDisplayName(o).toLowerCase();
         const addr = orderAddrLine(o).toLowerCase();
         return (
           id.includes(q) ||
@@ -867,25 +1505,27 @@
     const tbody = document.querySelector("#table-orders tbody");
     tbody.innerHTML =
       list.length === 0
-        ? `<tr><td colspan="7"><div class="empty-state">No orders.</div></td></tr>`
+        ? `<tr><td colspan="6"><div class="empty-state">No orders.</div></td></tr>`
         : list
             .map((o) => {
               const stRaw = String(o.status || "placed");
               const stLower = String(stRaw || "").toLowerCase();
               const readyAttention = stLower === "ready" ? " badge-ready-attention" : "";
-              const track = String(o.trackingNumber || "").trim();
-              const orderLabel = track || o.id;
+              const orderLabel = orderDisplayNumber(o);
+              const customerName = customerDisplayName(o);
+              const customer = customerById(o.customerId);
+              const customerMeta = compactText(customer?.phoneNumber, customer?.phone, o.deliveryAddress?.phone);
+              const shopName = shopDisplayName(o);
               const assignBtn =
-                stLower === "ready"
+                stLower === "ready" && !isSelfPickupOrder(o)
                   ? `<button type="button" class="btn btn-ghost btn-sm" data-assign-rider-order="${escapeHtml(o.id)}">Assign rider</button>`
                   : "";
-              return `<tr>
-          <td><strong>${escapeHtml(orderLabel)}</strong></td>
-          <td>${escapeHtml(o.customerId || "â€”")}</td>
-          <td>${escapeHtml(o.storeName || "â€”")}<br/><small style="color:var(--muted)">${escapeHtml(orderAddrLine(o))}</small></td>
+              return `<tr class="order-row" tabindex="0" data-view-order="${escapeHtml(o.id)}" aria-label="View order details">
+          <td><strong>${escapeHtml(orderLabel)}</strong><br/><small>${escapeHtml(fmtTs(o.createdAt))}</small></td>
+          <td><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
+          <td><strong>${escapeHtml(shopName)}</strong><br/><small>${escapeHtml(orderAddrLine(o))}</small></td>
           <td>${fmtMoney(o.total)}</td>
           <td><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span></td>
-          <td>${escapeHtml(fmtTs(o.createdAt))}</td>
           <td class="row-actions">
             ${assignBtn}
             <button type="button" class="btn btn-ghost btn-sm" data-edit-order="${escapeHtml(o.id)}">Edit</button>
@@ -894,6 +1534,19 @@
         </tr>`;
             })
             .join("");
+    tbody.querySelectorAll("[data-view-order]").forEach((row) => {
+      const open = () => openOrderDetails(row.getAttribute("data-view-order"));
+      row.addEventListener("click", (e) => {
+        if (e.target.closest("button, a, input, select, textarea")) return;
+        open();
+      });
+      row.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (e.target.closest("button, a, input, select, textarea")) return;
+        e.preventDefault();
+        open();
+      });
+    });
     tbody.querySelectorAll("[data-assign-rider-order]").forEach((btn) => {
       btn.addEventListener("click", () => {
         openAssignRiderModal(btn.getAttribute("data-assign-rider-order")).catch((e) => alert(e.message || String(e)));
@@ -932,8 +1585,8 @@
               const isApproved = approval === "approved";
               return `<tr>
         <td>${escapeHtml(v.id)}</td>
-        <td>${escapeHtml(v.name || "â€”")}</td>
-        <td>${escapeHtml(v.tag || v.category || "â€”")}</td>
+        <td>${escapeHtml(v.name || "—")}</td>
+        <td>${escapeHtml(v.tag || v.category || "—")}</td>
         <td>${approvalBadge(v.approvalStatus)}</td>
         <td>${v.active === true ? "Yes" : "No"}</td>
         <td class="row-actions">
@@ -959,27 +1612,141 @@
     });
   }
 
+  function vendorById(id) {
+    if (!id) return null;
+    return cache.vendors.find((v) => v.id === id) || null;
+  }
+
+  function resolveProductShopName(p) {
+    const fromProduct = String(p?.storeName || p?.vendorName || "").trim();
+    if (fromProduct) return fromProduct;
+    const vendor = vendorById(p?.storeId);
+    if (vendor?.name) return vendor.name;
+    return p?.storeId ? String(p.storeId) : "—";
+  }
+
+  function productShopFilterOptions() {
+    const byId = new Map();
+    cache.vendors.forEach((v) => {
+      if (v.id) byId.set(v.id, v.name || v.id);
+    });
+    cache.products.forEach((p) => {
+      if (p.storeId && !byId.has(p.storeId)) {
+        byId.set(p.storeId, resolveProductShopName(p));
+      }
+    });
+    return [...byId.entries()].sort((a, b) =>
+      String(a[1]).localeCompare(String(b[1]), undefined, { sensitivity: "base" })
+    );
+  }
+
+  function populateProductShopFilter() {
+    const sel = document.getElementById("filter-product-shop");
+    if (!sel) return;
+    const options = productShopFilterOptions();
+    const optionsKey = options.map(([id]) => id).join("|");
+    if (sel.dataset.optionsKey === optionsKey) return;
+    sel.dataset.optionsKey = optionsKey;
+    const prev = sel.value;
+    sel.innerHTML =
+      `<option value="">All shops</option>` +
+      options
+        .map(
+          ([id, label]) =>
+            `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`
+        )
+        .join("");
+    if (prev && options.some(([id]) => id === prev)) sel.value = prev;
+  }
+
+  function appendProductThumbEmpty(cell) {
+    const span = document.createElement("span");
+    span.className = "product-thumb product-thumb--empty";
+    span.setAttribute("aria-hidden", "true");
+    span.textContent = "—";
+    cell.replaceChildren(span);
+  }
+
+  function appendProductThumbImage(cell, url) {
+    const wrap = document.createElement("div");
+    wrap.className = "product-thumb-wrap";
+    const img = document.createElement("img");
+    img.className = "product-thumb";
+    img.alt = "";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.referrerPolicy = "no-referrer";
+    const fallback = document.createElement("span");
+    fallback.className = "product-thumb product-thumb--empty product-thumb--fallback";
+    fallback.setAttribute("aria-hidden", "true");
+    fallback.hidden = true;
+    fallback.textContent = "—";
+    img.addEventListener("error", () => {
+      img.remove();
+      fallback.hidden = false;
+    });
+    img.addEventListener("load", () => {
+      fallback.hidden = true;
+    });
+    img.src = url;
+    wrap.append(img, fallback);
+    cell.replaceChildren(wrap);
+  }
+
+  function paintProductTableImages(tbody) {
+    tbody.querySelectorAll("[data-product-img]").forEach((cell) => {
+      const productId = cell.getAttribute("data-product-img");
+      const product = cache.products.find((p) => p.id === productId);
+      const url = productDisplayImageUrl(product);
+      if (!url) {
+        appendProductThumbEmpty(cell);
+        return;
+      }
+      appendProductThumbImage(cell, url);
+    });
+  }
+
+  function productActiveBadge(active) {
+    if (active === true) {
+      return `<span class="badge badge-delivered">Active</span>`;
+    }
+    return `<span class="badge badge-cancelled">Inactive</span>`;
+  }
+
   function renderProducts() {
     const tbody = document.querySelector("#table-products tbody");
-    const list = cache.products;
+    populateProductShopFilter();
+    const shopId = document.getElementById("filter-product-shop")?.value || "";
+    const q = (document.getElementById("filter-products")?.value || "").toLowerCase().trim();
+    let list = [...cache.products];
+    if (shopId) list = list.filter((p) => p.storeId === shopId);
+    if (q) {
+      list = list.filter((p) => {
+        const name = String(p.name || "").toLowerCase();
+        const shop = resolveProductShopName(p).toLowerCase();
+        return name.includes(q) || shop.includes(q);
+      });
+    }
     tbody.innerHTML =
       list.length === 0
-        ? `<tr><td colspan="6"><div class="empty-state">No products.</div></td></tr>`
+        ? `<tr><td colspan="6"><div class="empty-state">No products${shopId || q ? " match your filters" : ""}.</div></td></tr>`
         : list
-            .map(
-              (p) => `<tr>
-        <td>${escapeHtml(p.id)}</td>
-        <td>${escapeHtml(p.name || "â€”")}</td>
-        <td>${escapeHtml(p.storeId || "â€”")}</td>
+            .map((p) => {
+              const shopName = resolveProductShopName(p);
+              return `<tr>
+        <td class="cell-product-img" data-product-img="${escapeHtml(p.id)}"></td>
+        <td><strong>${escapeHtml(p.name || "—")}</strong></td>
+        <td>${escapeHtml(shopName)}</td>
         <td>${fmtMoney(p.price)}</td>
-        <td>${p.active === true ? "Yes" : "No"}</td>
+        <td>${productActiveBadge(p.active)}</td>
         <td class="row-actions">
           <button type="button" class="btn btn-ghost btn-sm" data-edit-product="${escapeHtml(p.id)}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-product="${escapeHtml(p.id)}">Delete</button>
         </td>
-      </tr>`
-            )
+      </tr>`;
+            })
             .join("");
+    paintProductTableImages(tbody);
     tbody.querySelectorAll("[data-edit-product]").forEach((btn) => {
       btn.addEventListener("click", () => openProductModal(btn.getAttribute("data-edit-product")));
     });
@@ -998,7 +1765,7 @@
             .map(
               (b) => `<tr>
         <td>${escapeHtml(b.id)}</td>
-        <td>${escapeHtml(b.title || "â€”")}</td>
+        <td>${escapeHtml(b.title || "—")}</td>
         <td>${Number(b.order) || 0}</td>
         <td>${b.active === true ? "Yes" : "No"}</td>
         <td class="row-actions">
@@ -1029,7 +1796,7 @@
             .map((c) => {
               const active = c.active !== false;
               return `<tr>
-        <td>${escapeHtml(c.label || "â€”")}</td>
+        <td>${escapeHtml(c.label || "—")}</td>
         <td>${Number(c.order) || 0}</td>
         <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-category-active="${escapeHtml(c.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
         <td class="row-actions">
@@ -1079,7 +1846,7 @@
               const active = t.active !== false;
               return `<tr>
         <td>${escapeHtml(shopCategoryLabelById(t.categoryId))}</td>
-        <td>${escapeHtml(t.label || "â€”")}</td>
+        <td>${escapeHtml(t.label || "—")}</td>
         <td>${Number(t.order) || 0}</td>
         <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-type-active="${escapeHtml(t.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
         <td class="row-actions">
@@ -1104,180 +1871,6 @@
     tbody.querySelectorAll("[data-del-shop-type]").forEach((btn) => {
       btn.addEventListener("click", () => deleteShopType(btn.getAttribute("data-del-shop-type")));
     });
-  }
-
-  function normalizeRideFareVehicle(raw, fallback) {
-    const m = raw && typeof raw === "object" ? raw : {};
-    const base = Math.floor(Number(m.baseLkr));
-    const perKm = Math.floor(Number(m.perKmLkr));
-    const min = Math.floor(Number(m.minLkr));
-    return {
-      baseLkr: Number.isFinite(base) && base >= 0 ? base : fallback.baseLkr,
-      perKmLkr: Number.isFinite(perKm) && perKm >= 0 ? perKm : fallback.perKmLkr,
-      minLkr: Number.isFinite(min) && min >= 0 ? min : fallback.minLkr,
-    };
-  }
-
-  async function loadRideFares() {
-    const snap = await db.collection(COL.rideFareConfig).doc("rates").get();
-    if (!snap.exists) {
-      cache.rideFares = {
-        bike: { ...DEFAULT_RIDE_FARES.bike },
-        wheel: { ...DEFAULT_RIDE_FARES.wheel },
-        car: { ...DEFAULT_RIDE_FARES.car },
-      };
-      return;
-    }
-    const data = snap.data() || {};
-    cache.rideFares = {
-      bike: normalizeRideFareVehicle(data.bike, DEFAULT_RIDE_FARES.bike),
-      wheel: normalizeRideFareVehicle(data.wheel, DEFAULT_RIDE_FARES.wheel),
-      car: normalizeRideFareVehicle(data.car, DEFAULT_RIDE_FARES.car),
-    };
-  }
-
-  function estimateRideFareLkr(rates, distanceKm) {
-    const km = Math.max(0, Number(distanceKm) || 0);
-    const raw = rates.baseLkr + Math.ceil(km * rates.perKmLkr);
-    return Math.max(rates.minLkr, raw);
-  }
-
-  function getRideFareSampleKm() {
-    const el = document.getElementById("ride-fare-sample-km");
-    const km = Number(el?.value);
-    if (!Number.isFinite(km) || km <= 0) return 5;
-    return km;
-  }
-
-  function updateRideFarePreviews() {
-    const km = getRideFareSampleKm();
-    for (const v of RIDE_FARE_VEHICLES) {
-      const baseEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="baseLkr"]`);
-      const perEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="perKmLkr"]`);
-      const minEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="minLkr"]`);
-      const preview = document.querySelector(`[data-ride-preview="${v.id}"]`);
-      if (!preview) continue;
-      const rates = {
-        baseLkr: Math.floor(Number(baseEl?.value)),
-        perKmLkr: Math.floor(Number(perEl?.value)),
-        minLkr: Math.floor(Number(minEl?.value)),
-      };
-      if (
-        !Number.isFinite(rates.baseLkr) ||
-        !Number.isFinite(rates.perKmLkr) ||
-        !Number.isFinite(rates.minLkr)
-      ) {
-        preview.textContent = "—";
-        continue;
-      }
-      preview.textContent = fmtMoney(estimateRideFareLkr(rates, km));
-    }
-  }
-
-  function renderRideFares() {
-    const grid = document.getElementById("ride-fare-cards");
-    const status = document.getElementById("ride-fare-save-status");
-    if (!grid) return;
-    const rates = cache.rideFares || DEFAULT_RIDE_FARES;
-    const km = getRideFareSampleKm();
-    grid.innerHTML = RIDE_FARE_VEHICLES.map((v) => {
-      const r = rates[v.id] || DEFAULT_RIDE_FARES[v.id];
-      const sample = estimateRideFareLkr(r, km);
-      return `<article class="ride-fare-card" data-vehicle="${escapeHtml(v.id)}">
-        <div class="ride-fare-card-head">
-          <div class="ride-fare-icon">${v.icon}</div>
-          <div>
-            <h4 class="ride-fare-card-title">${escapeHtml(v.label)}</h4>
-            <p class="ride-fare-card-meta">${escapeHtml(v.blurb)} · ${v.capacity} seat${v.capacity === 1 ? "" : "s"} · <code>${escapeHtml(v.id)}</code></p>
-          </div>
-        </div>
-        <div class="ride-fare-fields">
-          <div class="ride-fare-field">
-            <label for="ride-fare-${escapeHtml(v.id)}-base">Base (LKR)</label>
-            <input id="ride-fare-${escapeHtml(v.id)}-base" type="number" min="0" step="1" data-ride-fare="${escapeHtml(v.id)}" data-field="baseLkr" value="${Number(r.baseLkr)}" />
-          </div>
-          <div class="ride-fare-field">
-            <label for="ride-fare-${escapeHtml(v.id)}-perkm">Per km (LKR)</label>
-            <input id="ride-fare-${escapeHtml(v.id)}-perkm" type="number" min="0" step="1" data-ride-fare="${escapeHtml(v.id)}" data-field="perKmLkr" value="${Number(r.perKmLkr)}" />
-          </div>
-          <div class="ride-fare-field">
-            <label for="ride-fare-${escapeHtml(v.id)}-min">Minimum (LKR)</label>
-            <input id="ride-fare-${escapeHtml(v.id)}-min" type="number" min="0" step="1" data-ride-fare="${escapeHtml(v.id)}" data-field="minLkr" value="${Number(r.minLkr)}" />
-          </div>
-        </div>
-        <div class="ride-fare-preview">
-          <span class="ride-fare-preview-label">Sample fare</span>
-          <span class="ride-fare-preview-value" data-ride-preview="${escapeHtml(v.id)}">${escapeHtml(fmtMoney(sample))}</span>
-        </div>
-      </article>`;
-    }).join("");
-    grid.querySelectorAll("input[data-ride-fare]").forEach((input) => {
-      input.addEventListener("input", updateRideFarePreviews);
-    });
-    if (status) status.textContent = "Edit rates, preview updates live, then Save.";
-  }
-
-  function readRideFaresFromForm() {
-    const out = {};
-    for (const v of RIDE_FARE_VEHICLES) {
-      const baseEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="baseLkr"]`);
-      const perEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="perKmLkr"]`);
-      const minEl = document.querySelector(`input[data-ride-fare="${v.id}"][data-field="minLkr"]`);
-      const baseLkr = Math.floor(Number(baseEl?.value));
-      const perKmLkr = Math.floor(Number(perEl?.value));
-      const minLkr = Math.floor(Number(minEl?.value));
-      if (
-        !Number.isFinite(baseLkr) ||
-        !Number.isFinite(perKmLkr) ||
-        !Number.isFinite(minLkr) ||
-        baseLkr < 0 ||
-        perKmLkr < 0 ||
-        minLkr < 0
-      ) {
-        throw new Error(`Invalid rates for ${v.label}. Use whole numbers ≥ 0.`);
-      }
-      out[v.id] = { baseLkr, perKmLkr, minLkr };
-    }
-    return out;
-  }
-
-  async function saveRideFares() {
-    const status = document.getElementById("ride-fare-save-status");
-    const btn = document.getElementById("btn-save-ride-fares");
-    try {
-      const rates = readRideFaresFromForm();
-      if (btn) btn.disabled = true;
-      if (status) status.textContent = "Saving…";
-      await db
-        .collection(COL.rideFareConfig)
-        .doc("rates")
-        .set(
-          {
-            ...rates,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: auth.currentUser?.uid || "",
-          },
-          { merge: true }
-        );
-      cache.rideFares = rates;
-      if (status) status.textContent = "Saved. New ride quotes will use these rates.";
-    } catch (err) {
-      if (status) status.textContent = err.message || String(err);
-      alert(err.message || String(err));
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-  }
-
-  function resetRideFaresToDefaults() {
-    cache.rideFares = {
-      bike: { ...DEFAULT_RIDE_FARES.bike },
-      wheel: { ...DEFAULT_RIDE_FARES.wheel },
-      car: { ...DEFAULT_RIDE_FARES.car },
-    };
-    renderRideFares();
-    const status = document.getElementById("ride-fare-save-status");
-    if (status) status.textContent = "Defaults loaded in the form. Click Save rates to apply.";
   }
 
   function renderShopApprovals() {
@@ -1469,13 +2062,16 @@
         .collection(COL.jobApplications)
         .where("jobId", "==", jobId)
         .orderBy("appliedAt", "desc")
-        .get();
+        .get(FS_GET_SERVER);
       const fresh = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       cache.jobApplications = cache.jobApplications
         .filter((a) => String(a.jobId || "") !== String(jobId))
         .concat(fresh);
     } catch (_) {
-      const snap = await db.collection(COL.jobApplications).where("jobId", "==", jobId).get();
+      const snap = await db
+        .collection(COL.jobApplications)
+        .where("jobId", "==", jobId)
+        .get(FS_GET_SERVER);
       const fresh = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       cache.jobApplications = cache.jobApplications
         .filter((a) => String(a.jobId || "") !== String(jobId))
@@ -1503,7 +2099,7 @@
   async function updateJobApplicationStatus(applicationId, status) {
     if (!applicationId || !status || !db) return;
     if (status === "booked") {
-      const appDoc = await db.collection(COL.jobApplications).doc(applicationId).get();
+      const appDoc = await db.collection(COL.jobApplications).doc(applicationId).get(FS_GET_SERVER);
       if (!appDoc.exists) throw new Error("Application not found.");
       const app = appDoc.data();
       const current = String(app.status || "").toLowerCase();
@@ -1511,7 +2107,7 @@
         const jobId = app.jobId;
         const job = cache.jobs.find((x) => x.id === jobId);
         if (!job) {
-          const jobSnap = await db.collection(COL.jobs).doc(jobId).get();
+          const jobSnap = await db.collection(COL.jobs).doc(jobId).get(FS_GET_SERVER);
           if (!jobSnap.exists) throw new Error("Job not found.");
           const limit = jobLaborLimit(jobSnap.data());
           const booked = countBookedForJob(jobId);
@@ -1610,12 +2206,12 @@
                   `<a href="${escapeHtml(r.licensePhotoUrl)}" target="_blank" rel="noopener">License</a>`
                 );
               }
-              const docsHtml = docs.length ? docs.join(" Â· ") : "â€”";
-              return `<tr>
+              const docsHtml = docs.length ? docs.join(" · ") : "—";
+              return `<tr class="rider-row" tabindex="0" data-view-rider="${escapeHtml(r.id)}" aria-label="View rider details">
         <td>${escapeHtml(riderDisplayName(r))}</td>
-        <td>${escapeHtml(r.phone || r.phoneNumber || "â€”")}</td>
-        <td>${escapeHtml(r.nicNumber || "â€”")}</td>
-        <td>${escapeHtml(r.city || "â€”")}</td>
+        <td>${escapeHtml(r.phone || r.phoneNumber || "—")}</td>
+        <td>${escapeHtml(r.nicNumber || "—")}</td>
+        <td>${escapeHtml(r.city || r.address || "—")}</td>
         <td>${escapeHtml(riderVehicleLabel(r))}</td>
         <td>${docsHtml}</td>
         <td>${escapeHtml(fmtTs(r.createdAt))}</td>
@@ -1626,6 +2222,7 @@
       </tr>`;
             })
             .join("");
+    bindRiderRowOpen(tbody);
     tbody.querySelectorAll("[data-approve-rider]").forEach((btn) => {
       btn.addEventListener("click", () => approveRider(btn.getAttribute("data-approve-rider")));
     });
@@ -1643,10 +2240,10 @@
         : list
             .map((r) => {
               const name = riderDisplayName(r);
-              const phone = r.phoneNumber || r.phone || "â€”";
+              const phone = r.phoneNumber || r.phone || "—";
               const approval = riderRegistrationStatus(r);
               const isApproved = approval === "approved" || approval === "active";
-              return `<tr>
+              return `<tr class="rider-row" tabindex="0" data-view-rider="${escapeHtml(r.id)}" aria-label="View rider details">
         <td>${escapeHtml(r.id)}</td>
         <td>${escapeHtml(name)}</td>
         <td>${escapeHtml(phone)}</td>
@@ -1662,6 +2259,7 @@
       </tr>`;
             })
             .join("");
+    bindRiderRowOpen(tbody);
     tbody.querySelectorAll("[data-approve-rider]").forEach((btn) => {
       btn.addEventListener("click", () => approveRider(btn.getAttribute("data-approve-rider")));
     });
@@ -1678,17 +2276,67 @@
 
   function renderCustomers() {
     const tbody = document.querySelector("#table-customers tbody");
-    const list = cache.customers;
+    const q = (document.getElementById("filter-customers")?.value || "").trim().toLowerCase();
+    const roleFilter = (document.getElementById("filter-customer-role")?.value || "").trim().toLowerCase();
+    const all = [...cache.customers].sort((a, b) => {
+      const ta = a.createdAt?.seconds || 0;
+      const tb = b.createdAt?.seconds || 0;
+      if (ta !== tb) return tb - ta;
+      return customerDisplayName(a).localeCompare(customerDisplayName(b));
+    });
+    const total = all.length;
+    const customerN = all.filter((u) => customerRole(u) === "customer").length;
+    const staffN = all.filter((u) => ["vendor", "admin"].includes(customerRole(u))).length;
+    const phoneN = all.filter((u) => customerPhone(u)).length;
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(value);
+    };
+    setText("customer-stat-total", total);
+    setText("customer-stat-customers", customerN);
+    setText("customer-stat-staff", staffN);
+    setText("customer-stat-phone", phoneN);
+
+    let list = all;
+    if (roleFilter) list = list.filter((u) => customerRole(u) === roleFilter);
+    if (q) {
+      list = list.filter((u) => {
+        const hay = [
+          customerDisplayName(u),
+          customerPhone(u),
+          customerEmail(u),
+          customerRole(u),
+          u.id,
+          u.uid,
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      });
+    }
     tbody.innerHTML =
       list.length === 0
         ? `<tr><td colspan="5"><div class="empty-state">No customer profiles.</div></td></tr>`
         : list
             .map(
               (u) => `<tr>
-        <td><code>${escapeHtml(u.id)}</code></td>
-        <td>${escapeHtml(u.displayName || "â€”")}</td>
-        <td>${escapeHtml(u.role || "â€”")}</td>
-        <td>${escapeHtml(u.phoneNumber || u.phone || "â€”")}</td>
+        <td>
+          <div class="customer-cell">
+            <div class="customer-avatar">${escapeHtml(customerInitials(u))}</div>
+            <div>
+              <strong>${escapeHtml(customerDisplayName(u))}</strong>
+              <small>${escapeHtml(customerOrderCount(u.id))} orders loaded</small>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="customer-contact">
+            <strong>${escapeHtml(customerPhone(u) || "No phone")}</strong>
+            <small>${escapeHtml(customerEmail(u) || "No email")}</small>
+          </div>
+        </td>
+        <td>${customerRoleBadge(u.role)}</td>
+        <td>${escapeHtml(fmtTs(u.createdAt))}</td>
         <td class="row-actions">
           <button type="button" class="btn btn-ghost btn-sm" data-view-customer="${escapeHtml(u.id)}">View</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-customer="${escapeHtml(u.id)}">Delete</button>
@@ -1704,111 +2352,184 @@
     });
   }
 
-  function renderRatings() {
-    const tbody = document.querySelector("#table-ratings tbody");
-    if (!tbody) return;
-    const q = (document.getElementById("filter-ratings")?.value || "").toLowerCase().trim();
-    const starsFilter = document.getElementById("filter-rating-stars")?.value || "";
-    const statusFilter = document.getElementById("filter-rating-status")?.value || "";
-    let list = cache.ratings.slice();
-    if (starsFilter) {
-      const n = Number(starsFilter);
-      list = list.filter((r) => Number(r.stars) === n);
-    }
-    if (statusFilter) {
-      list = list.filter((r) => String(r.status || "").toLowerCase() === statusFilter);
-    }
-    if (q) {
-      list = list.filter((r) => {
-        const hay = [
-          r.storeName,
-          r.customerId,
-          r.vendorId,
-          r.comment,
-          r.orderId,
-          r.id,
-        ]
-          .map((x) => String(x || "").toLowerCase())
-          .join(" ");
-        return hay.includes(q);
-      });
-    }
-    tbody.innerHTML =
-      list.length === 0
-        ? `<tr><td colspan="7"><div class="empty-state">No ratings found.</div></td></tr>`
-        : list
-            .map((r) => {
-              const status = String(r.status || "visible").toLowerCase();
-              const stars = Number(r.stars) || 0;
-              const starLabel = "★".repeat(Math.max(0, Math.min(5, stars))) +
-                "☆".repeat(Math.max(0, 5 - Math.max(0, Math.min(5, stars))));
-              const hideLabel = status === "hidden" ? "Unhide" : "Hide";
-              const nextStatus = status === "hidden" ? "visible" : "hidden";
-              return `<tr>
-        <td>
-          <strong>${escapeHtml(r.storeName || "—")}</strong><br>
-          <code style="font-size:11px">${escapeHtml(r.vendorId || "")}</code>
-        </td>
-        <td><code>${escapeHtml(r.customerId || "—")}</code></td>
-        <td title="${stars}/5">${escapeHtml(starLabel)} <span style="color:var(--muted)">${stars}</span></td>
-        <td style="max-width:220px;white-space:normal">${escapeHtml(r.comment || "—")}</td>
-        <td><span class="badge">${escapeHtml(status)}</span></td>
-        <td>${escapeHtml(fmtTs(r.createdAt))}</td>
-        <td class="row-actions">
-          <button type="button" class="btn btn-ghost btn-sm" data-rating-status="${escapeHtml(nextStatus)}" data-rating-id="${escapeHtml(r.id)}">${hideLabel}</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-del-rating="${escapeHtml(r.id)}">Delete</button>
-        </td>
-      </tr>`;
-            })
-            .join("");
-    tbody.querySelectorAll("[data-rating-status]").forEach((btn) => {
-      btn.addEventListener("click", () =>
-        setRatingStatus(btn.getAttribute("data-rating-id"), btn.getAttribute("data-rating-status"))
-      );
-    });
-    tbody.querySelectorAll("[data-del-rating]").forEach((btn) => {
-      btn.addEventListener("click", () => deleteRating(btn.getAttribute("data-del-rating")));
-    });
-  }
-
-  async function setRatingStatus(id, status) {
-    if (!id || !db) return;
-    const next = status === "hidden" ? "hidden" : "visible";
-    try {
-      await db.collection(COL.storeRatings).doc(id).update({
-        status: next,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
-      await loadRatings();
-      renderRatings();
-    } catch (e) {
-      alert(e.message || String(e));
-    }
-  }
-
-  async function deleteRating(id) {
-    if (!id || !db) return;
-    if (!confirm("Delete this rating permanently? Shop average will be recalculated.")) return;
-    try {
-      await db.collection(COL.storeRatings).doc(id).delete();
-      await loadRatings();
-      renderRatings();
-    } catch (e) {
-      alert(e.message || String(e));
-    }
-  }
-
   function openCustomerView(uid) {
     const u = cache.customers.find((x) => x.id === uid);
     if (!u) return;
+    const name = customerDisplayName(u);
+    const phone = customerPhone(u);
+    const email = customerEmail(u);
+    const role = customerRole(u);
+    const allOrders = cache.orders.filter((o) => String(o.customerId || "").trim() === uid);
+    const orders = allOrders.slice(0, 6);
+    const deliveredOrders = allOrders.filter((o) => ["delivered", "completed"].includes(String(o.status || "").toLowerCase()));
+    const spent = deliveredOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const lastOrder = allOrders[0];
+    const recentOrders =
+      orders.length === 0
+        ? `<div class="customer-profile-empty">No orders loaded for this customer yet.</div>`
+        : orders
+            .map(
+              (o) => `<div class="customer-timeline-item">
+                <div class="customer-timeline-dot"></div>
+                <div class="customer-timeline-card">
+                  <div>
+                    <strong>${escapeHtml(orderDisplayNumber(o))}</strong>
+                    <small>${escapeHtml(shopDisplayName(o))} · ${escapeHtml(fmtTs(o.createdAt))}</small>
+                  </div>
+                  <div class="customer-timeline-meta">
+                    <span class="badge ${badgeClass(o.status)}">${escapeHtml(statusLabel(o.status))}</span>
+                    <strong>${fmtMoney(o.total)}</strong>
+                  </div>
+                </div>
+              </div>`
+            )
+            .join("");
     const json = JSON.stringify(u, null, 2);
     openModal(
       "Customer profile",
-      `<pre style="margin:0;max-height:50vh;overflow:auto;font-size:12px;color:var(--text)">${escapeHtml(json)}</pre>
-      <p style="color:var(--muted);font-size:0.85rem">Firestore rules allow admin read/delete on customers, not admin-side profile edits.</p>`,
-      "readonly",
+      `<div class="customer-profile">
+        <div class="customer-profile-cover">
+          <div class="customer-profile-cover__main">
+            ${customerAvatarHtml(u, "customer-avatar--xl")}
+            <div>
+              <div class="customer-profile-role">${customerRoleBadge(role)}</div>
+              <h4>${escapeHtml(name)}</h4>
+              <p>${escapeHtml(email || "No email")} ${phone ? `· ${escapeHtml(phone)}` : ""}</p>
+            </div>
+          </div>
+          <div class="customer-profile-cover__stat">
+            <span>Total spent</span>
+            <strong>${fmtMoney(spent)}</strong>
+          </div>
+        </div>
+
+        <div class="customer-profile-metrics">
+          <div><span>Loaded orders</span><strong>${escapeHtml(String(allOrders.length))}</strong></div>
+          <div><span>Delivered</span><strong>${escapeHtml(String(deliveredOrders.length))}</strong></div>
+          <div><span>Last order</span><strong>${escapeHtml(lastOrder ? fmtTs(lastOrder.createdAt) : "—")}</strong></div>
+        </div>
+
+        <div class="customer-profile-page">
+          <div class="customer-profile-main">
+            <section class="customer-profile-section customer-profile-section--contact">
+              <h5>Contact</h5>
+              <div class="customer-contact-grid">
+                <div class="customer-contact-card">
+                  <span>Phone</span>
+                  <strong>${escapeHtml(phone || "Not added")}</strong>
+                </div>
+                <div class="customer-contact-card">
+                  <span>Email</span>
+                  <strong>${escapeHtml(email || "Not added")}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>Recent activity</h5>
+              <div class="customer-timeline">${recentOrders}</div>
+            </section>
+          </div>
+
+          <aside class="customer-profile-side">
+            <section class="customer-profile-section">
+              <h5>Account</h5>
+              ${orderDetailLine("Role", role)}
+              ${orderDetailLine("Joined", fmtTs(u.createdAt))}
+              ${orderDetailLine("Updated", fmtTs(u.updatedAt))}
+              ${orderDetailLine("Profile ID", u.id)}
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>Operations note</h5>
+              <p class="customer-profile-note">Admin can read or delete this profile document. Profile edits stay owner-only in Firestore rules.</p>
+            </section>
+          </aside>
+        </div>
+
+        <details class="customer-profile-raw">
+          <summary>Technical profile data</summary>
+          <pre>${escapeHtml(json)}</pre>
+        </details>
+      </div>`,
+      "customer-profile",
       null
     );
+    modalSave.style.display = "none";
+  }
+
+  function openOrderDetails(id) {
+    const o = cache.orders.find((x) => x.id === id);
+    if (!o) return;
+    const customer = customerById(o.customerId);
+    const rider = cache.riders.find((x) => x.id === compactText(o.riderId, o.assignedRiderId));
+    const customerName = customerDisplayName(o);
+    const customerPhone = compactText(customer?.phoneNumber, customer?.phone, o.deliveryAddress?.phone);
+    const customerEmail = compactText(customer?.email);
+    const shopName = shopDisplayName(o);
+    const title = orderDisplayNumber(o);
+    const fulfillment = isSelfPickupOrder(o) ? "Self pickup" : "Delivery";
+    const note = compactText(o.deliveryNote, o.specialInstructions);
+    const riderLabel = rider ? riderDisplayName(rider) : compactText(o.riderName, o.riderId ? "Assigned" : "Unassigned");
+    const items = Array.isArray(o.items) ? o.items : [];
+    const itemCount = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+    const address = orderAddrLine(o);
+    const html = `<div class="order-detail">
+      <div class="order-detail-receipt">
+        <div class="order-detail-head">
+          <span class="order-detail-kicker">MND Delivery Bill</span>
+          <h4>${escapeHtml(title)}</h4>
+          <p>${escapeHtml(shopName)}</p>
+        </div>
+
+        <div class="order-detail-meta">
+          ${orderDetailLine("Date", fmtTs(o.createdAt))}
+          ${orderDetailLine("Customer", customerName)}
+          ${orderDetailLine("Phone", customerPhone)}
+          ${customerEmail ? orderDetailLine("Email", customerEmail) : ""}
+          ${orderDetailLine("Order type", fulfillment)}
+          ${orderDetailLine("Status", statusLabel(o.status || "placed"))}
+          ${orderDetailLine("Rider", riderLabel)}
+          ${orderDetailLine("Payment", paymentMethodLabel(o.paymentMethod))}
+        </div>
+
+        <div class="order-detail-status">
+          <span>${escapeHtml(itemCount ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : "Items not recorded")}</span>
+          <span>${escapeHtml(fulfillment)}</span>
+        </div>
+        <span class="badge ${badgeClass(o.status)}">${escapeHtml(statusLabel(o.status || "placed"))}</span>
+
+        <div class="order-detail-divider"></div>
+
+        <div class="order-detail-section order-detail-section--items">
+          <h5>Items</h5>
+          ${orderItemRows(o)}
+        </div>
+
+        <div class="order-detail-section order-detail-section--payment">
+          ${orderDetailLine("Subtotal", fmtMoney(o.subtotal))}
+          ${orderDetailLine("Discount", fmtMoney(o.discount))}
+          ${Number(o.orderCommissionLkr) > 0 ? orderDetailLine("Order commission", fmtMoney(o.orderCommissionLkr)) : ""}
+          ${Number(o.baseDeliveryFeeLkr) > 0 || Number(o.riderCommissionLkr) > 0
+            ? orderDetailLine(
+                "Delivery (base + rider)",
+                `${fmtMoney(o.baseDeliveryFeeLkr || 0)} + ${fmtMoney(o.riderCommissionLkr || 0)}`
+              )
+            : ""}
+          ${orderDetailLine("Delivery fee", fmtMoney(o.deliveryFee))}
+          ${orderDetailLine("Total", fmtMoney(o.total), "order-detail-line--total")}
+        </div>
+
+        <div class="order-detail-section">
+          <h5>${isSelfPickupOrder(o) ? "Pickup" : "Delivery address"}</h5>
+          <p class="order-detail-address">${escapeHtml(address)}</p>
+          ${note ? `<div class="order-detail-note"><span>Note</span>${escapeHtml(note)}</div>` : ""}
+        </div>
+
+        <p class="order-detail-footer">Thank you for using MND Delivery</p>
+      </div>
+    </div>`;
+    openModal("Order details", html, "order-detail", id);
     modalSave.style.display = "none";
   }
 
@@ -1831,17 +2552,30 @@
         return `<option value="${escapeHtml(riderId)}" ${selected}>${escapeHtml(riderLabel)}</option>`;
       }),
     ].join("");
-    const opts = ORDER_STATUSES.map(
-      (s) => `<option value="${escapeHtml(s)}" ${String(o.status).toLowerCase() === s ? "selected" : ""}>${escapeHtml(statusLabel(s))}</option>`
-    ).join("");
+    const selfPickup = isSelfPickupOrder(o);
+    const statusOptions = resolveOrderStatusOptions(o);
+    const opts = statusOptions
+      .map(
+        (s) =>
+          `<option value="${escapeHtml(s)}" ${String(o.status).toLowerCase() === s ? "selected" : ""}>${escapeHtml(statusLabel(s))}</option>`
+      )
+      .join("");
+    const riderField = selfPickup
+      ? ""
+      : `<div class="form-group"><label>Rider (optional)</label><select id="f-ord-rider">${riderOptions}</select></div>`;
+    const fulfillmentHint = selfPickup
+      ? `<p style="color:var(--muted);font-size:0.85rem;margin:0 0 12px">Self pickup — delivery statuses are hidden.</p>`
+      : "";
     openModal(
       "Edit order",
-      `<div class="form-group"><label>Order ID</label><input type="text" value="${escapeHtml(o.id)}" readonly></div>
-      <div class="form-group"><label>Status</label><select id="f-ord-status">${opts}</select></div>
-      <div class="form-group"><label>Rider (optional)</label><select id="f-ord-rider">${riderOptions}</select></div>
+      `${fulfillmentHint}<div class="form-group"><label>Status</label><select id="f-ord-status">${opts}</select></div>
+      ${riderField}
       <div class="form-group"><label>Subtotal (LKR)</label><input type="number" id="f-ord-sub" min="0" step="1" value="${Number(o.subtotal) || 0}"></div>
       <div class="form-group"><label>Discount</label><input type="number" id="f-ord-disc" min="0" step="1" value="${Number(o.discount) || 0}"></div>
-      <div class="form-group"><label>Delivery fee</label><input type="number" id="f-ord-fee" min="0" step="1" value="${Number(o.deliveryFee) || 0}"></div>
+      <div class="form-group"><label>Order commission</label><input type="number" id="f-ord-commission" min="0" step="1" value="${Number(o.orderCommissionLkr) || 0}"></div>
+      <div class="form-group"><label>Base delivery fee</label><input type="number" id="f-ord-base-fee" min="0" step="1" value="${Number(o.baseDeliveryFeeLkr) || 0}"></div>
+      <div class="form-group"><label>Rider commission</label><input type="number" id="f-ord-rider-fee" min="0" step="1" value="${Number(o.riderCommissionLkr) || 0}"></div>
+      <div class="form-group"><label>Delivery fee (base + rider)</label><input type="number" id="f-ord-fee" min="0" step="1" value="${Number(o.deliveryFee) || 0}"></div>
       <div class="form-group"><label>Total</label><input type="number" id="f-ord-total" min="0" step="1" value="${Number(o.total) || 0}"></div>`,
       "order-edit",
       id
@@ -1883,9 +2617,7 @@
       `<div class="form-group"><label>Name</label><input type="text" id="f-v-name" value="${escapeHtml(v?.name || "")}" required></div>
       <div class="form-group"><label>Tag / category</label><input type="text" id="f-v-tag" value="${escapeHtml(v?.tag || v?.category || "")}"></div>
       <div class="form-group"><label>ETA text</label><input type="text" id="f-v-eta" value="${escapeHtml(v?.eta || "")}"></div>
-      <div class="form-group"><label>Rating (computed from reviews)</label><input type="number" id="f-v-rat" step="0.1" min="0" value="${Number(v?.rating) || 0}" readonly disabled></div>
-      <div class="form-group"><label>Rating count</label><input type="number" id="f-v-rat-count" value="${Number(v?.ratingCount) || 0}" readonly disabled></div>
-      <p style="color:var(--muted);font-size:0.85rem;margin:0 0 12px">Shop averages update automatically from visible customer ratings. Moderate reviews in Rating Management.</p>
+      <div class="form-group"><label>Rating</label><input type="number" id="f-v-rat" step="0.1" min="0" value="${Number(v?.rating) || 0}"></div>
       <div class="form-group"><label>Image URL</label><input type="text" id="f-v-img" value="${escapeHtml(v?.imageUrl || "")}"></div>
       <div class="form-group"><label>Delivery fee (LKR number)</label><input type="number" id="f-v-fee" min="0" step="1" value="${typeof v?.deliveryFee === "number" ? v.deliveryFee : parseInt(String(v?.deliveryFee || "").replace(/\D/g, ""), 10) || 0}"></div>
       <div class="form-group"><label>Latitude (optional)</label><input type="text" id="f-v-lat" value="${lat}"></div>
@@ -1899,6 +2631,10 @@
 
   function openProductModal(id) {
     const p = id ? cache.products.find((x) => x.id === id) : null;
+    const imgVal = p ? escapeHtml(productDisplayImageUrl(p)) : "";
+    const imgPreview = imgVal
+      ? `<div class="form-group"><label>Preview</label><img src="${imgVal}" alt="" class="product-thumb" style="width:96px;height:96px"></div>`
+      : "";
     openModal(
       id ? "Edit product" : "New product",
       `<div class="form-group"><label>Name</label><input type="text" id="f-p-name" value="${escapeHtml(p?.name || "")}" required></div>
@@ -1906,7 +2642,8 @@
       <div class="form-group"><label>Store name</label><input type="text" id="f-p-sn" value="${escapeHtml(p?.storeName || p?.vendorName || "")}"></div>
       <div class="form-group"><label>Lookup key</label><input type="text" id="f-p-lk" value="${escapeHtml(p?.lookupKey || "")}" placeholder="auto: doc id if empty"></div>
       <div class="form-group"><label>Price (LKR)</label><input type="number" id="f-p-price" min="0" step="1" value="${Number(p?.price) || 0}"></div>
-      <div class="form-group"><label>Image URL</label><input type="text" id="f-p-img" value="${escapeHtml(p?.imageUrl || "")}"></div>
+      ${imgPreview}
+      <div class="form-group"><label>Image URL</label><input type="text" id="f-p-img" value="${imgVal}" placeholder="https://… or upload photo in mnd_shop app"></div>
       <div class="form-group"><label>Active</label><select id="f-p-act"><option value="true">Yes</option><option value="false" ${p && p.active === false ? "selected" : ""}>No</option></select></div>`,
       "product",
       id || null
@@ -1941,6 +2678,150 @@
     }
     const s = String(val).replace(/^#/, "").trim();
     return s.length === 6 ? s.toUpperCase() : "";
+  }
+
+  function openRiderDetailView(id) {
+    const r = cache.riders.find((x) => x.id === id);
+    if (!r) return;
+
+    const name = riderDisplayName(r);
+    const phone = compactText(r.phone, r.phoneNumber);
+    const extraPhone = compactText(r.extraPhone);
+    const email = compactText(r.email);
+    const address = compactText(r.address, r.city);
+    const approval = riderRegistrationStatus(r);
+    const isApproved = approval === "approved" || approval === "active";
+    const isRejected = approval === "rejected";
+    const license = riderLicense(r);
+    const insurance = riderInsurance(r);
+    const revenue = riderRevenueLicence(r);
+    const ownership = riderOwnership(r);
+    const vehicle = riderVehicleInfo(r);
+    const location = readLatLng(r);
+    const locationLabel = location
+      ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`
+      : "—";
+    const regComplete = r.registrationComplete === true ? "Yes" : "No";
+    const ownerBlock = ownership.isOwner === false
+      ? `${orderDetailLine("Owner name", ownership.ownerName || "—")}
+              ${orderDetailLine("Owner contact", ownership.ownerContact || "—")}`
+      : orderDetailLine("Vehicle owner", "Registered rider");
+    const rejectionNote = compactText(r.rejectionNote);
+    const json = JSON.stringify(r, null, 2);
+
+    openModal(
+      "Rider profile",
+      `<div class="rider-profile customer-profile">
+        <div class="customer-profile-cover rider-profile-cover">
+          <div class="customer-profile-cover__main">
+            ${riderAvatarHtml(r, "rider-avatar--xl")}
+            <div>
+              <div class="customer-profile-role">${riderStatusBadge(r.status)} ${r.online === true ? '<span class="badge badge-out">Online</span>' : '<span class="badge badge-pending">Offline</span>'}</div>
+              <h4>${escapeHtml(name)}</h4>
+              <p>${escapeHtml(phone || "No phone")}${extraPhone ? ` · ${escapeHtml(extraPhone)}` : ""}</p>
+            </div>
+          </div>
+          <div class="customer-profile-cover__stat">
+            <span>Vehicle</span>
+            <strong>${escapeHtml(riderVehicleTypeLabel(r.vehicleType))}</strong>
+          </div>
+        </div>
+
+        <div class="rider-profile-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-detail-approve-rider="${escapeHtml(r.id)}" ${isApproved ? "disabled" : ""}>Approve</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-detail-reject-rider="${escapeHtml(r.id)}" ${isRejected ? "disabled" : ""}>Reject</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-detail-edit-rider="${escapeHtml(r.id)}">Edit</button>
+        </div>
+
+        <div class="customer-profile-metrics">
+          <div><span>Registration</span><strong>${escapeHtml(regComplete)}</strong></div>
+          <div><span>Services</span><strong class="rider-service-tags">${riderServicesHtml(r)}</strong></div>
+          <div><span>Registered</span><strong>${escapeHtml(fmtTs(r.createdAt))}</strong></div>
+        </div>
+
+        ${rejectionNote ? `<p class="rider-profile-note rider-profile-note--warn">Rejection note: ${escapeHtml(rejectionNote)}</p>` : ""}
+
+        <div class="customer-profile-page">
+          <div class="customer-profile-main">
+            <section class="customer-profile-section">
+              <h5>Personal details</h5>
+              ${orderDetailLine("Full name", name)}
+              ${orderDetailLine("Phone", phone || "—")}
+              ${extraPhone ? orderDetailLine("Extra phone", extraPhone) : ""}
+              ${orderDetailLine("NIC", r.nicNumber || "—")}
+              ${orderDetailLine("Email", email || "—")}
+              ${orderDetailLine("Address", address || "—")}
+              ${orderDetailLine("Language", riderLanguageLabel(r.preferredLanguage))}
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>Vehicle</h5>
+              ${orderDetailLine("Type", riderVehicleTypeLabel(r.vehicleType))}
+              ${orderDetailLine("Number plate", r.vehicleNumber || "—")}
+              ${orderDetailLine("Brand", vehicle.brand || "—")}
+              ${orderDetailLine("Model", vehicle.model || "—")}
+              ${orderDetailLine("Color", vehicle.color || "—")}
+              ${orderDetailLine("Year", vehicle.yearMade != null ? String(vehicle.yearMade) : "—")}
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>License & compliance</h5>
+              ${orderDetailLine("License number", license.number || "—")}
+              ${orderDetailLine("License expiry", fmtDate(license.expiry))}
+              ${orderDetailLine("Insurance expiry", fmtDate(insurance.expiry))}
+              ${orderDetailLine("Revenue licence expiry", fmtDate(revenue.expiry))}
+              <div class="rider-doc-links">
+                ${riderDocLink(license.frontUrl || r.licensePhotoUrl, "License (front)")}
+                ${license.backUrl ? " · " + riderDocLink(license.backUrl, "License (back)") : ""}
+                ${insurance.photoUrl ? " · " + riderDocLink(insurance.photoUrl, "Insurance") : ""}
+                ${revenue.photoUrl ? " · " + riderDocLink(revenue.photoUrl, "Revenue licence") : ""}
+              </div>
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>Identity documents</h5>
+              ${riderIdentityDocsHtml(r)}
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>Vehicle photos</h5>
+              ${riderVehiclePhotosHtml(r)}
+            </section>
+          </div>
+
+          <aside class="customer-profile-side">
+            <section class="customer-profile-section">
+              <h5>Ownership</h5>
+              ${ownerBlock}
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>Account</h5>
+              ${orderDetailLine("Rider ID", r.id)}
+              ${orderDetailLine("UID", r.uid || r.id)}
+              ${orderDetailLine("Status", approval)}
+              ${orderDetailLine("Online", r.online === true ? "Yes" : "No")}
+              ${orderDetailLine("Approved", fmtTs(r.approvedAt))}
+              ${orderDetailLine("Updated", fmtTs(r.updatedAt))}
+              ${orderDetailLine("Location", locationLabel)}
+            </section>
+
+            <section class="customer-profile-section">
+              <h5>Operations note</h5>
+              <p class="customer-profile-note">Riders register through the MND Rider app. Approve to allow deliveries; profile edits from the app stay owner-only in Firestore rules.</p>
+            </section>
+          </aside>
+        </div>
+
+        <details class="customer-profile-raw">
+          <summary>Technical profile data</summary>
+          <pre>${escapeHtml(json)}</pre>
+        </details>
+      </div>`,
+      "rider-profile",
+      id
+    );
+    modalSave.style.display = "none";
   }
 
   function openRiderModal(id) {
@@ -1985,9 +2866,13 @@
     if (modalMode === "assign-rider") return;
     if (modalMode === "order-edit" && modalEditId) {
       const status = document.getElementById("f-ord-status").value;
-      const riderRaw = document.getElementById("f-ord-rider").value.trim();
+      const riderEl = document.getElementById("f-ord-rider");
+      const riderRaw = riderEl ? riderEl.value.trim() : "";
       const sub = Number(document.getElementById("f-ord-sub").value) || 0;
       const disc = Number(document.getElementById("f-ord-disc").value) || 0;
+      const orderCommission = Number(document.getElementById("f-ord-commission")?.value) || 0;
+      const baseFee = Number(document.getElementById("f-ord-base-fee")?.value) || 0;
+      const riderFee = Number(document.getElementById("f-ord-rider-fee")?.value) || 0;
       const fee = Number(document.getElementById("f-ord-fee").value) || 0;
       const total = Number(document.getElementById("f-ord-total").value) || 0;
       const ref = db.collection(COL.orders).doc(modalEditId);
@@ -1995,6 +2880,9 @@
         status,
         subtotal: sub,
         discount: disc,
+        orderCommissionLkr: orderCommission,
+        baseDeliveryFeeLkr: baseFee,
+        riderCommissionLkr: riderFee,
         deliveryFee: fee,
         total,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2018,9 +2906,11 @@
       const payload = {
         customerId,
         vendorId,
+        vendorStoreId: vendorId,
         storeName,
         status,
         paymentMethod: "cashOnDelivery",
+        fulfillmentMode: "delivery",
         items: [
           {
             productKey: "manual",
@@ -2039,6 +2929,9 @@
         ],
         subtotal: total,
         discount: 0,
+        orderCommissionLkr: 0,
+        baseDeliveryFeeLkr: 0,
+        riderCommissionLkr: 0,
         deliveryFee: 0,
         total,
         deliveryAddress: { line1, line2: "", city, phone },
@@ -2052,6 +2945,7 @@
       const name = document.getElementById("f-v-name").value.trim();
       const tag = document.getElementById("f-v-tag").value.trim();
       const eta = document.getElementById("f-v-eta").value.trim();
+      const rating = Number(document.getElementById("f-v-rat").value) || 0;
       const imageUrl = document.getElementById("f-v-img").value.trim();
       const fee = Number(document.getElementById("f-v-fee").value) || 0;
       const latStr = document.getElementById("f-v-lat").value.trim();
@@ -2063,14 +2957,11 @@
         tag: tag || "General",
         category: tag || "General",
         eta: eta || "N/A",
+        rating,
         imageUrl,
         deliveryFee: fee,
         active,
       };
-      if (!modalEditId) {
-        data.rating = 0;
-        data.ratingCount = 0;
-      }
       const lat = parseFloat(latStr);
       const lng = parseFloat(lngStr);
       if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
@@ -2208,7 +3099,9 @@
   }
 
   async function deleteOrder(id) {
-    if (!confirm(`Delete order ${id}?`)) return;
+    const o = cache.orders.find((x) => x.id === id);
+    const label = o ? orderDisplayNumber(o) : "this order";
+    if (!confirm(`Delete ${label}?`)) return;
     await db.collection(COL.orders).doc(id).delete();
     await loadViewData("orders");
     await loadOrders();
@@ -2227,6 +3120,7 @@
     if (currentView === "vendors") renderVendors();
     if (currentView === "dashboard") renderDashboard();
     updateAllApprovalBadges();
+    updateDashboardQuickActions();
   }
 
   async function refreshAfterJobChange() {
@@ -2238,6 +3132,7 @@
     }
     if (currentView === "dashboard") renderDashboard();
     updateAllApprovalBadges();
+    updateDashboardQuickActions();
   }
 
   async function approveVendor(id) {
@@ -2251,6 +3146,7 @@
       { merge: true }
     );
     await refreshAfterVendorChange();
+    toast("Shop approved.", "success");
   }
 
   async function rejectVendor(id) {
@@ -2278,6 +3174,7 @@
       { merge: true }
     );
     await refreshAfterJobChange();
+    toast("Job published.", "success");
   }
 
   async function rejectJob(id) {
@@ -2318,6 +3215,7 @@
     if (currentView === "riders") renderRiders();
     if (currentView === "dashboard") renderDashboard();
     updatePendingRiderNavBadge();
+    toast("Rider approved.", "success");
   }
 
   async function rejectRider(id) {
@@ -2351,7 +3249,7 @@
   }
 
   async function deleteShopCategory(id) {
-    const q = await db.collection(COL.shopTypes).where("categoryId", "==", id).limit(1).get();
+    const q = await db.collection(COL.shopTypes).where("categoryId", "==", id).limit(1).get(FS_GET_SERVER);
     if (!q.empty) {
       alert("This category still has shop types. Delete or reassign those first.");
       return;
@@ -2374,21 +3272,25 @@
     if (!input || !btn) return;
     const label = String(input.value || "").trim();
     if (!label || label.length > 80) {
-      alert("Enter a category label (1â€“80 characters).");
+      toast("Enter a category label (1–80 characters).", "warning");
       return;
     }
     btn.disabled = true;
-    if (status) status.textContent = "Savingâ€¦";
+    if (status) status.textContent = "Saving…";
     try {
       let nextOrder = 0;
       try {
-        const top = await db.collection(COL.shopCategories).orderBy("order", "desc").limit(1).get();
+        const top = await db
+          .collection(COL.shopCategories)
+          .orderBy("order", "desc")
+          .limit(1)
+          .get(FS_GET_SERVER);
         if (!top.empty) {
           const o = top.docs[0].data().order;
           if (typeof o === "number") nextOrder = o + 1;
         }
       } catch (_) {
-        const snap = await db.collection(COL.shopCategories).limit(200).get();
+        const snap = await db.collection(COL.shopCategories).limit(200).get(FS_GET_SERVER);
         snap.docs.forEach((d) => {
           const o = Number(d.data().order) || 0;
           if (o >= nextOrder) nextOrder = o + 1;
@@ -2429,11 +3331,11 @@
     }
     const label = String(input.value || "").trim();
     if (!label || label.length > 80) {
-      alert("Enter a label (1â€“80 characters).");
+      toast("Enter a label (1–80 characters).", "warning");
       return;
     }
     btn.disabled = true;
-    if (status) status.textContent = "Saving to Firestoreâ€¦";
+    if (status) status.textContent = "Saving to Firestore…";
     try {
       let nextOrder = 0;
       try {
@@ -2442,7 +3344,7 @@
           .where("categoryId", "==", categoryId)
           .orderBy("order", "desc")
           .limit(1)
-          .get();
+          .get(FS_GET_SERVER);
         if (!top.empty) {
           const o = top.docs[0].data().order;
           if (typeof o === "number") nextOrder = o + 1;
@@ -2473,9 +3375,9 @@
       let msg = err && err.message ? err.message : String(err);
       if (code === "permission-denied" || /permission/i.test(msg)) {
         msg +=
-          "\n\nâ€¢ Deploy latest rules: from repo folder run  firebase deploy --only firestore  " +
+          "\n\n• Deploy latest rules: from repo folder run  firebase deploy --only firestore  " +
           "(needs shop_types rules + indexes).\n" +
-          "â€¢ Firestore customers/{yourAuthUid} must have role: admin (Admin / ADMIN also work).";
+          "• Firestore customers/{yourAuthUid} must have role: admin (Admin / ADMIN also work).";
       }
       alert(msg);
       if (status) status.textContent = "";
@@ -2491,42 +3393,251 @@
   }
 
   async function deleteCustomer(id) {
-    if (!confirm(`Delete Firestore customers/${id}? (Does not delete Auth user.)`)) return;
+    const u = cache.customers.find((x) => x.id === id);
+    const label = u ? customerDisplayName(u) : "this customer";
+    if (!confirm(`Delete ${label}? This removes the Firestore profile only, not the Auth user.`)) return;
     await db.collection(COL.customers).doc(id).delete();
     await loadViewData("customers");
   }
 
-  elLoginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    elLoginError.classList.remove("visible");
-    const email = document.getElementById("login-email").value.trim();
-    const pass = document.getElementById("login-pass").value;
+  async function loadPlatformFees() {
     try {
-      initFirebase();
-      const cred = await auth.signInWithEmailAndPassword(email, pass);
-      await assertAdmin(cred.user.uid);
-      elLogin.hidden = true;
-      elApp.classList.add("visible");
-      if (elTopEmail) elTopEmail.textContent = email;
-      showView("dashboard");
-    } catch (err) {
-      try {
-        await auth.signOut();
-      } catch (_) {}
-      elLoginError.textContent =
-        err.code === "auth/user-not-found" || err.code === "auth/wrong-password"
-          ? "Invalid email or password."
-          : err.message || err.code || "Sign-in failed.";
-      elLoginError.classList.add("visible");
+      const snap = await db
+        .collection(COL.platformConfig)
+        .doc(COL.platformFeesDoc)
+        .get(FS_GET_SERVER);
+      if (!snap.exists) {
+        cache.platformFees = { ...PLATFORM_FEES_DEFAULTS };
+        return;
+      }
+      const d = snap.data() || {};
+      cache.platformFees = {
+        orderCommissionLkr: Number(d.orderCommissionLkr) || 0,
+        riderCommissionLkr: Number(d.riderCommissionLkr) || 0,
+        minDeliveryFeeLkr:
+          Number(d.minDeliveryFeeLkr) || PLATFORM_FEES_DEFAULTS.minDeliveryFeeLkr,
+        pricePerKmLkr:
+          Number(d.pricePerKmLkr) || PLATFORM_FEES_DEFAULTS.pricePerKmLkr,
+        shopMonthlyCommissionPercent:
+          d.shopMonthlyCommissionPercent == null
+            ? PLATFORM_FEES_DEFAULTS.shopMonthlyCommissionPercent
+            : Number(d.shopMonthlyCommissionPercent),
+      };
+    } catch (e) {
+      cache.platformFees = { ...PLATFORM_FEES_DEFAULTS };
+      console.warn("loadPlatformFees", e);
     }
-  });
+  }
 
-  elLogout.addEventListener("click", async () => {
+  function renderPlatformFeesForm() {
+    const f = cache.platformFees || PLATFORM_FEES_DEFAULTS;
+    const setVal = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.value = v;
+    };
+    setVal("fee-order-commission", f.orderCommissionLkr);
+    setVal("fee-rider-commission", f.riderCommissionLkr);
+    setVal("fee-min-delivery", f.minDeliveryFeeLkr);
+    setVal("fee-per-km", f.pricePerKmLkr);
+    setVal("fee-shop-monthly-pct", f.shopMonthlyCommissionPercent);
+  }
+
+  async function savePlatformFeesFromForm() {
+    const payload = {
+      orderCommissionLkr: Math.max(
+        0,
+        Math.round(Number(document.getElementById("fee-order-commission").value) || 0)
+      ),
+      riderCommissionLkr: Math.max(
+        0,
+        Math.round(Number(document.getElementById("fee-rider-commission").value) || 0)
+      ),
+      minDeliveryFeeLkr: Math.max(
+        0,
+        Math.round(Number(document.getElementById("fee-min-delivery").value) || 0)
+      ),
+      pricePerKmLkr: Math.max(
+        0,
+        Math.round(Number(document.getElementById("fee-per-km").value) || 0)
+      ),
+      shopMonthlyCommissionPercent: Math.min(
+        100,
+        Math.max(0, Number(document.getElementById("fee-shop-monthly-pct").value) || 0)
+      ),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+    await db
+      .collection(COL.platformConfig)
+      .doc(COL.platformFeesDoc)
+      .set(payload, { merge: true });
+    cache.platformFees = {
+      orderCommissionLkr: payload.orderCommissionLkr,
+      riderCommissionLkr: payload.riderCommissionLkr,
+      minDeliveryFeeLkr: payload.minDeliveryFeeLkr,
+      pricePerKmLkr: payload.pricePerKmLkr,
+      shopMonthlyCommissionPercent: payload.shopMonthlyCommissionPercent,
+    };
+    toast("Platform fees saved", "success");
+  }
+
+  function seedInvoiceMonthInput() {
+    const el = document.getElementById("invoice-month");
+    if (!el || el.value) return;
+    const now = new Date();
+    el.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function selectedInvoiceMonthKey() {
+    const el = document.getElementById("invoice-month");
+    const v = (el && el.value) || "";
+    if (/^\d{4}-\d{2}$/.test(v)) return v;
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  async function loadMonthlyInvoicesForSelectedMonth() {
+    const monthKey = selectedInvoiceMonthKey();
+    const invoices = [];
+    const vendors = cache.vendors || [];
+    await Promise.all(
+      vendors.slice(0, 300).map(async (v) => {
+        try {
+          const snap = await db
+            .collection(COL.vendors)
+            .doc(v.id)
+            .collection("monthly_invoices")
+            .doc(monthKey)
+            .get(FS_GET_SERVER);
+          if (snap.exists) {
+            invoices.push({ id: snap.id, vendorDocId: v.id, ...snap.data() });
+          }
+        } catch (_) {}
+      })
+    );
+    invoices.sort((a, b) =>
+      String(a.vendorName || a.vendorDocId || "").localeCompare(
+        String(b.vendorName || b.vendorDocId || "")
+      )
+    );
+    cache.monthlyInvoices = invoices;
+  }
+
+  function renderMonthlyInvoices() {
+    const tbody = document.querySelector("#table-monthly-invoices tbody");
+    if (!tbody) return;
+    const list = cache.monthlyInvoices || [];
+    if (!list.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" style="color:var(--muted)">No invoices for this month yet. Generate from monthly stats.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list
+      .map((inv) => {
+        const vendorId = inv.vendorDocId || inv.vendorId || "";
+        const monthKey = inv.monthKey || inv.id || "";
+        return `<tr>
+          <td>${escapeHtml(inv.vendorName || vendorId)}</td>
+          <td>${escapeHtml(monthKey)}</td>
+          <td>${fmtMoney(inv.netSalesLkr)}</td>
+          <td>${escapeHtml(String(inv.feePercent ?? ""))}%</td>
+          <td>${fmtMoney(inv.feeLkr)}</td>
+          <td><span class="badge">${escapeHtml(inv.status || "pending")}</span></td>
+          <td class="row-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-inv-status="invoiced" data-vendor="${escapeHtml(vendorId)}" data-month="${escapeHtml(monthKey)}">Mark invoiced</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-inv-status="paid" data-vendor="${escapeHtml(vendorId)}" data-month="${escapeHtml(monthKey)}">Mark paid</button>
+          </td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  async function generateMonthlyInvoices() {
+    const monthKey = selectedInvoiceMonthKey();
+    await loadPlatformFees();
+    const feePercent = Number(cache.platformFees.shopMonthlyCommissionPercent) || 0;
+    const vendors = cache.vendors || [];
+    let created = 0;
+    for (const v of vendors) {
+      let netSales = 0;
+      try {
+        const statsSnap = await db
+          .collection(COL.vendors)
+          .doc(v.id)
+          .collection("monthly_stats")
+          .doc(monthKey)
+          .get(FS_GET_SERVER);
+        if (statsSnap.exists) {
+          netSales = Number(statsSnap.data().netSalesLkr) || 0;
+        }
+      } catch (_) {
+        continue;
+      }
+      if (netSales <= 0) continue;
+      const feeLkr = Math.round((netSales * feePercent) / 100);
+      const ref = db
+        .collection(COL.vendors)
+        .doc(v.id)
+        .collection("monthly_invoices")
+        .doc(monthKey);
+      const existing = await ref.get(FS_GET_SERVER);
+      const prev = existing.exists ? existing.data() : null;
+      const status = prev && prev.status ? prev.status : "pending";
+      await ref.set(
+        {
+          vendorId: v.id,
+          vendorName: v.name || v.shopName || v.id,
+          monthKey,
+          netSalesLkr: netSales,
+          feePercent,
+          feeLkr,
+          status,
+          notes: (prev && prev.notes) || "",
+          createdAt: prev && prev.createdAt
+            ? prev.createdAt
+            : firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          ...(prev && prev.invoicedAt ? { invoicedAt: prev.invoicedAt } : {}),
+          ...(prev && prev.paidAt ? { paidAt: prev.paidAt } : {}),
+        },
+        { merge: true }
+      );
+      created += 1;
+    }
+    await loadMonthlyInvoicesForSelectedMonth();
+    renderMonthlyInvoices();
+    toast(`Updated ${created} invoice(s) for ${monthKey}`, "success");
+  }
+
+  async function setMonthlyInvoiceStatus(vendorId, monthKey, status) {
+    const ref = db
+      .collection(COL.vendors)
+      .doc(vendorId)
+      .collection("monthly_invoices")
+      .doc(monthKey);
+    const patch = {
+      status,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+    if (status === "invoiced") {
+      patch.invoicedAt = firebase.firestore.FieldValue.serverTimestamp();
+    }
+    if (status === "paid") {
+      patch.paidAt = firebase.firestore.FieldValue.serverTimestamp();
+    }
+    await ref.set(patch, { merge: true });
+    await loadMonthlyInvoicesForSelectedMonth();
+    renderMonthlyInvoices();
+    toast(`Invoice marked ${status}`, "success");
+  }
+
+  elLogout?.addEventListener("click", async () => {
     try {
+      if (window.MndFirebase.terminateFirestore) {
+        await window.MndFirebase.terminateFirestore();
+      }
       await auth.signOut();
     } catch (_) {}
-    elApp.classList.remove("visible");
-    elLogin.hidden = false;
+    redirectToLogin();
   });
 
   elNav.forEach((btn) => {
@@ -2534,11 +3645,48 @@
   });
 
   document.getElementById("btn-new-order")?.addEventListener("click", openOrderCreate);
-  document.getElementById("filter-orders")?.addEventListener("input", () => renderOrders());
+  document.getElementById("btn-save-platform-fees")?.addEventListener("click", () => {
+    savePlatformFeesFromForm().catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.getElementById("btn-generate-monthly-invoices")?.addEventListener("click", () => {
+    generateMonthlyInvoices().catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.getElementById("btn-reload-monthly-invoices")?.addEventListener("click", () => {
+    loadMonthlyInvoicesForSelectedMonth()
+      .then(() => renderMonthlyInvoices())
+      .catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.getElementById("invoice-month")?.addEventListener("change", () => {
+    loadMonthlyInvoicesForSelectedMonth()
+      .then(() => renderMonthlyInvoices())
+      .catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.querySelector("#table-monthly-invoices")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-inv-status]");
+    if (!btn) return;
+    const vendorId = btn.getAttribute("data-vendor");
+    const monthKey = btn.getAttribute("data-month");
+    const status = btn.getAttribute("data-inv-status");
+    if (!vendorId || !monthKey || !status) return;
+    setMonthlyInvoiceStatus(vendorId, monthKey, status).catch((err) =>
+      toast(err.message || String(err), "error")
+    );
+  });
+  const debouncedRenderOrders = ui().debounce
+    ? ui().debounce(() => renderOrders(), 280)
+    : () => renderOrders();
+  document.getElementById("filter-orders")?.addEventListener("input", debouncedRenderOrders);
   document.getElementById("filter-order-status")?.addEventListener("change", () => renderOrders());
-  document.getElementById("filter-ratings")?.addEventListener("input", () => renderRatings());
-  document.getElementById("filter-rating-stars")?.addEventListener("change", () => renderRatings());
-  document.getElementById("filter-rating-status")?.addEventListener("change", () => renderRatings());
+  const debouncedRenderProducts = ui().debounce
+    ? ui().debounce(() => renderProducts(), 280)
+    : () => renderProducts();
+  document.getElementById("filter-product-shop")?.addEventListener("change", () => renderProducts());
+  document.getElementById("filter-products")?.addEventListener("input", debouncedRenderProducts);
+  const debouncedRenderCustomers = ui().debounce
+    ? ui().debounce(() => renderCustomers(), 220)
+    : () => renderCustomers();
+  document.getElementById("filter-customers")?.addEventListener("input", debouncedRenderCustomers);
+  document.getElementById("filter-customer-role")?.addEventListener("change", () => renderCustomers());
   document.getElementById("btn-new-vendor")?.addEventListener("click", () => openVendorModal(null));
   document.getElementById("btn-new-product")?.addEventListener("click", () => openProductModal(null));
   document.getElementById("btn-new-banner")?.addEventListener("click", () => openBannerModal(null));
@@ -2558,40 +3706,59 @@
       addShopTypeFromWebForm();
     }
   });
-  document.getElementById("btn-save-ride-fares")?.addEventListener("click", () => saveRideFares());
-  document.getElementById("btn-reset-ride-fares")?.addEventListener("click", () => resetRideFaresToDefaults());
-  document.getElementById("ride-fare-sample-km")?.addEventListener("input", updateRideFarePreviews);
   document.getElementById("btn-new-rider")?.addEventListener("click", () => openRiderModal(null));
-  document.getElementById("btn-refresh")?.addEventListener("click", () => loadViewData(currentView).catch((e) => alert(e.message)));
+  document.getElementById("btn-refresh")?.addEventListener("click", () => {
+    loadViewData(currentView)
+      .then(() => toast("Data refreshed.", "success"))
+      .catch((e) => toast(e.message || String(e), "error"));
+  });
+
+  document.getElementById("dashboard-quick-actions")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-go-nav]");
+    if (btn) showView(btn.getAttribute("data-go-nav"));
+  });
 
   try {
     initFirebase();
   } catch (e) {
-    elLoginError.textContent = "Firebase init failed: " + (e.message || String(e));
-    elLoginError.classList.add("visible");
+    redirectToLogin("Firebase init failed: " + (e.message || String(e)));
+    return;
+  }
+
+  let dashboardSessionReady = false;
+
+  async function bootstrapDashboardAuth() {
+    const user = await window.MndFirebase.waitForAuthState();
+    if (!user) {
+      if (elTopEmail) elTopEmail.textContent = "";
+      redirectToLogin();
+      return;
+    }
+    try {
+      await user.getIdToken();
+      await assertAdmin(user.uid);
+      hideAuthGate();
+      if (elTopEmail) elTopEmail.textContent = user.email || user.uid;
+      await loadViewData(currentView);
+      if (currentView === "dashboard") renderDashboard();
+      dashboardSessionReady = true;
+    } catch (err) {
+      try {
+        await firebase.auth().signOut();
+      } catch (_) {}
+      redirectToLogin(err.message || "Not authorized.");
+    }
   }
 
   if (typeof firebase !== "undefined" && firebase.apps.length) {
-    firebase.auth().onAuthStateChanged(async (user) => {
-      if (!user) {
-        elApp.classList.remove("visible");
-        elLogin.hidden = false;
-        if (elTopEmail) elTopEmail.textContent = "";
+    bootstrapDashboardAuth().catch((e) => redirectToLogin(e.message || String(e)));
+
+    firebase.auth().onAuthStateChanged((user) => {
+      if (!dashboardSessionReady) {
         return;
       }
-      try {
-        await assertAdmin(user.uid);
-        elLogin.hidden = true;
-        elApp.classList.add("visible");
-        if (elTopEmail) elTopEmail.textContent = user.email || user.uid;
-        await loadViewData(currentView);
-        if (currentView === "dashboard") renderDashboard();
-      } catch (err) {
-        try {
-          await firebase.auth().signOut();
-        } catch (_) {}
-        elLoginError.textContent = err.message || "Not authorized.";
-        elLoginError.classList.add("visible");
+      if (!user) {
+        redirectToLogin();
       }
     });
   }
