@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "test": "npm run build && node --test lib/**/*.test.js",
+    "test": "npm run build && node --test \"lib/**/*.test.js\"",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
     "deploy": "firebase deploy --only functions",
     "lint": "eslint --ext .ts src/"
