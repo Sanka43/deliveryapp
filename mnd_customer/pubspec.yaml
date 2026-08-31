@@ -43,6 +43,17 @@ dev_dependencies:
   json_serializable: ^6.9.5
   flutter_launcher_icons: ^0.14.3
 
+# google_maps_flutter_web 0.6.2+3's GoogleMapsPlugin.dispose() has an
+# unguarded event-listener cancellation that throws when the map's JS view
+# was already torn down (e.g. a fast picker push/pop) — google_maps_flutter
+# calls dispose() fire-and-forget, so this surfaces as an uncaught async
+# error and can leave the map's overlays (markers/route line) in a stale
+# state. Vendored copy in third_party/ wraps the cancellations in
+# try/catch; see that file for details.
+dependency_overrides:
+  google_maps_flutter_web:
+    path: third_party/google_maps_flutter_web
+
 flutter:
   uses-material-design: true
   assets:
