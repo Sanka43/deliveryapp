@@ -9,7 +9,7 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="favicon.png" type="image/png" sizes="32x32" />
     <link rel="shortcut icon" href="favicon.ico" />
-    <link rel="stylesheet" href="css/styles.css?v=ride-fares-ratings-20260727" />
+    <link rel="stylesheet" href="css/styles.css?v=product-add-shop-first-20260807" />
   </head>
   <body class="dashboard-page">
     <div id="auth-gate" class="auth-gate" aria-live="polite">
@@ -55,6 +55,11 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
             Banners
           </button>
+          <button type="button" class="nav-btn" data-nav="offers">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            Offers
+            <span id="nav-pending-offers" class="nav-badge" hidden>0</span>
+          </button>
           <button type="button" class="nav-btn" data-nav="shop-types">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
             Shop types
@@ -79,6 +84,16 @@
           <button type="button" class="nav-btn" data-nav="riders">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h14v-4H5v4zM5 9h14V5H5v4z"/></svg>
             Riders
+          </button>
+          <button type="button" class="nav-btn" data-nav="ongoing-riders">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            Ongoing riders
+            <span id="nav-ongoing-riders" class="nav-badge" hidden>0</span>
+          </button>
+          <button type="button" class="nav-btn" data-nav="rider-cash">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
+            Rider cash
+            <span id="nav-rider-cash" class="nav-badge" hidden>0</span>
           </button>
           <button type="button" class="nav-btn" data-nav="customers">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
@@ -336,6 +351,63 @@
             </div>
           </section>
 
+          <section data-view="offers" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Pending offer approvals</h3>
+              </div>
+              <p style="color: var(--muted); margin-top: 0">
+                Shop-created offers wait here. Approve to show on the customer home banner and store page until
+                <code>endsAt</code>.
+              </p>
+              <div class="table-wrap">
+                <table id="table-offer-approvals">
+                  <thead>
+                    <tr>
+                      <th>Offer</th>
+                      <th>Shop</th>
+                      <th>Price</th>
+                      <th>Ends</th>
+                      <th>Created</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Sale details (all offers)</h3>
+                <div class="toolbar" style="gap: 8px; margin: 0">
+                  <select id="offers-status-filter" style="padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border)">
+                    <option value="all">All statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="expired">Expired</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="table-offers">
+                  <thead>
+                    <tr>
+                      <th>Image</th>
+                      <th>Title</th>
+                      <th>Shop</th>
+                      <th>Price</th>
+                      <th>Status</th>
+                      <th>Ends</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
           <section data-view="shop-types" class="view" hidden>
             <div class="panel">
               <div class="panel-header">
@@ -343,12 +415,22 @@
               </div>
               <p style="color: var(--muted); margin-top: 0">
                 Broad groups for vendors (e.g. <strong>Food</strong>, <strong>Grocery</strong>). Firestore
-                <code>shop_categories</code>: <code>label</code>, <code>order</code>, <code>active</code>.
+                <code>shop_categories</code>: <code>label</code>, <code>order</code>, <code>active</code>,
+                <code>isGrocery</code>. The <strong>Grocery</strong> checkbox is what the shop app uses to decide
+                whether new vendors under this category get the grocery product form (aisle picker, pack
+                pricing, stock) instead of the food form — set this explicitly rather than relying on the
+                label text, so renaming a category can't silently misclassify new vendors.
               </p>
               <div class="toolbar" style="align-items: flex-end; flex-wrap: wrap; gap: 12px">
                 <div class="form-group" style="flex: 1; min-width: 220px; margin: 0">
                   <label for="shop-category-new-label">New category</label>
                   <input type="text" id="shop-category-new-label" maxlength="80" placeholder="e.g. Food" />
+                </div>
+                <div class="form-group" style="margin: 0">
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer">
+                    <input type="checkbox" id="shop-category-new-is-grocery" />
+                    <span>Grocery category</span>
+                  </label>
                 </div>
                 <button type="button" id="btn-add-shop-category" class="btn btn-primary btn-sm" style="width: auto">Add</button>
               </div>
@@ -360,6 +442,7 @@
                       <th>Label</th>
                       <th>Order</th>
                       <th>Active</th>
+                      <th>Grocery</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -395,6 +478,38 @@
                   <thead>
                     <tr>
                       <th>Category</th>
+                      <th>Label</th>
+                      <th>Order</th>
+                      <th>Active</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Grocery aisles</h3>
+              </div>
+              <p style="color: var(--muted); margin-top: 0">
+                Product aisle labels for grocery shops (Dairy, Snacks…). Firestore
+                <code>grocery_aisles</code>: <code>label</code>, <code>order</code>, <code>active</code>.
+                Used by the shop add-product form and customer grocery chips — not shop types.
+              </p>
+              <div class="toolbar" style="align-items: flex-end; flex-wrap: wrap; gap: 12px">
+                <div class="form-group" style="flex: 1; min-width: 220px; margin: 0">
+                  <label for="grocery-aisle-new-label">New aisle</label>
+                  <input type="text" id="grocery-aisle-new-label" maxlength="80" placeholder="e.g. Dairy" />
+                </div>
+                <button type="button" id="btn-add-grocery-aisle" class="btn btn-primary btn-sm" style="width: auto">Add</button>
+                <button type="button" id="btn-seed-grocery-aisles" class="btn btn-ghost btn-sm" style="width: auto">Seed defaults</button>
+              </div>
+              <p id="grocery-aisle-save-status" style="min-height: 1.25rem; margin: 8px 0 0; font-size: 0.875rem; color: var(--muted)"></p>
+              <div class="table-wrap">
+                <table id="table-grocery-aisles">
+                  <thead>
+                    <tr>
                       <th>Label</th>
                       <th>Order</th>
                       <th>Active</th>
@@ -482,6 +597,30 @@
                 </table>
               </div>
             </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Reported jobs</h3>
+                <button type="button" id="btn-refresh-job-reports" class="btn btn-ghost btn-sm" style="width: auto">Refresh</button>
+              </div>
+              <p style="color: var(--muted); margin-top: 0">
+                Safety reports from <code>job_reports</code> — previously collected with no admin view. Dismiss once reviewed;
+                dismissing only clears the report, it does not touch the job itself (use the tables above to unpublish/delete).
+              </p>
+              <div class="table-wrap">
+                <table id="table-job-reports">
+                  <thead>
+                    <tr>
+                      <th>Job</th>
+                      <th>Reason</th>
+                      <th>Reported by</th>
+                      <th>Reported</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
           </section>
 
           <section data-view="rider-approvals" class="view" hidden>
@@ -528,6 +667,43 @@
                       <th>Vehicle</th>
                       <th>Status</th>
                       <th>Online</th>
+                      <th>Cash in hand</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section data-view="ongoing-riders" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Ongoing riders</h3>
+                  <p class="panel-sub">Riders currently on an active delivery or passenger trip.</p>
+                </div>
+                <button type="button" id="btn-refresh-ongoing-riders" class="btn btn-ghost btn-sm" style="width: auto">Refresh</button>
+              </div>
+              <div class="toolbar customer-toolbar">
+                <input type="search" id="filter-ongoing-riders" placeholder="Search rider, phone, order…" />
+                <select id="filter-ongoing-type">
+                  <option value="">All jobs</option>
+                  <option value="delivery">Delivery</option>
+                  <option value="ride">Ride</option>
+                </select>
+              </div>
+              <div class="table-wrap">
+                <table id="table-ongoing-riders">
+                  <thead>
+                    <tr>
+                      <th>Rider</th>
+                      <th>Job type</th>
+                      <th>Job</th>
+                      <th>Route</th>
+                      <th>Status</th>
+                      <th>Since</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -576,7 +752,68 @@
                       <th>Customer</th>
                       <th>Contact</th>
                       <th>Role</th>
+                      <th>Job credits</th>
                       <th>Joined</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section data-view="rider-cash" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Cash handovers</h3>
+                  <p class="panel-sub">
+                    Riders waiting for you to confirm the money arrived. Confirming clears their
+                    cash and lets them accept jobs again &middot; Firestore <code>cash_settlements</code>
+                  </p>
+                </div>
+                <button type="button" id="btn-reload-rider-cash" class="btn btn-ghost btn-sm" style="width: auto">Reload</button>
+              </div>
+              <div class="table-wrap">
+                <table id="table-cash-settlements">
+                  <thead>
+                    <tr>
+                      <th>Rider</th>
+                      <th>Owed to admin</th>
+                      <th>Cash covered</th>
+                      <th>Jobs</th>
+                      <th>Method</th>
+                      <th>Requested</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-top: 16px">
+              <div class="panel-header">
+                <div>
+                  <h3>Riders holding cash</h3>
+                  <p class="panel-sub">
+                    Collected ride fares and COD cash not yet handed over. Riders above the limit
+                    stop receiving new rides and deliveries.
+                  </p>
+                </div>
+                <p id="rider-cash-limit" class="panel-sub" style="margin: 0"></p>
+              </div>
+              <div class="table-wrap">
+                <table id="table-rider-cash">
+                  <thead>
+                    <tr>
+                      <th>Rider</th>
+                      <th>Phone</th>
+                      <th>Cash in hand</th>
+                      <th>Owed to admin</th>
+                      <th>Awaiting confirm</th>
+                      <th>State</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -593,7 +830,7 @@
                   <h3>Ride fares</h3>
                   <p class="panel-sub">
                     Customer app quotes use these rates for Bike, Wheel, and Car.
-                    Formula: <code>max(min, base + ceil(km &times; perKm))</code>
+                    Formula: <code>max(min, base + ceil(km &times; perKm) + stops &times; perStop)</code>
                     &middot; Firestore <code>ride_fare_config/rates</code>
                   </p>
                 </div>
@@ -602,6 +839,13 @@
                   <div class="ride-fare-km-input">
                     <input type="number" id="ride-fare-sample-km" min="0.5" max="100" step="0.5" value="5" />
                     <span>km</span>
+                  </div>
+                </div>
+                <div class="ride-fare-preview-ctrl">
+                  <label for="ride-fare-sample-stops">Sample stops</label>
+                  <div class="ride-fare-km-input">
+                    <input type="number" id="ride-fare-sample-stops" min="0" max="2" step="1" value="0" />
+                    <span>stops</span>
                   </div>
                 </div>
               </div>
@@ -669,12 +913,24 @@
               </p>
               <div class="form-grid" style="display: grid; gap: 12px; max-width: 520px">
                 <div class="form-group">
-                  <label for="fee-order-commission">Order commission (LKR, fixed per order)</label>
-                  <input type="number" id="fee-order-commission" min="0" step="1" />
+                  <label for="fee-service-charge-pct">Service charge (%, applied to order subtotal)</label>
+                  <input type="number" id="fee-service-charge-pct" min="0" max="100" step="0.1" />
                 </div>
                 <div class="form-group">
-                  <label for="fee-rider-commission">Rider commission (LKR, add-on per delivery)</label>
-                  <input type="number" id="fee-rider-commission" min="0" step="1" />
+                  <label for="fee-ride-commission">Ride commission (LKR, flat per completed ride)</label>
+                  <input type="number" id="fee-ride-commission" min="0" step="1" />
+                  <p class="panel-sub" style="margin: 4px 0 0">
+                    Kept by the platform out of every passenger fare. On a cash ride the rider owes
+                    this back to admin.
+                  </p>
+                </div>
+                <div class="form-group">
+                  <label for="fee-max-cash-in-hand">Max rider cash in hand (LKR)</label>
+                  <input type="number" id="fee-max-cash-in-hand" min="0" step="1" />
+                  <p class="panel-sub" style="margin: 4px 0 0">
+                    Riders stop receiving new rides and deliveries once they hold more than this,
+                    until you confirm a handover.
+                  </p>
                 </div>
                 <div class="form-group">
                   <label for="fee-min-delivery">Min delivery fee (LKR, first 2.5 km)</label>
@@ -739,12 +995,14 @@
                 <li>In Firestore, create or merge <code>customers/{thatAuthUid}</code> with <code>role: &quot;admin&quot;</code> (and optional <code>displayName</code>).</li>
                 <li>
                   Deploy <code>mnd_customer/firestore.rules</code> and <code>firestore.indexes.json</code> — required for
-                  <strong>Shop categories / types</strong> (<code>shop_categories</code>, <code>shop_types</code>) and other
+                  <strong>Shop categories / types / grocery aisles</strong> (<code>shop_categories</code>,
+                  <code>shop_types</code>, <code>grocery_aisles</code>) and other
                   admin writes: <code>firebase deploy --only firestore</code>
                 </li>
                 <li>Serve this folder over HTTP (not <code>file://</code>) if the browser blocks Firebase.</li>
                 <li>
                   Add broad <strong>Shop categories</strong> (Food, Grocery), then <strong>Shop types</strong> under each
+                  category. Manage <strong>Grocery aisles</strong> separately for product forms and customer chips.
                   (<code>shop_categories</code>, <code>shop_types</code> with <code>categoryId</code>).
                 </li>
                 <li>
@@ -786,9 +1044,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
-    <script src="js/firebase-config.js?v=ride-fares-ratings-20260727"></script>
-    <script src="js/firebase-boot.js?v=ride-fares-ratings-20260727"></script>
-    <script src="js/ui-helpers.js?v=ride-fares-ratings-20260727"></script>
-    <script src="js/app.js?v=ride-fares-ratings-20260727"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    <script src="js/firebase-config.js?v=ongoing-riders-20260803"></script>
+    <script src="js/firebase-boot.js?v=ongoing-riders-20260803"></script>
+    <script src="js/ui-helpers.js?v=ongoing-riders-20260803"></script>
+    <script src="js/app.js?v=product-add-shop-first-20260807"></script>
   </body>
 </html>

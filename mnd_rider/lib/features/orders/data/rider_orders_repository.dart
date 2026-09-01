@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/app/providers/firebase_providers.dart';
 import 'package:mnd_rider/core/constants/firebase_collections.dart';
-import 'package:mnd_rider/features/earnings/data/rider_earnings_repository.dart';
+import 'package:mnd_rider/core/utils/user_facing_error.dart';
+import 'package:mnd_rider/features/auth/presentation/providers/rider_approval_provider.dart';
+import 'package:mnd_rider/features/earnings/domain/rider_cash_hold_message.dart';
 import 'package:mnd_rider/features/orders/domain/rider_order_detail.dart';
 
 final Provider<RiderOrdersRepository> riderOrdersRepositoryProvider =
@@ -13,7 +16,7 @@ final Provider<RiderOrdersRepository> riderOrdersRepositoryProvider =
   return RiderOrdersRepository(
     firestore: ref.watch(firestoreProvider),
     auth: ref.watch(firebaseAuthProvider),
-    earnings: ref.watch(riderEarningsRepositoryProvider),
+    functions: ref.watch(firebaseFunctionsProvider),
   );
 });
 
@@ -62,14 +65,14 @@ class RiderOrdersRepository {
   RiderOrdersRepository({
     required FirebaseFirestore firestore,
     required FirebaseAuth auth,
-    required RiderEarningsRepository earnings,
+    required FirebaseFunctions functions,
   })  : _firestore = firestore,
         _auth = auth,
-        _earnings = earnings;
+        _functions = functions;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
-  final RiderEarningsRepository _earnings;
+  final FirebaseFunctions _functions;
 
   CollectionReference<Map<String, dynamic>> get _orders =>
       _firestore.collection(FirebaseCollections.orders);
@@ -263,6 +266,15 @@ class RiderOrdersRepository {
           throw StateError('Another rider already claimed this order.');
         }
 
+        // Same cash-in-hand gate the rules enforce on the claim, checked here
+        // so the rider gets a message they can act on.
+        final DocumentSnapshot<Map<String, dynamic>> riderSnap = await tx.get(
+          _firestore.collection(FirebaseCollections.riders).doc(u.uid),
+        );
+        if (riderSnap.data()?['cashHoldActive'] == true) {
+          throw StateError(cashHoldClaimMessage(riderSnap.data()));
+        }
+
         final String vendorId = (data['vendorId'] as String?)?.trim() ?? '';
         double? pickupLat;
         double? pickupLng;
@@ -309,10 +321,8 @@ class RiderOrdersRepository {
       return null;
     } on StateError catch (e) {
       return e.message;
-    } on FirebaseException catch (e) {
-      return e.message ?? 'Could not claim order.';
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not claim order.');
     }
   }
 
@@ -332,10 +342,16 @@ class RiderOrdersRepository {
     required String orderId,
     required String nextStatus,
   }) async {
-    if (_auth.currentUser == null) {
+    final User? u = _auth.currentUser;
+    if (u == null) {
       return 'Not signed in.';
     }
     final String normalized = nextStatus.trim().toLowerCase();
+    const Map<String, Set<String>> allowedFrom = <String, Set<String>>{
+      'out_for_delivery': <String>{'picked_up', 'on_the_way', 'delivered'},
+      'picked_up': <String>{'on_the_way', 'delivered'},
+      'on_the_way': <String>{'delivered'},
+    };
     const Set<String> allowed = <String>{
       'out_for_delivery',
       'picked_up',
@@ -346,39 +362,146 @@ class RiderOrdersRepository {
       return 'Invalid status.';
     }
     try {
-      final Map<String, dynamic> patch = <String, dynamic>{
-        'status': normalized,
-        'riderStatusUpdatedAt': FieldValue.serverTimestamp(),
-      };
-      if (normalized == 'picked_up') {
-        patch['pickedUpAt'] = FieldValue.serverTimestamp();
-      }
-      if (normalized == 'on_the_way') {
-        patch['onTheWayAt'] = FieldValue.serverTimestamp();
-      }
-      if (normalized == 'delivered') {
-        patch['deliveredAt'] = FieldValue.serverTimestamp();
-      }
-      await _orders.doc(orderId).update(patch);
-      if (normalized == 'delivered') {
-        final RiderOrderDetail? detail = await fetchOrderDetail(orderId);
-        if (detail != null && detail.deliveryFeeLkr > 0) {
-          await _earnings.recordDeliveryEarning(
-            orderId: orderId,
-            amountLkr: detail.deliveryFeeLkr,
-            storeName: detail.storeName,
-            trackingNumber: detail.trackingNumber,
-            completedAt: DateTime.now(),
+      await _firestore.runTransaction((Transaction tx) async {
+        final DocumentReference<Map<String, dynamic>> ref = _orders.doc(orderId);
+        final DocumentSnapshot<Map<String, dynamic>> snap = await tx.get(ref);
+        if (!snap.exists || snap.data() == null) {
+          throw StateError('Order not found.');
+        }
+        final Map<String, dynamic> data = snap.data()!;
+        final String assigned =
+            (data['assignedRiderId'] as String?)?.trim() ??
+            (data['riderId'] as String?)?.trim() ??
+            '';
+        if (assigned != u.uid) {
+          throw StateError('This order is not assigned to you.');
+        }
+        final String from =
+            (data['status'] as String?)?.trim().toLowerCase() ?? '';
+        if (from == normalized) {
+          return;
+        }
+        final Set<String>? nextAllowed = allowedFrom[from];
+        if (nextAllowed == null || !nextAllowed.contains(normalized)) {
+          throw StateError('Cannot change status from $from to $normalized.');
+        }
+        if (normalized == 'delivered' &&
+            ((data['deliveryFeeMode'] as String?)?.trim() ?? '') ==
+                'actual_trip') {
+          throw StateError(
+            'Complete this delivery via trip distance finalize.',
           );
         }
-      }
+        final Map<String, dynamic> patch = <String, dynamic>{
+          'status': normalized,
+          'riderStatusUpdatedAt': FieldValue.serverTimestamp(),
+        };
+        if (normalized == 'picked_up') {
+          patch['pickedUpAt'] = FieldValue.serverTimestamp();
+        }
+        if (normalized == 'on_the_way') {
+          patch['onTheWayAt'] = FieldValue.serverTimestamp();
+        }
+        if (normalized == 'delivered') {
+          patch['deliveredAt'] = FieldValue.serverTimestamp();
+        }
+        tx.update(ref, patch);
+      });
+      // Delivery earnings are credited server-side by the
+      // onOrderDeliveredCreditRider Cloud Function when status -> delivered.
       return null;
+    } on StateError catch (e) {
+      return e.message;
     } on FirebaseException catch (e) {
       return e.message ?? 'Update failed.';
     } catch (e) {
       return e.toString();
     }
   }
+
+  /// Finalize actual-trip fee + mark delivered (server-authoritative).
+  ///
+  /// [confirmationCode] is required only for guest orders (no MND account) —
+  /// the 4-digit code the customer received by SMS, proving a real recipient
+  /// is at the address. The server rejects with `permission-denied` on a
+  /// wrong code so the caller can prompt the rider to ask again.
+  Future<CompleteDeliveryResult?> completeDeliveryOrder({
+    required String orderId,
+    required double traveledKm,
+    String? confirmationCode,
+  }) async {
+    try {
+      final HttpsCallableResult<dynamic> result = await _functions
+          .httpsCallable('completeDeliveryOrder')
+          .call(<String, dynamic>{
+        'orderId': orderId.trim(),
+        'traveledKm': traveledKm,
+        if (confirmationCode != null && confirmationCode.trim().isNotEmpty)
+          'confirmationCode': confirmationCode.trim(),
+      });
+      final Map<String, dynamic> data =
+          Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);
+      return CompleteDeliveryResult(
+        orderId: (data['orderId'] as String?)?.trim() ?? orderId,
+        traveledKm: RiderOrderDetail.readDouble(data['traveledKm']) ?? traveledKm,
+        deliveryFeeLkr: RiderOrderDetail.readInt(data['deliveryFee']),
+        subtotalLkr: RiderOrderDetail.readInt(data['subtotal']),
+        serviceChargeLkr: RiderOrderDetail.readInt(data['serviceCharge']),
+        totalLkr: RiderOrderDetail.readInt(data['total']),
+        amountDueFromCustomerLkr:
+            RiderOrderDetail.readInt(data['amountDueFromCustomer']),
+        productsPaid: data['productsPaid'] == true,
+      );
+    } on FirebaseFunctionsException catch (e) {
+      throw CompleteDeliveryException(
+        (e.message?.trim().isNotEmpty ?? false)
+            ? e.message!.trim()
+            : 'Could not complete delivery.',
+        code: e.code,
+      );
+    } catch (_) {
+      throw const CompleteDeliveryException(
+        'Could not complete delivery. Check your connection and try again.',
+      );
+    }
+  }
+}
+
+class CompleteDeliveryResult {
+  const CompleteDeliveryResult({
+    required this.orderId,
+    required this.traveledKm,
+    required this.deliveryFeeLkr,
+    required this.subtotalLkr,
+    this.serviceChargeLkr = 0,
+    required this.totalLkr,
+    required this.amountDueFromCustomerLkr,
+    required this.productsPaid,
+  });
+
+  final String orderId;
+  final double traveledKm;
+  final int deliveryFeeLkr;
+  final int subtotalLkr;
+  final int serviceChargeLkr;
+  final int totalLkr;
+  final int amountDueFromCustomerLkr;
+  final bool productsPaid;
+}
+
+class CompleteDeliveryException implements Exception {
+  const CompleteDeliveryException(this.message, {this.code});
+  final String message;
+
+  /// Firebase Functions error code, e.g. `permission-denied` (wrong
+  /// confirmation code) or `resource-exhausted` (too many attempts, locked).
+  final String? code;
+
+  bool get isWrongConfirmationCode => code == 'permission-denied';
+  bool get isConfirmationLocked => code == 'resource-exhausted';
+
+  @override
+  String toString() => message;
 }
 
 final StreamProvider<List<RiderAssignedOrder>> assignedRiderOrdersProvider =
@@ -388,6 +511,9 @@ final StreamProvider<List<RiderAssignedOrder>> assignedRiderOrdersProvider =
 
 final StreamProvider<List<RiderOrderDetail>> openRiderJobsProvider =
     StreamProvider<List<RiderOrderDetail>>((Ref ref) {
+  if (!ref.watch(riderIsApprovedToDriveProvider)) {
+    return Stream<List<RiderOrderDetail>>.value(const <RiderOrderDetail>[]);
+  }
   return ref.watch(riderOrdersRepositoryProvider).watchOpenJobs();
 });
 
@@ -396,7 +522,8 @@ final StreamProvider<List<RiderOrderDetail>> riderDeliveredHistoryProvider =
   return ref.watch(riderOrdersRepositoryProvider).watchDeliveredHistory();
 });
 
-final StreamProviderFamily<RiderOrderDetail?, String> riderOrderDetailProvider =
-    StreamProvider.family<RiderOrderDetail?, String>((Ref ref, String orderId) {
+final AutoDisposeStreamProviderFamily<RiderOrderDetail?, String>
+    riderOrderDetailProvider =
+    StreamProvider.autoDispose.family<RiderOrderDetail?, String>((Ref ref, String orderId) {
   return ref.watch(riderOrdersRepositoryProvider).watchOrderDetail(orderId);
 });

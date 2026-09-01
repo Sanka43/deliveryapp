@@ -32,6 +32,20 @@ void navigateForRiderPush(
     case RiderPushType.earnings:
       ref.read(riderShellTabIndexProvider.notifier).state = 2;
       context.go(RoutePaths.shell);
+    case RiderPushType.rideUpdate:
+      ref.read(riderShellTabIndexProvider.notifier).state = 1;
+      if (message.tripId != null && message.tripId!.isNotEmpty) {
+        context.push('${RoutePaths.ride}/${message.tripId}');
+      } else {
+        context.go(RoutePaths.shell);
+      }
+    case RiderPushType.documentsExpiring:
+    case RiderPushType.documentsExpired:
+      ref.read(riderShellTabIndexProvider.notifier).state = 3;
+      context.push(RoutePaths.renewDocuments);
+    case RiderPushType.walletUpdate:
+      ref.read(riderShellTabIndexProvider.notifier).state = 2;
+      context.go(RoutePaths.shell);
     case RiderPushType.unknown:
       context.go(RoutePaths.shell);
   }

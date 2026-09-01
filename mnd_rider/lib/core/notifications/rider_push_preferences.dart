@@ -11,11 +11,19 @@ abstract final class RiderPushPreferences {
       RiderPushType.newDeliveryRequest =>
         prefs.getBool('${_prefix}offers') ?? true,
       RiderPushType.orderCancelled ||
-      RiderPushType.deliveryCompleted =>
+      RiderPushType.deliveryCompleted ||
+      RiderPushType.rideUpdate =>
         prefs.getBool('${_prefix}delivery') ?? true,
       RiderPushType.earnings =>
         prefs.getBool('${_prefix}earnings') ?? true,
-      RiderPushType.unknown => true,
+      // Compliance-critical, or reports a state (blocked from jobs, a
+      // withdrawal settled) the rider must see regardless of preference —
+      // not gated by a toggle.
+      RiderPushType.documentsExpiring ||
+      RiderPushType.documentsExpired ||
+      RiderPushType.walletUpdate ||
+      RiderPushType.unknown =>
+        true,
     };
   }
 }

@@ -6,6 +6,15 @@ enum RiderPushType {
   orderCancelled,
   deliveryCompleted,
   earnings,
+  rideUpdate,
+  documentsExpiring,
+  documentsExpired,
+
+  /// Wallet/cash-hold pushes: `withdrawal_settled`, `cash_hold_started`,
+  /// `cash_settlement_confirmed`, `cash_settlement_rejected`
+  /// (functions/src/riderNotify.ts). Title/body always arrive in the payload
+  /// from the backend, so the defaults below are only a safety net.
+  walletUpdate,
   unknown,
 }
 
@@ -14,6 +23,7 @@ class RiderPushMessage {
   const RiderPushMessage({
     required this.type,
     this.orderId,
+    this.tripId,
     this.title,
     this.body,
     this.amountLkr,
@@ -21,6 +31,7 @@ class RiderPushMessage {
 
   final RiderPushType type;
   final String? orderId;
+  final String? tripId;
   final String? title;
   final String? body;
   final int? amountLkr;
@@ -31,6 +42,7 @@ class RiderPushMessage {
     final RiderPushType type = _parseType(rawType);
 
     final String? orderId = _readString(data['orderId'] ?? data['order_id']);
+    final String? tripId = _readString(data['tripId'] ?? data['trip_id']);
     final int? amount = _readInt(data['amountLkr'] ?? data['amount_lkr']);
 
     final RemoteNotification? notification = message.notification;
@@ -40,8 +52,10 @@ class RiderPushMessage {
     return RiderPushMessage(
       type: type,
       orderId: orderId,
+      tripId: tripId,
       title: title ?? _defaultTitle(type),
-      body: body ?? _defaultBody(type, orderId: orderId, amountLkr: amount),
+      body: body ??
+          _defaultBody(type, orderId: orderId, amountLkr: amount),
       amountLkr: amount,
     );
   }
@@ -61,6 +75,18 @@ class RiderPushMessage {
       case 'earnings':
       case 'earning':
         return RiderPushType.earnings;
+      case 'ride_update':
+      case 'trip_update':
+        return RiderPushType.rideUpdate;
+      case 'documents_expiring':
+        return RiderPushType.documentsExpiring;
+      case 'documents_expired':
+        return RiderPushType.documentsExpired;
+      case 'withdrawal_settled':
+      case 'cash_hold_started':
+      case 'cash_settlement_confirmed':
+      case 'cash_settlement_rejected':
+        return RiderPushType.walletUpdate;
       default:
         return RiderPushType.unknown;
     }
@@ -90,6 +116,10 @@ class RiderPushMessage {
       RiderPushType.orderCancelled => 'Order cancelled',
       RiderPushType.deliveryCompleted => 'Delivery completed',
       RiderPushType.earnings => 'Earnings update',
+      RiderPushType.rideUpdate => 'Ride update',
+      RiderPushType.documentsExpiring => 'Document expiring soon',
+      RiderPushType.documentsExpired => 'Document expired',
+      RiderPushType.walletUpdate => 'Wallet update',
       RiderPushType.unknown => 'MND Rider',
     };
   }
@@ -109,6 +139,12 @@ class RiderPushMessage {
       RiderPushType.earnings => amountLkr != null && amountLkr > 0
           ? 'You earned Rs. $amountLkr.'
           : 'Check your earnings in the app.',
+      RiderPushType.rideUpdate => 'Open the app for ride details.',
+      RiderPushType.documentsExpiring =>
+        'One of your documents is expiring soon. Renew it to keep taking jobs.',
+      RiderPushType.documentsExpired =>
+        'A document has expired. Renew it now — you can\'t go online until it\'s updated.',
+      RiderPushType.walletUpdate => 'Open the app to see your wallet.',
       RiderPushType.unknown => 'You have a new notification.',
     };
   }
@@ -116,6 +152,7 @@ class RiderPushMessage {
   String get payloadForTap => <String, String>{
         'type': type.name,
         if (orderId != null) 'orderId': orderId!,
+        if (tripId != null) 'tripId': tripId!,
       }.entries.map((MapEntry<String, String> e) => '${e.key}=${e.value}').join('&');
 
   /// Parses tap payload from local notifications.
@@ -135,11 +172,16 @@ class RiderPushMessage {
       'orderCancelled' => RiderPushType.orderCancelled,
       'deliveryCompleted' => RiderPushType.deliveryCompleted,
       'earnings' => RiderPushType.earnings,
+      'rideUpdate' => RiderPushType.rideUpdate,
+      'documentsExpiring' => RiderPushType.documentsExpiring,
+      'documentsExpired' => RiderPushType.documentsExpired,
+      'walletUpdate' => RiderPushType.walletUpdate,
       _ => RiderPushType.unknown,
     };
     return RiderPushMessage(
       type: type,
       orderId: map['orderId'],
+      tripId: map['tripId'],
       title: _defaultTitle(type),
       body: _defaultBody(type, orderId: map['orderId']),
     );

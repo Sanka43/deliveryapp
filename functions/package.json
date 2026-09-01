@@ -9,13 +9,14 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "npm run build && node --test lib/*.test.js",
+    "reconcile:rider-cash": "npm run build && node lib/scripts/reconcileRiderCashWallets.js",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
     "deploy": "firebase deploy --only functions",
     "lint": "eslint --ext .ts src/"
   },
   "dependencies": {
     "firebase-admin": "^13.0.2",
-    "firebase-functions": "^6.3.2"
+    "firebase-functions": "^7.3.2"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.24.0",

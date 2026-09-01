@@ -11,6 +11,24 @@ class RiderLocalNotifications {
       FlutterLocalNotificationsPlugin();
 
   static bool _initialized = false;
+  static bool _launchPayloadConsumed = false;
+
+  /// Payload of the local notification that launched the app from terminated
+  /// state, if any. Taps in that state never reach
+  /// `onDidReceiveNotificationResponse`, so callers must check this once after
+  /// initialization and navigate accordingly.
+  static Future<String?> takeLaunchPayload() async {
+    if (_launchPayloadConsumed) {
+      return null;
+    }
+    _launchPayloadConsumed = true;
+    final NotificationAppLaunchDetails? details =
+        await _plugin.getNotificationAppLaunchDetails();
+    if (details == null || !details.didNotificationLaunchApp) {
+      return null;
+    }
+    return details.notificationResponse?.payload;
+  }
 
   static Future<void> ensureInitialized({
     void Function(String? payload)? onTap,
@@ -75,7 +93,9 @@ class RiderLocalNotifications {
 
     final String channelId = switch (message.type) {
       RiderPushType.newDeliveryRequest => RiderPushChannels.offersChannelId,
-      RiderPushType.earnings => RiderPushChannels.earningsChannelId,
+      RiderPushType.earnings ||
+      RiderPushType.walletUpdate =>
+        RiderPushChannels.earningsChannelId,
       _ => RiderPushChannels.defaultChannelId,
     };
 

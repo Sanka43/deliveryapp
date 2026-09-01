@@ -41,6 +41,16 @@ service cloud.firestore {
           || riderSelfDoc().data.status == 'active');
     }
 
+    /// Rider is holding more collected cash than platform_config/fees allows.
+    /// Server-maintained on the rider doc (riderCash.ts) — riders can't write
+    /// it, since every self-update path is a hasOnly() whitelist that omits
+    /// it. Read off riderSelfDoc(), which claim rules already fetch, so this
+    /// gate costs no extra document read.
+    function riderCashHoldActive() {
+      return riderSelfDocExists()
+        && riderSelfDoc().data.get('cashHoldActive', false) == true;
+    }
+
     function riderStatusUnchanged() {
       return request.resource.data.status == resource.data.get('status', 'pending');
     }
@@ -61,6 +71,14 @@ service cloud.firestore {
     function isAdmin() {
       let r = userRole();
       return r == 'admin' || r == 'Admin' || r == 'ADMIN';
+    }
+
+    function riderVehicleMatchesTripVehicle(tripVehicle) {
+      let rv = riderSelfDoc().data.vehicleType;
+      return (tripVehicle == 'bike' && rv == 'bike')
+        || (tripVehicle == 'car' && (rv == 'car' || rv == 'van'))
+        || (tripVehicle == 'wheel'
+          && (rv == 'three_wheeler' || rv == 'wheel'));
     }
 
     function isRider() {
@@ -149,16 +167,61 @@ service cloud.firestore {
           && (!('phoneNumber' in d) || (d.phoneNumber is string && d.phoneNumber.size() <= 32));
       }
 
+      // Job posting membership credits — customers must not self-grant on create.
+      function noSelfGrantedJobCreditsOnCreate() {
+        let d = request.resource.data;
+        return (!('jobPostCredits' in d) || d.jobPostCredits == 0)
+          && !('jobPostCreditsUpdatedAt' in d)
+          && !('jobPostCreditsUpdatedBy' in d);
+      }
+
+      // Self may leave credits untouched, or decrement by exactly 1 (job submit).
+      function validSelfJobCreditChange() {
+        let affected = request.resource.data.diff(resource.data).affectedKeys();
+        let creditKeys = ['jobPostCredits', 'jobPostCreditsUpdatedAt', 'jobPostCreditsUpdatedBy'];
+        let touchesCredits = affected.hasAny(creditKeys);
+        let oldCredits = resource.data.get('jobPostCredits', 0);
+        let newCredits = request.resource.data.get('jobPostCredits', -1);
+        return !touchesCredits
+          || (
+            !affected.hasAny(['jobPostCreditsUpdatedBy'])
+            && affected.hasOnly(['jobPostCredits', 'jobPostCreditsUpdatedAt'])
+            && newCredits is number
+            && oldCredits is number
+            && newCredits == oldCredits - 1
+            && newCredits >= 0
+          )
+          || (
+            !affected.hasAny(['jobPostCreditsUpdatedBy'])
+            && affected.hasOnly(['jobPostCredits'])
+            && newCredits is number
+            && oldCredits is number
+            && newCredits == oldCredits - 1
+            && newCredits >= 0
+          );
+      }
+
+      function validSelfCustomerUpdate() {
+        return isSelf(uid)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          // vendorStoreId is admin-managed: self-updates must not re-point the
+          // profile at another vendor's store (order/store access is derived from it).
+          && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['vendorStoreId'])
+          && validSelfJobCreditChange();
+      }
+
       allow create: if isSelf(uid)
         && request.resource.data.uid == request.auth.uid
+        && noSelfGrantedJobCreditsOnCreate()
         && (request.resource.data.role == 'customer'
           || (request.resource.data.role == 'vendor' && validVendorUserCreate()));
 
-      allow update: if isSelf(uid)
-        && request.resource.data.uid == resource.data.uid
-        && request.resource.data.role == resource.data.role;
+      allow update: if isAdmin() || validSelfCustomerUpdate();
 
-      allow delete: if isAdmin();
+      // Self-delete supports Play Store account-deletion requirement.
+      allow delete: if isAdmin() || isSelf(uid);
 
       match /saved_addresses/{addressId} {
         function validSavedAddress() {
@@ -190,8 +253,9 @@ service cloud.firestore {
       }
     }
 
-    // Catalog read is public so the customer app can show real Firestore data while browsing
-    // (including guest mode). Writes remain restricted.
+    // Catalog read is public so the customer app can show real Firestore data while
+    // browsing (including guest mode). Do not store secrets (raw FCM tokens, private
+    // notes) on this document — prefer customers/{uid} / Admin-only fields.
     match /vendors/{vendorId} {
       allow read: if true;
 
@@ -220,8 +284,10 @@ service cloud.firestore {
       function vendorOwnVendorDocUpdateOk() {
         let b = resource.data;
         let a = request.resource.data;
+        // Legacy docs without approvalStatus: owner may keep updating (open/close),
+        // but cannot self-add an approvalStatus string (admin grants approval).
         let approvalOk = (!('approvalStatus' in b) || !(b.approvalStatus is string))
-          ? true
+          ? (!('approvalStatus' in a) || !(a.approvalStatus is string))
           : (
               b.approvalStatus == 'approved'
                 ? (!('approvalStatus' in a) || a.approvalStatus == 'approved')
@@ -230,7 +296,12 @@ service cloud.firestore {
         // rating / ratingCount are owned by Cloud Functions (store_ratings aggregation).
         let ratingFieldsUnchanged = !a.diff(b).affectedKeys()
           .hasAny(['rating', 'ratingCount']);
-        return approvalOk && ratingFieldsUnchanged;
+        // Identity fields are frozen: userRole() falls back to vendors/{uid}.role,
+        // so an unlocked role would let a vendor self-escalate to admin, and an
+        // unlocked vendorStoreId would let it claim another vendor's store.
+        let identityFieldsUnchanged = !a.diff(b).affectedKeys()
+          .hasAny(['role', 'uid', 'vendorStoreId']);
+        return approvalOk && ratingFieldsUnchanged && identityFieldsUnchanged;
       }
 
       function vendorNonAdminStoreOwner(vendorId) {
@@ -241,7 +312,9 @@ service cloud.firestore {
       }
 
       // New shop: single vendors/{authUid} doc (shop app registration; no customers/{uid} row required).
-      allow create: if isAdmin() || isVendor()
+      // Non-admin creates are limited to the caller's own doc id with pending/inactive
+      // content — a vendor must not be able to mint arbitrary storefront docs.
+      allow create: if isAdmin()
         || (isSignedIn() && vendorId == request.auth.uid && validSelfServeVendorCreate());
       // Own doc id (self-register) OR profile-linked store id (legacy slug doc).
       allow update: if isAdmin()
@@ -275,6 +348,22 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
         allow delete: if isAdmin();
       }
+
+      // Platform fee invoices: shop may read own history; only admin writes.
+      match /monthly_invoices/{monthKey} {
+        allow read: if isSignedIn()
+          && (vendorNonAdminStoreOwner(vendorId) || isAdmin());
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    // Admin web billing / fee config (mnd_web). Any signed-in user may read —
+    // the customer app needs `fees` (delivery curve, service charge %) for
+    // checkout previews, same pattern as ride_fare_config below. Writes stay
+    // admin-only.
+    match /platform_config/{docId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
     }
 
     // Products: public read for storefront; writes restricted.
@@ -302,10 +391,24 @@ service cloud.firestore {
         return request.resource.data.storeId == resource.data.storeId;
       }
 
-      allow create: if isAdmin() || ownsProductStoreOnWrite();
+      // A vendor write is otherwise unrestricted map-level access — this
+      // closes the specific gap where stockQty could be set negative or
+      // non-numeric (manageStock then trusts it directly for the
+      // customer-side "sold out" check), without guessing a full field
+      // allowlist across both the food and grocery product shapes.
+      function validProductStockFields() {
+        let o = request.resource.data;
+        return (!('stockQty' in o) || (o.stockQty is int && o.stockQty >= 0))
+          && (!('manageStock' in o) || o.manageStock is bool);
+      }
+
+      allow create: if isAdmin()
+        || (ownsProductStoreOnWrite() && validProductStockFields());
 
       allow update: if isAdmin()
-        || (ownsProductStoreOnReadDoc() && productStoreIdUnchanged());
+        || (ownsProductStoreOnReadDoc()
+          && productStoreIdUnchanged()
+          && validProductStockFields());
 
       allow delete: if isAdmin() || ownsProductStoreOnReadDoc();
     }
@@ -314,6 +417,75 @@ service cloud.firestore {
     match /banners/{bannerId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    // App version gate (doc id per app: customer/rider/shop) — public read so
+    // signed-out screens (splash/login) can prompt too; admin edits from console.
+    match /app_config/{appId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Standalone shop offers: approved docs are public; vendors see own history;
+    // vendors create as pending only; admin approves/rejects.
+    match /offers/{offerId} {
+      function ownsOfferStoreOnWrite() {
+        return isSignedIn()
+          && request.resource.data.keys().hasAll(['storeId'])
+          && request.resource.data.storeId is string
+          && request.resource.data.storeId == request.auth.uid;
+      }
+
+      function ownsOfferStoreOnReadDoc() {
+        return isSignedIn()
+          && resource.data.keys().hasAll(['storeId'])
+          && resource.data.storeId is string
+          && resource.data.storeId == request.auth.uid;
+      }
+
+      function offerStoreIdUnchanged() {
+        return request.resource.data.storeId == resource.data.storeId;
+      }
+
+      function validOfferCreate() {
+        let d = request.resource.data;
+        return d.keys().hasAll([
+              'storeId', 'storeName', 'title', 'imageUrl', 'priceLkr',
+              'endsAt', 'status', 'order', 'createdBy', 'createdAt', 'updatedAt'
+            ])
+          && d.storeId is string
+          && d.storeId.size() > 0
+          && d.storeName is string
+          && d.title is string
+          && d.title.size() > 0
+          && d.title.size() <= 120
+          && d.imageUrl is string
+          && d.imageUrl.size() > 0
+          && d.priceLkr is int
+          && d.priceLkr >= 0
+          && d.endsAt is timestamp
+          && d.status == 'pending'
+          && (d.order is int || d.order is float || d.order is number)
+          && d.createdBy is string
+          && d.createdBy == request.auth.uid;
+      }
+
+      allow read: if resource.data.status == 'approved'
+        || isAdmin()
+        || ownsOfferStoreOnReadDoc();
+
+      allow create: if isAdmin()
+        || (ownsOfferStoreOnWrite() && validOfferCreate());
+
+      // Vendor may edit own pending/rejected offers only (cannot demote approved).
+      allow update: if isAdmin()
+        || (ownsOfferStoreOnReadDoc()
+            && offerStoreIdUnchanged()
+            && resource.data.status in ['pending', 'rejected']
+            && request.resource.data.status in ['pending', 'rejected']);
+
+      allow delete: if isAdmin()
+        || (ownsOfferStoreOnReadDoc() && resource.data.status == 'pending');
     }
 
     // Broad vendor categories (Food, Grocery). Shop app reads without auth.
@@ -327,7 +499,10 @@ service cloud.firestore {
           && d.label.size() > 0
           && d.label.size() <= 80
           && orderOk
-          && d.active is bool;
+          && d.active is bool
+          // Explicit food/grocery flag the shop app can key off instead of
+          // parsing the label text — optional so legacy docs stay valid.
+          && (!('isGrocery' in d) || d.isGrocery is bool);
       }
 
       allow create: if isAdmin() && validShopCategoryDoc();
@@ -357,21 +532,69 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Grocery product aisles (Dairy, Snacks, …). Shop + customer apps read without auth.
+    match /grocery_aisles/{aisleId} {
+      allow read: if true;
+
+      function validGroceryAisleDoc() {
+        let d = request.resource.data;
+        let orderOk = d.order is int || d.order is float || d.order is number;
+        return d.label is string
+          && d.label.size() > 0
+          && d.label.size() <= 80
+          && orderOk
+          && d.active is bool;
+      }
+
+      allow create: if isAdmin() && validGroceryAisleDoc();
+      allow update: if isAdmin() && validGroceryAisleDoc();
+      allow delete: if isAdmin();
+    }
+
     // -------------------------------------------------------------------------
     // Riders (MND Rider app) — profile, earnings subcollections, inbox
     // -------------------------------------------------------------------------
     match /riders/{riderId} {
+      // PII (NIC, phone, doc URLs). Live map uses `rider_locations/{id}` instead.
       function canReadRiderDoc() {
-        return isSelf(riderId) || isAdmin() || isSignedIn();
+        return isSelf(riderId) || isAdmin();
+      }
+
+      function riderDocIsApproved() {
+        return resource.data.status is string
+          && (resource.data.status == 'approved' || resource.data.status == 'active');
+      }
+
+      // Custom-token OTP sign-in may omit phone_number on the first ID token.
+      // `verifiedPhone` is set on the custom token in verifyPhoneOtp, bound to
+      // the exact number that OTP proved — unlike a bare boolean, it can't be
+      // satisfied by claiming a *different* phone in the document.
+      function riderPhoneClaimMatches(d) {
+        return (request.auth.token.phone_number is string
+            && request.auth.token.phone_number == d.phone)
+          || (request.auth.token.verifiedPhone is string
+              && request.auth.token.verifiedPhone == d.phone);
       }
 
       function validRiderRegistrationCreate() {
         let d = request.resource.data;
-        return d.uid == riderId
+        return riderPhoneClaimMatches(d)
+          && d.keys().hasOnly([
+            'uid', 'fullName', 'phone', 'nicNumber',
+            'profilePhotoUrl', 'licensePhotoUrl', 'licenseExpiresAt', 'vehiclePhotoUrl',
+            'vehiclePhotos',
+            'insurancePhotoUrl', 'insuranceExpiresAt',
+            'revenueLicensePhotoUrl', 'revenueLicenseExpiresAt',
+            'vehicleType', 'vehicleNumber', 'city', 'email',
+            'role', 'status', 'online', 'registrationComplete', 'phoneVerified',
+            'createdAt', 'updatedAt'
+          ])
+          && d.uid == riderId
           && d.role == 'rider'
           && d.status == 'pending'
           && d.online == false
           && d.registrationComplete == true
+          && d.phoneVerified == true
           && d.fullName is string
           && d.fullName.size() >= 2
           && d.fullName.size() <= 120
@@ -382,40 +605,111 @@ service cloud.firestore {
           && d.nicNumber.size() >= 9
           && d.nicNumber.size() <= 14
           && d.vehicleType is string
-          && d.vehicleType in ['bike', 'three_wheeler', 'van']
+          && d.vehicleType in ['bike', 'three_wheeler', 'van', 'car']
           && d.vehicleNumber is string
           && d.vehicleNumber.size() >= 3
           && d.vehicleNumber.size() <= 20
           && d.city is string
           && d.city.size() >= 2
-          && d.city.size() <= 80;
+          && d.city.size() <= 80
+          && (!('email' in d) || (d.email is string && d.email.size() <= 200))
+          && d.profilePhotoUrl is string
+          && d.licensePhotoUrl is string
+          && d.licenseExpiresAt is timestamp
+          && d.vehiclePhotoUrl is string
+          && (!('vehiclePhotos' in d) || (
+            d.vehiclePhotos is map
+            && d.vehiclePhotos.keys().hasOnly(['front', 'back', 'left', 'right'])
+            && d.vehiclePhotos.front is string
+            && d.vehiclePhotos.back is string
+            && d.vehiclePhotos.left is string
+            && d.vehiclePhotos.right is string
+          ))
+          && d.insurancePhotoUrl is string
+          && d.insuranceExpiresAt is timestamp
+          && d.revenueLicensePhotoUrl is string
+          && d.revenueLicenseExpiresAt is timestamp;
+      }
+
+      // Vehicle/license/insurance fields are compliance-sensitive: changing
+      // any of them must re-flag the rider for admin review rather than
+      // silently keeping an 'approved'/'active' status on unverified data.
+      function riderComplianceKeys() {
+        return [
+          'vehicleType', 'vehicleNumber', 'licensePhotoUrl', 'licenseExpiresAt',
+          'vehiclePhotoUrl',
+          'vehiclePhotos', 'insurancePhotoUrl', 'insuranceExpiresAt',
+          'revenueLicensePhotoUrl', 'revenueLicenseExpiresAt'
+        ];
+      }
+
+      function riderProfilePatchTouchesCompliance() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(riderComplianceKeys());
       }
 
       function validRiderProfilePatch() {
         let c = request.resource.data.diff(resource.data).affectedKeys();
+        // Phone / registrationComplete / email are not client-editable.
         return c.hasOnly([
-            'fullName', 'phone', 'nicNumber', 'city', 'vehicleType', 'vehicleNumber',
-            'profilePhotoUrl', 'licensePhotoUrl', 'email', 'registrationComplete', 'updatedAt'
-          ]);
+            'fullName', 'nicNumber', 'city', 'vehicleType', 'vehicleNumber',
+            'profilePhotoUrl', 'licensePhotoUrl', 'licenseExpiresAt', 'vehiclePhotoUrl',
+            'vehiclePhotos',
+            'insurancePhotoUrl', 'insuranceExpiresAt',
+            'revenueLicensePhotoUrl', 'revenueLicenseExpiresAt', 'updatedAt',
+            'status'
+          ])
+          // 'status' may only appear in the patch to self-demote to
+          // 'pending', and only alongside a compliance-field change.
+          && (!('status' in c) || (
+            riderProfilePatchTouchesCompliance()
+            && request.resource.data.status == 'pending'
+          ))
+          // Any compliance-field change must actually land the rider back
+          // in 'pending' — an approved/active rider can't swap a vehicle,
+          // license, or insurance doc and keep their approved status.
+          && (!riderProfilePatchTouchesCompliance()
+            || request.resource.data.status == 'pending');
       }
 
       function validRiderPresencePatch() {
         let c = request.resource.data.diff(resource.data).affectedKeys();
-        return c.hasOnly(['online', 'updatedAt'])
+        let keysOk = c.hasOnly(['online', 'updatedAt'])
           || c.hasOnly(['online', 'locationUpdatedAt', 'updatedAt'])
           || c.hasOnly(['online', 'locationUpdatedAt']);
+        // Pending riders may only go / stay offline; online requires approval.
+        return keysOk
+          && (
+            request.resource.data.online == false
+            || riderDocIsApproved()
+          );
       }
 
       function validRiderLocationPatch() {
         let c = request.resource.data.diff(resource.data).affectedKeys();
-        return c.hasOnly([
+        let keysOk = c.hasOnly([
             'currentLocation', 'latitude', 'longitude', 'heading', 'speed',
             'locationUpdatedAt', 'online', 'updatedAt'
           ])
           || c.hasOnly([
             'currentLocation', 'latitude', 'longitude', 'heading', 'speed',
             'locationUpdatedAt', 'online'
+          ])
+          || c.hasOnly([
+            'currentLocation', 'latitude', 'longitude', 'heading', 'speed',
+            'locationUpdatedAt', 'updatedAt'
+          ])
+          || c.hasOnly([
+            'currentLocation', 'latitude', 'longitude', 'heading', 'speed',
+            'locationUpdatedAt'
           ]);
+        return keysOk
+          && (
+            !('online' in request.resource.data)
+            || request.resource.data.online == resource.data.get('online', false)
+            || request.resource.data.online == false
+            || riderDocIsApproved()
+          );
       }
 
       function validRiderFcmPatch() {
@@ -423,110 +717,87 @@ service cloud.firestore {
         return c.hasOnly(['fcmToken', 'fcmTokenUpdatedAt', 'updatedAt']);
       }
 
+      function validRiderPreferencesPatch() {
+        let c = request.resource.data.diff(resource.data).affectedKeys();
+        return c.hasOnly(['acceptsPassengerRides', 'updatedAt'])
+          && (!('acceptsPassengerRides' in request.resource.data)
+            || request.resource.data.acceptsPassengerRides is bool);
+      }
+
       function validRiderSelfUpdate() {
         return request.resource.data.uid == resource.data.get('uid', riderId)
           && request.resource.data.role == resource.data.get('role', 'rider')
-          && riderStatusUnchanged()
           && (
+            // Profile patch owns its own status invariant (see
+            // validRiderProfilePatch): unchanged, unless a compliance
+            // field changed, in which case it must become 'pending'.
             validRiderProfilePatch()
-            || validRiderPresencePatch()
-            || validRiderLocationPatch()
-            || validRiderFcmPatch()
+            || (
+              riderStatusUnchanged()
+              && (
+                validRiderPresencePatch()
+                || validRiderLocationPatch()
+                || validRiderFcmPatch()
+                || validRiderPreferencesPatch()
+              )
+            )
           );
       }
 
       allow read: if canReadRiderDoc();
       allow create: if isAdmin()
         || (isSelf(riderId) && validRiderRegistrationCreate());
-      allow update: if isAdmin() || (isSelf(riderId) && validRiderSelfUpdate());
+      // Incomplete riders may retry the full registration payload as an update
+      // (OTP already created the Auth user; a stub/failed write may exist).
+      allow update: if isAdmin()
+        || (isSelf(riderId) && validRiderSelfUpdate())
+        || (isSelf(riderId)
+            && resource.data.get('registrationComplete', false) != true
+            && validRiderRegistrationCreate());
       allow delete: if isAdmin();
 
+      // Wallet balance is server-authoritative: credited by the
+      // onOrderDeliveredCreditRider trigger and debited by the
+      // requestRiderWithdrawal callable (Admin SDK, which bypasses rules).
+      // Clients may only read — self-writes were a balance-inflation vector.
       match /wallet/{docId} {
-        function validWalletDoc() {
-          let w = request.resource.data;
-          return w.balanceLkr is number
-            && w.pendingWithdrawalLkr is number
-            && w.lifetimeEarnedLkr is number
-            && w.lifetimeWithdrawnLkr is number
-            && w.balanceLkr >= 0
-            && w.pendingWithdrawalLkr >= 0
-            && w.lifetimeEarnedLkr >= 0
-            && w.lifetimeWithdrawnLkr >= 0;
-        }
-
         allow read: if isSelf(riderId) || isAdmin();
-        allow create, update: if isSelf(riderId) && riderIsApproved() && validWalletDoc();
-        allow delete: if isAdmin();
+        allow write: if isAdmin();
       }
 
+      // Written only by the delivery-credit Cloud Function (Admin SDK).
       match /earnings_aggregates/{periodKey} {
-        function validAggregateDoc() {
-          let a = request.resource.data;
-          return a.periodType is string
-            && a.periodType in ['daily', 'weekly', 'monthly']
-            && a.totalLkr is number
-            && a.tripCount is number
-            && a.totalLkr >= 0
-            && a.tripCount >= 0;
-        }
-
         allow read: if isSelf(riderId) || isAdmin();
-        allow create, update: if isSelf(riderId) && riderIsApproved() && validAggregateDoc();
-        allow delete: if isAdmin();
+        allow write: if isAdmin();
       }
 
+      // Ledger is written server-side (delivery-credit trigger / withdrawal
+      // callable). Clients read only so earnings cannot be fabricated.
       match /transactions/{transactionId} {
-        function validRiderTransactionCreate() {
-          let t = request.resource.data;
-          return t.type is string
-            && t.status is string
-            && t.amountLkr is number
-            && t.title is string
-            && t.title.size() > 0
-            && t.title.size() <= 120
-            && t.subtitle is string
-            && t.subtitle.size() <= 200
-            && t.createdAt is timestamp
-            && (
-              (t.type == 'delivery_earning'
-                && t.status == 'completed'
-                && t.amountLkr > 0
-                && t.amountLkr <= 500000
-                && t.orderId is string
-                && t.orderId.size() > 0
-                && transactionId == 'earning_' + t.orderId)
-              || (t.type == 'withdrawal'
-                && t.status == 'pending'
-                && t.amountLkr < 0
-                && t.amountLkr >= -500000
-                && t.withdrawalId is string
-                && t.withdrawalId.size() > 0)
-            );
-        }
-
         allow read: if isSelf(riderId) || isAdmin();
-        allow create: if isSelf(riderId) && riderIsApproved() && validRiderTransactionCreate();
-        allow update, delete: if isAdmin();
+        allow write: if isAdmin();
       }
 
+      // Created only via the requestRiderWithdrawal callable (Admin SDK), which
+      // verifies balance server-side. Admin settles status on payout.
       match /withdrawals/{withdrawalId} {
-        function validRiderWithdrawalCreate() {
-          let w = request.resource.data;
-          return w.amountLkr is number
-            && w.amountLkr >= 500
-            && w.amountLkr <= 500000
-            && w.status == 'pending'
-            && w.payoutMethod is string
-            && w.payoutMethod in ['bank', 'mobile']
-            && w.payoutAccount is string
-            && w.payoutAccount.size() >= 4
-            && w.payoutAccount.size() <= 64
-            && w.createdAt is timestamp;
-        }
-
         allow read: if isSelf(riderId) || isAdmin();
-        allow create: if isSelf(riderId) && riderIsApproved() && validRiderWithdrawalCreate();
-        allow update, delete: if isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Cash the rider collected but hasn't handed over. Written by the
+      // earnings triggers and the settlement callables (Admin SDK); a rider
+      // who could edit these could clear their own cash hold.
+      match /cash_ledger/{entryId} {
+        allow read: if isSelf(riderId) || isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Handover requests. Created by riderRequestCashSettlement and closed by
+      // adminConfirmCashSettlement / adminRejectCashSettlement.
+      match /cash_settlements/{settlementId} {
+        allow read: if isSelf(riderId) || isAdmin();
+        allow write: if isAdmin();
       }
 
       match /notifications/{notificationId} {
@@ -550,12 +821,38 @@ service cloud.firestore {
           && d.latitude is number
           && d.longitude is number
           && d.location is latlng
-          && d.online is bool;
+          && d.online is bool
+          && (
+            !('vehicleType' in d)
+            || (d.vehicleType is string && d.vehicleType in ['bike', 'wheel', 'car'])
+          );
       }
 
-      allow read: if isSignedIn();
-      allow create, update: if isAdmin()
+      function validRiderLocationOnlineOnlyUpdate() {
+        let c = request.resource.data.diff(resource.data).affectedKeys();
+        return (
+            c.hasOnly(['online', 'locationUpdatedAt'])
+            || c.hasOnly(['online', 'locationUpdatedAt', 'vehicleType'])
+            || c.hasOnly(['online', 'vehicleType'])
+          )
+          && request.resource.data.online is bool
+          && request.resource.data.riderId == resource.data.riderId
+          && (
+            !('vehicleType' in request.resource.data)
+            || (request.resource.data.vehicleType is string
+              && request.resource.data.vehicleType in ['bike', 'wheel', 'car'])
+          );
+      }
+
+      allow read: if isAdmin()
+        || isSelf(riderId)
+        || (isSignedIn() && resource.data.online == true);
+      allow create: if isAdmin()
         || (isSelf(riderId) && riderIsApproved() && validRiderLocationDoc());
+      allow update: if isAdmin()
+        || (isSelf(riderId) && riderIsApproved() && (
+          validRiderLocationDoc() || validRiderLocationOnlineOnlyUpdate()
+        ));
       allow delete: if isAdmin();
     }
 
@@ -596,9 +893,17 @@ service cloud.firestore {
           && o.subtotal == r.subtotal
           && o.discount == r.discount
           && o.deliveryFee == r.deliveryFee
+          && o.get('serviceCharge', r.get('serviceCharge', 0))
+            == r.get('serviceCharge', 0)
           && o.total == r.total
           && o.items == r.items
-          && o.paymentMethod == r.paymentMethod;
+          && o.paymentMethod == r.paymentMethod
+          && o.get('productCashLkr', r.get('productCashLkr', 0))
+            == r.get('productCashLkr', 0)
+          && o.get('productCashStatus', r.get('productCashStatus', ''))
+            == r.get('productCashStatus', '')
+          && o.get('productCashRiderId', r.get('productCashRiderId', ''))
+            == r.get('productCashRiderId', '');
       }
 
       function validRiderClaimOrder() {
@@ -606,6 +911,10 @@ service cloud.firestore {
         let c = o.diff(resource.data).affectedKeys();
         return isRider()
           && riderIsApproved()
+          // Over the cash-in-hand limit: no new jobs until admin confirms a
+          // handover. Deliberately absent from the progress rules below so a
+          // rider who crosses the limit mid-delivery can still finish it.
+          && !riderCashHoldActive()
           && orderOpenForRiderClaim()
           && orderCoreFieldsUnchanged()
           && o.assignedRiderId == request.auth.uid
@@ -641,6 +950,10 @@ service cloud.firestore {
           && o.openForRiders == false
           && o.status in ['picked_up', 'on_the_way', 'delivered']
           && riderDeliveryStatusTransitionOk(r.status, o.status)
+          // actual_trip deliveries must be finalized by completeDeliveryOrder.
+          && (o.status != 'delivered'
+            || !('deliveryFeeMode' in r)
+            || r.deliveryFeeMode != 'actual_trip')
           && c.hasOnly([
             'status', 'riderStatusUpdatedAt',
             'pickedUpAt', 'onTheWayAt', 'deliveredAt', 'updatedAt'
@@ -679,6 +992,8 @@ service cloud.firestore {
           && o.discount >= 0
           && o.deliveryFee is int
           && o.deliveryFee >= 0
+          && (!('serviceCharge' in o)
+            || (o.serviceCharge is int && o.serviceCharge >= 0))
           && o.total is int
           && o.total >= 0
           && o.deliveryNote is string
@@ -733,6 +1048,8 @@ service cloud.firestore {
           && o.discount >= 0
           && o.deliveryFee is int
           && o.deliveryFee >= 0
+          && (!('serviceCharge' in o)
+            || (o.serviceCharge is int && o.serviceCharge >= 0))
           && o.total is int
           && o.total >= 0
           && o.deliveryNote is string
@@ -760,43 +1077,106 @@ service cloud.firestore {
           && o.trackingNumber.matches('^MND[0-9]{2}[0-9]{5,12}$');
       }
 
-      allow read: if isAdmin() || isRider()
+      /// Vendor board actions (accept / progress / reject). Money and item fields
+      /// stay frozen — payouts and vendor stats aggregate from them.
+      /// Cancel is only allowed on a still-new order (not yet accepted) —
+      /// once it's in the kitchen or ready, the shop has committed to it.
+      function vendorOrderStatusTransitionOk() {
+        let from = resource.data.status;
+        let to = request.resource.data.status;
+        let fulfillment = resource.data.get('fulfillmentMode', 'delivery');
+        return from == to
+          || (from == 'placed' && to in ['confirmed', 'cancelled'])
+          || (from in ['confirmed', 'preparing']
+            && to in ['confirmed', 'preparing', 'ready'])
+          || (from == 'ready'
+            && to == 'completed'
+            && fulfillment == 'selfPickup');
+      }
+
+      function vendorOpenForRidersOk() {
+        let o = request.resource.data;
+        let fulfillment = resource.data.get('fulfillmentMode', 'delivery');
+        return o.status == 'ready' && fulfillment != 'selfPickup'
+          ? o.openForRiders == true
+          : o.get('openForRiders', false) == false;
+      }
+
+      function validVendorOrderUpdate() {
+        let o = request.resource.data;
+        let c = o.diff(resource.data).affectedKeys();
+        return vendorMayAccessThisOrder()
+          && orderCoreFieldsUnchanged()
+          && vendorOrderStatusTransitionOk()
+          && vendorOpenForRidersOk()
+          && (o.status == resource.data.status
+            || o.status in ['confirmed', 'preparing', 'ready', 'completed', 'cancelled'])
+          && c.hasOnly([
+            'status', 'vendorStatusUpdatedAt', 'openForRiders',
+            'cancelledBy', 'cancellationReason', 'cancelledAt', 'updatedAt'
+          ]);
+      }
+
+      /// Customers may cancel early unassigned orders, or mark rated — nothing else.
+      function validCustomerOrderUpdate() {
+        let o = request.resource.data;
+        let c = o.diff(resource.data).affectedKeys();
+        return isSignedIn()
+          && resource.data.customerId == request.auth.uid
+          && orderCoreFieldsUnchanged()
+          && (
+            (o.status == 'cancelled'
+              && resource.data.status in ['placed', 'confirmed']
+              && orderUnassignedForRiders()
+              && c.hasOnly([
+                'status', 'cancellationReason', 'cancellationReasonDetail',
+                'cancelledAt', 'cancelledBy', 'updatedAt'
+              ]))
+            || c.hasOnly(['storeRated', 'storeRatingStars', 'updatedAt'])
+          );
+      }
+
+      // Single-doc get may use get()/exists() helpers (vendor storefront, approval).
+      allow get: if isAdmin()
         || vendorMayAccessThisOrder()
         || isAssignedRiderForOrder()
+        || (riderIsApproved() && orderOpenForRiderClaim())
         || (isSignedIn() && resource.data.customerId == request.auth.uid);
 
-      allow create: if isSignedIn() && validOrderCreate()
-        || (isAdmin() && validAdminOrderCreate());
+      // List queries must be provable from equality filters (rules are not filters).
+      // Pending riders may list only their own assigned/history rows.
+      allow list: if isAdmin()
+        || (isSignedIn() && resource.data.assignedRiderId == request.auth.uid)
+        || (isSignedIn() && resource.data.riderId == request.auth.uid)
+        || (isSignedIn() && resource.data.customerId == request.auth.uid)
+        || (isSignedIn() && resource.data.vendorId == request.auth.uid)
+        || (isSignedIn() && resource.data.vendorStoreId == request.auth.uid)
+        || (isSignedIn()
+            && vendorStoreId().size() > 0
+            && resource.data.vendorId == vendorStoreId())
+        || (riderIsApproved()
+            && resource.data.openForRiders == true
+            && resource.data.status == 'ready');
+
+      // Customer creates go through placeCashOnDeliveryOrder (Admin SDK).
+      allow create: if isAdmin() && validAdminOrderCreate();
 
       allow update: if isAdmin()
-        || vendorMayAccessThisOrder()
+        || validVendorOrderUpdate()
         || validRiderClaimOrder()
         || validRiderAssignedOrderProgress()
-        || (isSignedIn() && resource.data.customerId == request.auth.uid);
+        || validCustomerOrderUpdate();
 
       allow delete: if isAdmin();
     }
 
-    // Global counters (e.g. monotonic order sequence for `trackingNumber`).
+    // Global counters — Admin SDK / Cloud Functions only (placeCashOnDeliveryOrder).
     match /system/{docId} {
       allow read: if isSignedIn();
-
-      allow create: if isSignedIn()
-        && docId == 'order_sequence'
-        && request.resource.data.keys().hasOnly(['value'])
-        && request.resource.data.value is int
-        && request.resource.data.value == 1;
-
-      allow update: if isSignedIn()
-        && docId == 'order_sequence'
-        && request.resource.data.keys().hasOnly(['value'])
-        && request.resource.data.value is int
-        && request.resource.data.value == resource.data.value + 1;
-
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
-    // Notifications: owner reads own notifications.
+    // Notifications: owner reads own notifications; can mark read.
     // Riders may create customer/vendor alerts when accepting a delivery.
     match /notifications/{notificationId} {
       function validRiderNotificationCreate() {
@@ -820,47 +1200,28 @@ service cloud.firestore {
           && (!('read' in n) || n.read is bool);
       }
 
+      function validOwnerNotificationReadUpdate() {
+        let c = request.resource.data.diff(resource.data).affectedKeys();
+        return isSignedIn()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+          && (
+            c.hasOnly(['read'])
+            || c.hasOnly(['read', 'readAt'])
+          );
+      }
+
       allow read: if isSignedIn()
         && resource.data.userId == request.auth.uid;
       allow create: if isAdmin() || validRiderNotificationCreate();
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin() || validOwnerNotificationReadUpdate();
+      allow delete: if isAdmin();
     }
 
     // -------------------------------------------------------------------------
     // Jobs module (local employment listings — MND customer app)
     // -------------------------------------------------------------------------
     match /jobs/{jobId} {
-      function validJobCreate() {
-        let d = request.resource.data;
-        return isSignedIn()
-          && d.userId == request.auth.uid
-          && d.status == 'pending'
-          && d.title is string
-          && d.title.size() >= 3
-          && d.title.size() <= 120
-          && d.category is string
-          && d.category.size() > 0
-          && d.type is string
-          && d.type.size() > 0
-          && d.salary is string
-          && d.location is string
-          && d.description is string
-          && d.description.size() >= 10
-          && d.companyName is string
-          && d.companyName.size() > 0
-          && d.contactPhone is string
-          && d.contactPhone.size() >= 8
-          && d.createdAt is timestamp
-          && d.expiresAt is timestamp
-          && (!('verified' in d) || d.verified is bool)
-          && (!('urgent' in d) || d.urgent is bool)
-          && (!('remote' in d) || d.remote is bool)
-          && (!('availableLaborCount' in d)
-            || (d.availableLaborCount is int
-              && d.availableLaborCount >= 1
-              && d.availableLaborCount <= 99));
-      }
-
       function canReadJob() {
         return resource.data.status == 'active'
           || isAdmin()
@@ -899,7 +1260,13 @@ service cloud.firestore {
               && d.availableLaborCount <= 99));
       }
 
-      allow create: if validJobCreate() || validAdminJobCreate();
+      // Non-admin creates go through the createJobPost Cloud Function
+      // (Admin SDK, bypasses rules) so the credit spend is atomic with the
+      // job write — a direct client create previously could skip
+      // decrementing jobPostCredits entirely while still passing a
+      // "credits > 0" check, allowing unlimited free posts off one credit.
+      // Admin-authored jobs (mnd_web) still create directly.
+      allow create: if isAdmin() && validAdminJobCreate();
 
       function ownerPendingJobPatchOk() {
         let c = request.resource.data.diff(resource.data).affectedKeys();
@@ -916,12 +1283,7 @@ service cloud.firestore {
       }
 
       allow update: if isAdmin()
-        || ownerPendingJobPatchOk()
-        || (isSignedIn()
-          && resource.data.userId == request.auth.uid
-          && resource.data.status == 'pending'
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.status == 'pending');
+        || ownerPendingJobPatchOk();
 
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.userId == request.auth.uid);
@@ -952,7 +1314,9 @@ service cloud.firestore {
           && d.applicantPhone.size() >= 8
           && d.status == 'submitted'
           && d.appliedAt is timestamp
-          && isJobOwnerForApplication(d.jobId) == false;
+          && isJobOwnerForApplication(d.jobId) == false
+          && exists(/databases/$(database)/documents/jobs/$(d.jobId))
+          && jobDocForApplication(d.jobId).data.status == 'active';
       }
 
       function validEmployerApplicationUpdate() {
@@ -1014,7 +1378,7 @@ service cloud.firestore {
           && d.orderId == orderId
           && d.customerId == request.auth.uid
           && o.customerId == request.auth.uid
-          && o.status == 'delivered'
+          && o.status in ['delivered', 'completed']
           && (!('storeRated' in o) || o.storeRated != true)
           && d.vendorId is string
           && d.vendorId.size() > 0
@@ -1033,7 +1397,12 @@ service cloud.firestore {
           && d.updatedAt is timestamp;
       }
 
+      // `resource == null` covers the pre-create existence check the client
+      // transaction runs before writing a new rating (submitStoreRating) —
+      // without it, reading a not-yet-created doc errors on resource.data
+      // and Firestore surfaces that as permission-denied.
       allow read: if isAdmin()
+        || (isSignedIn() && resource == null)
         || (isSignedIn() && resource.data.customerId == request.auth.uid)
         || (isSignedIn() && resource.data.status == 'visible');
 
@@ -1046,6 +1415,345 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
 
       allow delete: if isAdmin();
+    }
+
+    // Customer → rider ratings (one doc per delivered order; doc id == orderId).
+    match /rider_ratings/{orderId} {
+      function riderRatingOrder() {
+        return get(/databases/$(database)/documents/orders/$(orderId)).data;
+      }
+
+      function riderRatingOrderExists() {
+        return exists(/databases/$(database)/documents/orders/$(orderId));
+      }
+
+      function riderRatingOrderRiderId(o) {
+        return 'riderId' in o && o.riderId is string && o.riderId.size() > 0
+          ? o.riderId
+          : (o.assignedRiderId is string ? o.assignedRiderId : '');
+      }
+
+      function validRiderRatingCreate() {
+        let d = request.resource.data;
+        let o = riderRatingOrder();
+        return isSignedIn()
+          && riderRatingOrderExists()
+          && d.orderId == orderId
+          && d.customerId == request.auth.uid
+          && o.customerId == request.auth.uid
+          && o.status in ['delivered', 'completed']
+          && (!('riderRated' in o) || o.riderRated != true)
+          && d.riderId is string
+          && d.riderId.size() > 0
+          && d.riderId.size() <= 128
+          && d.riderId == riderRatingOrderRiderId(o)
+          && d.stars is int
+          && d.stars >= 1
+          && d.stars <= 5
+          && d.comment is string
+          && d.comment.size() <= 500
+          && d.status == 'visible'
+          && d.createdAt is timestamp
+          && d.updatedAt is timestamp;
+      }
+
+      // `resource == null` covers the pre-create existence check the client
+      // transaction runs before writing a new rating (submitRiderRating) —
+      // without it, reading a not-yet-created doc errors on resource.data
+      // and Firestore surfaces that as permission-denied.
+      allow read: if isAdmin()
+        || (isSignedIn() && resource == null)
+        || (isSignedIn() && resource.data.customerId == request.auth.uid)
+        || (isSignedIn() && resource.data.status == 'visible');
+
+      allow create: if validRiderRatingCreate();
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['visible', 'hidden']
+        && request.resource.data.updatedAt is timestamp;
+
+      allow delete: if isAdmin();
+    }
+
+    // Short-lived ride fare quotes (written only by Admin SDK / Cloud Functions).
+    match /ride_fare_quotes/{quoteId} {
+      allow read: if isSignedIn()
+        && resource.data.customerId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    // Admin-managed ride fare rates (Bike / Wheel / Car).
+    match /ride_fare_config/{docId} {
+      function validFareVehicleRates(m) {
+        return m is map
+          && m.baseLkr is int
+          && m.baseLkr >= 0
+          && m.baseLkr <= 100000
+          && m.perKmLkr is int
+          && m.perKmLkr >= 0
+          && m.perKmLkr <= 100000
+          && m.minLkr is int
+          && m.minLkr >= 0
+          && m.minLkr <= 100000
+          && (!('perStopLkr' in m)
+            || (m.perStopLkr is int && m.perStopLkr >= 0 && m.perStopLkr <= 100000));
+      }
+
+      function validRideFareConfigDoc() {
+        let d = request.resource.data;
+        return validFareVehicleRates(d.bike)
+          && validFareVehicleRates(d.wheel)
+          && validFareVehicleRates(d.car);
+      }
+
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && validRideFareConfigDoc();
+      allow delete: if isAdmin();
+    }
+
+    // Passenger ride trips.
+    match /trips/{tripId} {
+      function isAssignedRiderForTrip() {
+        return isSignedIn()
+          && (
+            (resource.data.assignedRiderId is string
+              && resource.data.assignedRiderId == request.auth.uid)
+            || (resource.data.riderId is string
+              && resource.data.riderId == request.auth.uid)
+          );
+      }
+
+      function tripUnassignedForRiders() {
+        return !('assignedRiderId' in resource.data)
+          || resource.data.assignedRiderId == null
+          || (resource.data.assignedRiderId is string
+            && resource.data.assignedRiderId.size() == 0);
+      }
+
+      function tripOpenForRiderClaim() {
+        return resource.data.status == 'searching'
+          && resource.data.openForRiders == true
+          && tripUnassignedForRiders();
+      }
+
+      function tripCoreFieldsUnchanged() {
+        let o = request.resource.data;
+        let r = resource.data;
+        return o.customerId == r.customerId
+          && o.vehicleType == r.vehicleType
+          && o.estimatedFareLkr == r.estimatedFareLkr
+          && o.distanceKm == r.distanceKm
+          && o.paymentMethod == r.paymentMethod
+          && o.pickup == r.pickup
+          && o.dropoff == r.dropoff
+          && (('stops' in o) == ('stops' in r))
+          && (!('stops' in r) || o.stops == r.stops)
+          // Explicit equality checks (in addition to the c.hasOnly([...])
+          // whitelist on each caller) so payment state can never be
+          // smuggled into a rider/customer trip update — mirrors
+          // orderCoreFieldsUnchanged()'s redundant productCash* checks.
+          && o.get('paymentStatus', r.get('paymentStatus', ''))
+            == r.get('paymentStatus', '')
+          && o.get('paymentProvider', r.get('paymentProvider', ''))
+            == r.get('paymentProvider', '')
+          && o.get('paymentTransactionId', r.get('paymentTransactionId', ''))
+            == r.get('paymentTransactionId', '')
+          && o.get('fareQuoteId', r.get('fareQuoteId', ''))
+            == r.get('fareQuoteId', '');
+      }
+
+      function validTripPlaceMap(m) {
+        return m is map
+          && m.lat is number
+          && m.lng is number
+          && m.label is string
+          && m.label.size() > 0
+          && m.label.size() <= 240;
+      }
+
+      // Currently unused: `allow create: if false` below means every trip is
+      // created by a Cloud Function via the Admin SDK, which bypasses rules
+      // entirely. Kept as a rules-level backstop in case a future path ever
+      // creates trips directly from a client — deleting it would remove that
+      // backstop with no benefit, since it costs nothing while inert.
+      function validTripCreate() {
+        let o = request.resource.data;
+        return o.customerId == request.auth.uid
+          && o.contactPhone is string
+          && o.contactPhone.size() >= 8
+          && o.contactPhone.size() <= 20
+          && (!('driverNote' in o)
+            || (o.driverNote is string && o.driverNote.size() <= 500))
+          && validTripPlaceMap(o.pickup)
+          && validTripPlaceMap(o.dropoff)
+          && o.vehicleType in ['wheel', 'bike', 'car']
+          && o.distanceKm is number
+          && o.distanceKm >= 0
+          && o.estimatedFareLkr is int
+          && o.estimatedFareLkr >= 0
+          && o.fareQuoteId is string
+          && o.fareQuoteId.size() > 0
+          && o.fareQuoteId.size() <= 128
+          && o.status in ['draft_payment', 'searching']
+          && o.paymentMethod in ['cash', 'payhere']
+          && o.paymentStatus in ['pending', 'paid']
+          && o.openForRiders is bool
+          && (o.paymentMethod == 'cash'
+            ? (o.status == 'searching'
+              && o.paymentStatus == 'pending'
+              && o.openForRiders == true)
+            : (o.status == 'draft_payment'
+              && o.paymentStatus == 'pending'
+              && o.openForRiders == false));
+      }
+
+      function validCustomerCancelSearchingTrip() {
+        let o = request.resource.data;
+        let c = o.diff(resource.data).affectedKeys();
+        return isSignedIn()
+          && resource.data.customerId == request.auth.uid
+          // 'draft_payment' included so a trip stuck before payment is
+          // confirmed (e.g. abandoned PayHere checkout) is not permanently
+          // uncancellable. 'accepted' included so a passenger isn't stuck
+          // waiting on a rider who accepted and then went silent/no-showed —
+          // once the rider has actually arrived ('arrived'/'in_progress'),
+          // only the rider (or admin) can cancel.
+          && resource.data.status in ['searching', 'draft_payment', 'accepted']
+          && o.status == 'cancelled'
+          && o.openForRiders == false
+          && c.hasOnly([
+            'status', 'openForRiders', 'cancelledAt', 'cancelReason', 'updatedAt'
+          ]);
+      }
+
+      function validRiderClaimTrip() {
+        let o = request.resource.data;
+        let c = o.diff(resource.data).affectedKeys();
+        return isRider()
+          && riderIsApproved()
+          // See validRiderClaimOrder — same cash-in-hand gate, and likewise
+          // only on the claim, never on an in-flight trip's progress.
+          && !riderCashHoldActive()
+          && tripOpenForRiderClaim()
+          && tripCoreFieldsUnchanged()
+          && riderVehicleMatchesTripVehicle(resource.data.vehicleType)
+          && o.assignedRiderId == request.auth.uid
+          && o.riderId == request.auth.uid
+          && o.openForRiders == false
+          && o.status == 'accepted'
+          && o.riderAcceptedAt is timestamp
+          && c.hasOnly([
+            'assignedRiderId', 'riderId', 'openForRiders', 'status',
+            'riderAcceptedAt', 'updatedAt'
+          ]);
+      }
+
+      // 'completed' is reachable only from 'in_progress' — a rider must
+      // actually start the trip before finishing it, so a claimed ride
+      // can't be marked done without ever picking up or dropping off.
+      function tripStatusTransitionOk(fromStatus, toStatus) {
+        return (fromStatus == 'accepted'
+            && toStatus in ['arrived', 'in_progress', 'cancelled'])
+          || (fromStatus == 'arrived'
+            && toStatus in ['in_progress', 'cancelled'])
+          || (fromStatus == 'in_progress'
+            && toStatus in ['completed', 'cancelled']);
+      }
+
+      // Every stop must be visited (currentStopIndex caught up to
+      // stops.size(), advanced only via validRiderStopAdvance) before a
+      // trip with intermediate stops can be marked completed.
+      function tripStopsFullyVisited() {
+        let r = resource.data;
+        return !('stops' in r)
+          || r.stops.size() == 0
+          || r.get('currentStopIndex', 0) >= r.stops.size();
+      }
+
+      // Advancing past an intermediate stop, mid-leg — status stays
+      // 'in_progress' so tripStatusTransitionOk() doesn't apply here.
+      function validRiderStopAdvance() {
+        let o = request.resource.data;
+        let r = resource.data;
+        let c = o.diff(r).affectedKeys();
+        return isRider()
+          && riderIsApproved()
+          && isAssignedRiderForTrip()
+          && tripCoreFieldsUnchanged()
+          && r.status == 'in_progress'
+          && o.status == 'in_progress'
+          && ('stops' in r) && r.stops.size() > 0
+          && o.currentStopIndex == (('currentStopIndex' in r) ? r.currentStopIndex : 0) + 1
+          && o.currentStopIndex <= r.stops.size()
+          && c.hasOnly(['currentStopIndex', 'updatedAt']);
+      }
+
+      function validRiderTripProgress() {
+        let o = request.resource.data;
+        let r = resource.data;
+        let c = o.diff(r).affectedKeys();
+        return isRider()
+          && riderIsApproved()
+          && isAssignedRiderForTrip()
+          && tripCoreFieldsUnchanged()
+          && o.riderId == r.riderId
+          && o.assignedRiderId == r.assignedRiderId
+          && o.openForRiders == false
+          && o.status in ['arrived', 'in_progress', 'completed', 'cancelled']
+          && tripStatusTransitionOk(r.status, o.status)
+          && (o.status != 'completed' || tripStopsFullyVisited())
+          && c.hasOnly([
+            'status', 'updatedAt', 'arrivedAt', 'startedAt', 'completedAt',
+            'cancelledAt', 'cancelReason'
+          ]);
+      }
+
+      allow get: if isAdmin()
+        || isAssignedRiderForTrip()
+        || (riderIsApproved() && tripOpenForRiderClaim())
+        || (isSignedIn() && resource.data.customerId == request.auth.uid);
+
+      allow list: if isAdmin()
+        || (isSignedIn() && resource.data.assignedRiderId == request.auth.uid)
+        || (isSignedIn() && resource.data.riderId == request.auth.uid)
+        || (isSignedIn() && resource.data.customerId == request.auth.uid)
+        || (riderIsApproved()
+            && resource.data.openForRiders == true
+            && resource.data.status == 'searching');
+
+      // Creates must go through Cloud Functions (Admin SDK) — no client trip create.
+      allow create: if false;
+
+      allow update: if isAdmin()
+        || validRiderClaimTrip()
+        || validRiderTripProgress()
+        || validRiderStopAdvance()
+        || validCustomerCancelSearchingTrip();
+
+      allow delete: if isAdmin();
+    }
+
+    // Ops alerts for missed shop orders (written by Cloud Functions).
+    match /admin_alerts/{alertId} {
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow create: if false;
+      allow delete: if isAdmin();
+    }
+
+    // Collection-group query used by AdminWithdrawalsPage. Nested
+    // riders/{id}/withdrawals rules do not cover collectionGroup('withdrawals').
+    match /{path=**}/withdrawals/{withdrawalId} {
+      allow read: if isAdmin();
+    }
+
+    // Collection-group query behind the admin panel's pending-handover queue.
+    // Same reason as withdrawals: the nested riders/{id}/cash_settlements rule
+    // does not cover collectionGroup('cash_settlements').
+    match /{path=**}/cash_settlements/{settlementId} {
+      allow read: if isAdmin();
     }
 
     // Device tokens: owner manages own token docs (FCM registry).
