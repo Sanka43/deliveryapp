@@ -1,6 +1,6 @@
 ﻿/**
  * MND web admin — Firestore CRUD aligned with mnd_customer:
- * collections: orders, customers, vendors, products, banners, offers, shop_categories, shop_types, grocery_aisles, riders, store_ratings, ride_fare_config (see firebase_collections.dart).
+ * collections: orders, trips, customers, vendors, products, banners, offers, shop_categories, shop_types, grocery_aisles, riders, store_ratings, ride_fare_config (see firebase_collections.dart).
  * Auth: Firebase Email/Password; Firestore customers/{uid}.role must be "admin".
  */
 (function () {
@@ -25,6 +25,7 @@
     rideFareConfig: "ride_fare_config",
     riderCashLedger: "cash_ledger",
     riderCashSettlements: "cash_settlements",
+    riderWithdrawals: "withdrawals",
     storeRatings: "store_ratings",
   };
 
@@ -133,6 +134,7 @@
   let currentView = "dashboard";
   let cache = {
     orders: [],
+    trips: [],
     vendors: [],
     products: [],
     banners: [],
@@ -152,6 +154,7 @@
     ongoingJobs: [],
     cashSettlements: [],
     cashRiders: [],
+    withdrawals: [],
   };
 
   let ongoingUnsubs = [];
@@ -794,6 +797,8 @@
       cod: "Cash on delivery",
       card: "Card",
       online: "Online",
+      cash: "Cash",
+      payhere: "PayHere",
     };
     return map[key] || key || "—";
   }
@@ -898,6 +903,7 @@
         mode === "assign-rider" ||
           mode === "job-applications" ||
           mode === "order-detail" ||
+          mode === "trip-detail" ||
           mode === "customer-profile" ||
           mode === "rider-profile" ||
           mode === "rider-track" ||
@@ -1026,6 +1032,7 @@
   const titles = {
     dashboard: "Dashboard",
     orders: "Orders",
+    rides: "Rides",
     vendors: "Vendors",
     products: "Products",
     banners: "Banners",
@@ -1038,6 +1045,7 @@
     "ongoing-riders": "Ongoing riders",
     customers: "Customers",
     "rider-cash": "Rider cash",
+    withdrawals: "Withdrawals",
     "ride-fares": "Ride fares",
     ratings: "Rating Management",
     "platform-fees": "Fees & commissions",
@@ -1088,6 +1096,7 @@
       await Promise.all([loadOrders(), loadVendors(), loadCustomers(), loadJobs(), loadRiders(), loadOffers()]);
     }
     if (name === "orders") await Promise.all([loadOrders(), loadCustomers(), loadVendors()]);
+    if (name === "rides") await Promise.all([loadTrips(), loadCustomers(), loadRiders()]);
     if (name === "vendors" || name === "shop-approvals") {
       await loadVendors();
     }
@@ -1110,6 +1119,7 @@
       await startOngoingJobsListeners();
     }
     if (name === "customers") await Promise.all([loadCustomers(), loadOrders()]);
+    if (name === "withdrawals") await loadWithdrawals();
     if (name === "rider-cash") await loadRiderCash();
     if (name === "ride-fares") await loadRideFares();
     if (name === "ratings") await loadRatings();
@@ -1120,6 +1130,7 @@
     }
     if (name === "dashboard") renderDashboard();
     if (name === "orders") renderOrders();
+    if (name === "rides") renderTrips();
     if (name === "vendors") renderVendors();
     if (name === "shop-approvals") renderShopApprovals();
     if (name === "job-approvals") {
@@ -1142,6 +1153,7 @@
     if (name === "riders") renderRiders();
     if (name === "ongoing-riders") renderOngoingRiders();
     if (name === "customers") renderCustomers();
+    if (name === "withdrawals") renderWithdrawals();
     if (name === "rider-cash") renderRiderCash();
     if (name === "ride-fares") renderRideFares();
     if (name === "ratings") renderRatings();
@@ -1159,6 +1171,17 @@
     } catch (_) {
       const snap = await db.collection(COL.orders).limit(200).get(FS_GET_SERVER);
       cache.orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
+  }
+
+  async function loadTrips() {
+    try {
+      const q = db.collection(COL.trips).orderBy("createdAt", "desc").limit(200);
+      const snap = await q.get(FS_GET_SERVER);
+      cache.trips = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (_) {
+      const snap = await db.collection(COL.trips).limit(200).get(FS_GET_SERVER);
+      cache.trips = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
   }
 
@@ -2364,6 +2387,153 @@
     tbody.querySelectorAll("[data-del-order]").forEach((btn) => {
       btn.addEventListener("click", () => deleteOrder(btn.getAttribute("data-del-order")));
     });
+  }
+
+  function tripDisplayNumber(trip) {
+    return `Trip ${String(trip?.id || "").slice(0, 8).toUpperCase()}`;
+  }
+
+  async function cancelTripFromRidesTab(id) {
+    await adminCancelTrip(id);
+    if (currentView === "rides") {
+      await loadTrips();
+      renderTrips();
+    }
+  }
+
+  function renderTrips() {
+    const q = (document.getElementById("filter-rides")?.value || "").toLowerCase();
+    const st = document.getElementById("filter-ride-status")?.value || "";
+    let list = [...cache.trips];
+    if (st) list = list.filter((t) => String(t.status || "").toLowerCase() === st);
+    if (q) {
+      list = list.filter((t) => {
+        const id = t.id.toLowerCase();
+        const cust = customerDisplayName(t).toLowerCase();
+        const rider = riderById(compactText(t.riderId, t.assignedRiderId));
+        const riderName = rider ? riderDisplayName(rider).toLowerCase() : "";
+        const route = tripPickupDropoff(t);
+        return (
+          id.includes(q) ||
+          cust.includes(q) ||
+          riderName.includes(q) ||
+          route.pickupLabel.toLowerCase().includes(q) ||
+          route.dropoffLabel.toLowerCase().includes(q) ||
+          String(t.contactPhone || "").toLowerCase().includes(q)
+        );
+      });
+    }
+    const tbody = document.querySelector("#table-rides tbody");
+    tbody.innerHTML =
+      list.length === 0
+        ? `<tr><td colspan="7"><div class="empty-state">No rides.</div></td></tr>`
+        : list
+            .map((t) => {
+              const stRaw = String(t.status || "searching");
+              const customer = customerById(t.customerId);
+              const customerName = customerDisplayName(t);
+              const customerMeta = compactText(customer?.phoneNumber, customer?.phone, t.contactPhone);
+              const rider = riderById(compactText(t.riderId, t.assignedRiderId));
+              const riderLabel = rider
+                ? riderDisplayName(rider)
+                : compactText(t.riderId, "Unassigned — searching");
+              const vehicle = riderVehicleTypeLabel(t.vehicleType);
+              const route = tripPickupDropoff(t);
+              const canCancel = !["completed", "cancelled"].includes(stRaw.toLowerCase());
+              const cancelBtn = canCancel
+                ? `<button type="button" class="btn btn-ghost btn-sm" data-cancel-ride="${escapeHtml(t.id)}">Cancel</button>`
+                : "";
+              return `<tr class="order-row" tabindex="0" data-view-trip="${escapeHtml(t.id)}" aria-label="View ride details">
+          <td><strong>${escapeHtml(tripDisplayNumber(t))}</strong><br/><small>${escapeHtml(fmtTs(t.createdAt))}</small></td>
+          <td><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
+          <td><strong>${escapeHtml(riderLabel)}</strong><br/><small>${escapeHtml(vehicle)}</small></td>
+          <td class="ongoing-route-cell">${escapeHtml(route.pickupLabel)} → ${escapeHtml(route.dropoffLabel)}</td>
+          <td>${fmtMoney(t.estimatedFareLkr)}</td>
+          <td><span class="badge ${badgeClass(stRaw)}">${escapeHtml(statusLabel(stRaw))}</span></td>
+          <td class="row-actions">${cancelBtn}</td>
+        </tr>`;
+            })
+            .join("");
+    tbody.querySelectorAll("[data-view-trip]").forEach((row) => {
+      const open = () => openTripDetails(row.getAttribute("data-view-trip"));
+      row.addEventListener("click", (e) => {
+        if (e.target.closest("button, a, input, select, textarea")) return;
+        open();
+      });
+      row.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (e.target.closest("button, a, input, select, textarea")) return;
+        e.preventDefault();
+        open();
+      });
+    });
+    tbody.querySelectorAll("[data-cancel-ride]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        cancelTripFromRidesTab(btn.getAttribute("data-cancel-ride")).catch((e) => alert(e.message || String(e)));
+      });
+    });
+  }
+
+  function openTripDetails(id) {
+    const t = cache.trips.find((x) => x.id === id);
+    if (!t) return;
+    const customer = customerById(t.customerId);
+    const rider = riderById(compactText(t.riderId, t.assignedRiderId));
+    const customerName = customerDisplayName(t);
+    const customerPhone = compactText(customer?.phoneNumber, customer?.phone, t.contactPhone);
+    const riderLabel = rider
+      ? riderDisplayName(rider)
+      : compactText(t.riderId, "Unassigned — searching");
+    const route = tripPickupDropoff(t);
+    const stops = Array.isArray(t.stops) ? t.stops : [];
+    const vehicle = riderVehicleTypeLabel(t.vehicleType);
+    const title = tripDisplayNumber(t);
+    const paymentStatusLabel = t.paymentStatus ? statusLabel(t.paymentStatus) : "—";
+    const html = `<div class="order-detail">
+      <div class="order-detail-receipt">
+        <div class="order-detail-head">
+          <span class="order-detail-kicker">MND Ride</span>
+          <h4>${escapeHtml(title)}</h4>
+          <p>${escapeHtml(vehicle)}</p>
+        </div>
+
+        <div class="order-detail-meta">
+          ${orderDetailLine("Date", fmtTs(t.createdAt))}
+          ${orderDetailLine("Customer", customerName)}
+          ${orderDetailLine("Phone", customerPhone)}
+          ${orderDetailLine("Rider", riderLabel)}
+          ${orderDetailLine("Vehicle", vehicle)}
+          ${orderDetailLine("Status", statusLabel(t.status || "searching"))}
+          ${t.cancelReason ? orderDetailLine("Cancel reason", t.cancelReason) : ""}
+          ${orderDetailLine("Payment", `${paymentMethodLabel(t.paymentMethod)} · ${paymentStatusLabel}`)}
+        </div>
+
+        <span class="badge ${badgeClass(t.status)}">${escapeHtml(statusLabel(t.status || "searching"))}</span>
+
+        <div class="order-detail-divider"></div>
+
+        <div class="order-detail-section">
+          <h5>Route</h5>
+          <p class="order-detail-address">${escapeHtml(route.pickupLabel)} → ${escapeHtml(route.dropoffLabel)}</p>
+          ${
+            stops.length
+              ? `<p class="order-detail-address">Stops: ${escapeHtml(
+                  stops.map((s) => placeLabel(s, "Stop")).join(" · ")
+                )}</p>`
+              : ""
+          }
+          ${orderDetailLine("Distance", t.distanceKm != null ? `${Number(t.distanceKm).toFixed(1)} km` : "—")}
+        </div>
+
+        <div class="order-detail-section order-detail-section--payment">
+          ${orderDetailLine("Fare", fmtMoney(t.estimatedFareLkr), "order-detail-line--total")}
+        </div>
+
+        ${t.driverNote ? `<div class="order-detail-note"><span>Note</span>${escapeHtml(t.driverNote)}</div>` : ""}
+      </div>
+    </div>`;
+    openModal("Ride details", html, "trip-detail", id);
+    modalSave.style.display = "none";
   }
 
   function renderVendors() {
@@ -5777,6 +5947,102 @@
    * the riders currently carrying cash. Riders come from the same cache the
    * Riders page uses, so names/phones resolve without a second fan-out.
    */
+  function setWithdrawalsNavBadge(n) {
+    const navBadge = document.getElementById("nav-withdrawals");
+    if (!navBadge) return;
+    if (n > 0) {
+      navBadge.textContent = String(n);
+      navBadge.hidden = false;
+    } else {
+      navBadge.hidden = true;
+    }
+  }
+
+  /**
+   * Rider wallet payouts — the opposite direction from Rider cash: here the
+   * platform owes the rider money (PayHere-paid jobs), and the rider has
+   * asked to cash out via bank/mobile transfer. Backed by
+   * requestRiderWithdrawal / adminSettleRiderWithdrawal (functions/src/riderEarnings.ts),
+   * same collectionGroup pattern as the AdminWithdrawalsPage in the Flutter
+   * admin — this is the same data, just surfaced in the web dashboard too.
+   */
+  async function loadWithdrawals() {
+    if (cache.riders.length === 0) {
+      await loadRiders();
+    }
+    try {
+      const snap = await db
+        .collectionGroup(COL.riderWithdrawals)
+        .where("status", "in", ["pending", "approved"])
+        .orderBy("createdAt", "desc")
+        .limit(100)
+        .get(FS_GET_SERVER);
+      cache.withdrawals = snap.docs.map((d) => ({
+        id: d.id,
+        riderDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
+        ...d.data(),
+      }));
+    } catch (e) {
+      cache.withdrawals = [];
+      toast(e.message || String(e), "error");
+    }
+    setWithdrawalsNavBadge(cache.withdrawals.length);
+  }
+
+  function renderWithdrawals() {
+    const tbody = document.querySelector("#table-withdrawals tbody");
+    if (!tbody) return;
+    const list = cache.withdrawals || [];
+    tbody.innerHTML = list.length === 0
+      ? '<tr><td colspan="7"><div class="empty-state">No withdrawal requests waiting.</div></td></tr>'
+      : list
+          .map((w) => {
+            const rider = cache.riders.find((r) => r.id === w.riderDocId);
+            const name = rider ? riderDisplayName(rider) : w.riderId || w.riderDocId || "Unknown rider";
+            return `<tr>
+        <td>${escapeHtml(name)}</td>
+        <td><strong>${escapeHtml(fmtMoney(w.amountLkr))}</strong></td>
+        <td>${escapeHtml(w.payoutMethod || "—")}</td>
+        <td>${escapeHtml(w.payoutAccount || "—")}</td>
+        <td>${escapeHtml(w.note || "—")}</td>
+        <td>${escapeHtml(fmtTs(w.createdAt))}</td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-pay-withdrawal="${escapeHtml(w.id)}" data-rider="${escapeHtml(w.riderDocId)}">Mark paid</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-reject-withdrawal="${escapeHtml(w.id)}" data-rider="${escapeHtml(w.riderDocId)}">Reject</button>
+        </td>
+      </tr>`;
+          })
+          .join("");
+  }
+
+  /**
+   * Marks a payout as physically sent (bank/mobile transfer done) or
+   * rejected. The callable moves pending → lifetimeWithdrawn on pay, or
+   * restores the wallet balance on reject — never done client-side, since
+   * that would let a client fabricate a balance.
+   */
+  async function settleWithdrawal(riderId, withdrawalId, action) {
+    if (!riderId || !withdrawalId) return;
+    const paying = action === "paid";
+    if (paying) {
+      if (!confirm("Confirm you have sent this payout to the rider?")) return;
+    } else if (!confirm("Reject this withdrawal and return the amount to the rider's balance?")) {
+      return;
+    }
+    try {
+      await functionsClient.httpsCallable("adminSettleRiderWithdrawal")({
+        riderId,
+        withdrawalId,
+        action,
+      });
+      await loadWithdrawals();
+      renderWithdrawals();
+      toast(paying ? "Withdrawal marked paid." : "Withdrawal rejected.", "success");
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+  }
+
   async function loadRiderCash() {
     if (cache.riders.length === 0) {
       await loadRiders();
@@ -5830,7 +6096,7 @@
         <td>
           ${escapeHtml(name)}
           <div style="color:var(--muted);font-size:12px">
-            Shops ${escapeHtml(fmtMoney(b.productCashLkr))} · Commission ${escapeHtml(fmtMoney(b.rideCommissionLkr))}
+            Shops ${escapeHtml(fmtMoney(b.productCashLkr))} · Service ${escapeHtml(fmtMoney(b.serviceChargeLkr))} · Commission ${escapeHtml(fmtMoney(b.rideCommissionLkr))}
           </div>
         </td>
         <td><strong>${escapeHtml(fmtMoney(s.amountLkr))}</strong></td>
@@ -6240,6 +6506,22 @@
   document.getElementById("btn-save-platform-fees")?.addEventListener("click", () => {
     savePlatformFeesFromForm().catch((e) => toast(e.message || String(e), "error"));
   });
+  document.getElementById("btn-reload-withdrawals")?.addEventListener("click", () => {
+    loadWithdrawals()
+      .then(() => renderWithdrawals())
+      .catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.querySelector("#table-withdrawals")?.addEventListener("click", (e) => {
+    const payBtn = e.target.closest("[data-pay-withdrawal]");
+    if (payBtn) {
+      settleWithdrawal(payBtn.getAttribute("data-rider"), payBtn.getAttribute("data-pay-withdrawal"), "paid");
+      return;
+    }
+    const rejectBtn = e.target.closest("[data-reject-withdrawal]");
+    if (rejectBtn) {
+      settleWithdrawal(rejectBtn.getAttribute("data-rider"), rejectBtn.getAttribute("data-reject-withdrawal"), "rejected");
+    }
+  });
   document.getElementById("btn-reload-rider-cash")?.addEventListener("click", () => {
     loadRiderCash()
       .then(() => renderRiderCash())
@@ -6305,6 +6587,11 @@
     : () => renderOrders();
   document.getElementById("filter-orders")?.addEventListener("input", debouncedRenderOrders);
   document.getElementById("filter-order-status")?.addEventListener("change", () => renderOrders());
+  const debouncedRenderTrips = ui().debounce
+    ? ui().debounce(() => renderTrips(), 280)
+    : () => renderTrips();
+  document.getElementById("filter-rides")?.addEventListener("input", debouncedRenderTrips);
+  document.getElementById("filter-ride-status")?.addEventListener("change", () => renderTrips());
   const debouncedRenderProducts = ui().debounce
     ? ui().debounce(() => renderProducts(), 280)
     : () => renderProducts();

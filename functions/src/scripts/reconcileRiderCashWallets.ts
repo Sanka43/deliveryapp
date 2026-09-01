@@ -190,6 +190,7 @@ async function overCreditForRider(riderId: string): Promise<{
             amountDueFromCustomerLkr: order.amountDueFromCustomer,
             totalLkr: order.total,
             productCashLkr: order.productCashLkr,
+            serviceChargeLkr: order.serviceCharge,
             paymentStatus: order.paymentStatus,
           }) != null;
       }

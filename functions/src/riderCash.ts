@@ -104,6 +104,7 @@ export function stageCashEntry(
       status: "open",
       cashLkr: args.entry.cashLkr,
       owedLkr: args.entry.owedLkr,
+      breakdown: args.entry.breakdown,
       title: args.title,
       subtitle: args.subtitle,
       ...(args.tripId ? {tripId: args.tripId} : {}),
@@ -195,6 +196,7 @@ export const riderRequestCashSettlement = onCall(
       let amountLkr = 0;
       let cashCoveredLkr = 0;
       let productCashLkr = 0;
+      let serviceChargeLkr = 0;
       let rideCommissionLkr = 0;
       const entryIds: string[] = [];
       const orderIds: string[] = [];
@@ -206,14 +208,27 @@ export const riderRequestCashSettlement = onCall(
         amountLkr += owed;
         cashCoveredLkr += toWholeLkr(d.cashLkr);
         entryIds.push(doc.id);
-        if (d.type === "order_cash") {
+
+        const breakdown = d.breakdown as Record<string, unknown> | undefined;
+        if (breakdown && typeof breakdown === "object") {
+          // Post-migration entry: trust its own stored split.
+          productCashLkr += toWholeLkr(breakdown.productCashLkr);
+          serviceChargeLkr += toWholeLkr(breakdown.serviceChargeLkr);
+          rideCommissionLkr += toWholeLkr(breakdown.rideCommissionLkr);
+        } else if (d.type === "order_cash") {
+          // Pre-migration order entry: owedLkr was 100% product cash back then.
           productCashLkr += owed;
+        } else {
+          // Pre-migration ride entry: owedLkr was 100% commission.
+          rideCommissionLkr += owed;
+        }
+
+        if (d.type === "order_cash") {
           const orderId = String(d.orderId ?? "").trim();
           if (orderId) {
             orderIds.push(orderId);
           }
         } else {
-          rideCommissionLkr += owed;
           const tripId = String(d.tripId ?? "").trim();
           if (tripId) {
             tripIds.push(tripId);
@@ -232,7 +247,7 @@ export const riderRequestCashSettlement = onCall(
         riderId,
         amountLkr,
         cashCoveredLkr,
-        breakdown: {productCashLkr, rideCommissionLkr},
+        breakdown: {productCashLkr, serviceChargeLkr, rideCommissionLkr},
         entryIds,
         orderIds,
         tripIds,

@@ -112,6 +112,7 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
       amountDueFromCustomerLkr: after.amountDueFromCustomer,
       totalLkr: after.total,
       productCashLkr: after.productCashLkr,
+      serviceChargeLkr: after.serviceCharge,
       paymentStatus: after.paymentStatus,
     });
     if ((!Number.isFinite(amount) || amount <= 0) && cashEntry == null) {

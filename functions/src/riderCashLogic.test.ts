@@ -63,7 +63,11 @@ describe("cashEntryForTrip", () => {
   it("records the full fare with the commission owed for a cash ride", () => {
     assert.deepEqual(
       cashEntryForTrip({fareLkr: 450, commissionLkr: 50, paymentMethod: "cash"}),
-      {cashLkr: 450, owedLkr: 50},
+      {
+        cashLkr: 450,
+        owedLkr: 50,
+        breakdown: {productCashLkr: 0, serviceChargeLkr: 0, rideCommissionLkr: 50},
+      },
     );
   });
 
@@ -81,7 +85,11 @@ describe("cashEntryForTrip", () => {
   it("caps commission at the fare actually collected", () => {
     assert.deepEqual(
       cashEntryForTrip({fareLkr: 120, commissionLkr: 300, paymentMethod: "cash"}),
-      {cashLkr: 120, owedLkr: 120},
+      {
+        cashLkr: 120,
+        owedLkr: 120,
+        breakdown: {productCashLkr: 0, serviceChargeLkr: 0, rideCommissionLkr: 120},
+      },
     );
   });
 
@@ -100,9 +108,14 @@ describe("cashEntryForOrder", () => {
         amountDueFromCustomerLkr: 2400,
         totalLkr: 2400,
         productCashLkr: 1800,
+        serviceChargeLkr: 0,
         paymentStatus: "pending",
       }),
-      {cashLkr: 2400, owedLkr: 1800},
+      {
+        cashLkr: 2400,
+        owedLkr: 1800,
+        breakdown: {productCashLkr: 1800, serviceChargeLkr: 0, rideCommissionLkr: 0},
+      },
     );
   });
 
@@ -112,9 +125,14 @@ describe("cashEntryForOrder", () => {
         amountDueFromCustomerLkr: undefined,
         totalLkr: 1500,
         productCashLkr: undefined,
+        serviceChargeLkr: undefined,
         paymentStatus: "pending",
       }),
-      {cashLkr: 1500, owedLkr: 0},
+      {
+        cashLkr: 1500,
+        owedLkr: 0,
+        breakdown: {productCashLkr: 0, serviceChargeLkr: 0, rideCommissionLkr: 0},
+      },
     );
   });
 
@@ -124,9 +142,67 @@ describe("cashEntryForOrder", () => {
         amountDueFromCustomerLkr: 0,
         totalLkr: 1500,
         productCashLkr: 0,
+        serviceChargeLkr: 0,
         paymentStatus: "paid",
       }),
       null,
+    );
+  });
+
+  it("counts service charge as owed alongside the product cost", () => {
+    assert.deepEqual(
+      cashEntryForOrder({
+        amountDueFromCustomerLkr: 2400,
+        totalLkr: 2400,
+        productCashLkr: 1800,
+        serviceChargeLkr: 100,
+        paymentStatus: "pending",
+      }),
+      {
+        cashLkr: 2400,
+        owedLkr: 1900,
+        breakdown: {productCashLkr: 1800, serviceChargeLkr: 100, rideCommissionLkr: 0},
+      },
+    );
+  });
+
+  it("owes just the service charge when the shop was already paid directly", () => {
+    assert.deepEqual(
+      cashEntryForOrder({
+        amountDueFromCustomerLkr: 350,
+        totalLkr: 350,
+        productCashLkr: 0,
+        serviceChargeLkr: 150,
+        paymentStatus: "pending",
+      }),
+      {
+        cashLkr: 350,
+        owedLkr: 150,
+        breakdown: {productCashLkr: 0, serviceChargeLkr: 150, rideCommissionLkr: 0},
+      },
+    );
+  });
+
+  it("clamps owedLkr when product cost + service charge overshoot cash collected", () => {
+    // Not reachable via the real order math (amountDueFromCustomer always
+    // includes a non-negative deliveryFee on top of these two), but defended
+    // anyway. Note breakdown is left unclamped/raw here — its components can
+    // sum to more than owedLkr in this edge case; callers that display the
+    // breakdown are expected to fall back to just the total when it doesn't
+    // reconcile, same convention as the rider app's existing collect-summary.
+    assert.deepEqual(
+      cashEntryForOrder({
+        amountDueFromCustomerLkr: 500,
+        totalLkr: 500,
+        productCashLkr: 400,
+        serviceChargeLkr: 300,
+        paymentStatus: "pending",
+      }),
+      {
+        cashLkr: 500,
+        owedLkr: 500,
+        breakdown: {productCashLkr: 400, serviceChargeLkr: 300, rideCommissionLkr: 0},
+      },
     );
   });
 });
@@ -135,7 +211,11 @@ describe("applyCashEntry", () => {
   it("adds the collected cash and flips the hold once over the limit", () => {
     const result = applyCashEntry({
       counters,
-      entry: {cashLkr: 450, owedLkr: 50},
+      entry: {
+        cashLkr: 450,
+        owedLkr: 50,
+        breakdown: {productCashLkr: 0, serviceChargeLkr: 0, rideCommissionLkr: 50},
+      },
       maxCashInHandLkr: 7000,
     });
     assert.equal(result.counters.cashInHandLkr, 7250);
@@ -150,7 +230,11 @@ describe("applyCashEntry", () => {
         cashOwedToAdminLkr: 0,
         cashPendingSettlementLkr: 0,
       },
-      entry: {cashLkr: 300, owedLkr: 50},
+      entry: {
+        cashLkr: 300,
+        owedLkr: 50,
+        breakdown: {productCashLkr: 50, serviceChargeLkr: 0, rideCommissionLkr: 0},
+      },
       maxCashInHandLkr: 7000,
     });
     assert.equal(result.counters.cashInHandLkr, 300);

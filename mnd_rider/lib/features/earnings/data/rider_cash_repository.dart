@@ -28,6 +28,9 @@ class RiderCashEntry {
     required this.status,
     required this.cashLkr,
     required this.owedLkr,
+    required this.productCashLkr,
+    required this.serviceChargeLkr,
+    required this.rideCommissionLkr,
     required this.title,
     required this.subtitle,
     this.createdAt,
@@ -46,6 +49,16 @@ class RiderCashEntry {
 
   /// Of that, what must reach admin.
   final int owedLkr;
+
+  /// Component split of [owedLkr] — shop's product cost (order entries only).
+  final int productCashLkr;
+
+  /// Component split of [owedLkr] — service charge (order entries only).
+  final int serviceChargeLkr;
+
+  /// Component split of [owedLkr] — platform's ride commission (ride entries only).
+  final int rideCommissionLkr;
+
   final String title;
   final String subtitle;
   final DateTime? createdAt;
@@ -55,12 +68,30 @@ class RiderCashEntry {
 
   factory RiderCashEntry.fromDoc(String id, Map<String, dynamic> data) {
     final dynamic created = data['createdAt'];
+    final String type = (data['type'] as String?)?.trim() ?? '';
+    final int owed = (data['owedLkr'] as num?)?.round() ?? 0;
+    final Map<String, dynamic>? breakdown =
+        data['breakdown'] as Map<String, dynamic>?;
+    // Entries written before the breakdown field existed have no per-component
+    // split — infer the same way the backend's settlement fallback does: an
+    // order's owed was 100% product cost, a ride's was 100% commission.
+    final int productCashLkr = breakdown != null
+        ? (breakdown['productCashLkr'] as num?)?.round() ?? 0
+        : (type == 'order_cash' ? owed : 0);
+    final int serviceChargeLkr =
+        (breakdown?['serviceChargeLkr'] as num?)?.round() ?? 0;
+    final int rideCommissionLkr = breakdown != null
+        ? (breakdown['rideCommissionLkr'] as num?)?.round() ?? 0
+        : (type == 'ride_cash' ? owed : 0);
     return RiderCashEntry(
       id: id,
-      type: (data['type'] as String?)?.trim() ?? '',
+      type: type,
       status: (data['status'] as String?)?.trim() ?? 'open',
       cashLkr: (data['cashLkr'] as num?)?.round() ?? 0,
-      owedLkr: (data['owedLkr'] as num?)?.round() ?? 0,
+      owedLkr: owed,
+      productCashLkr: productCashLkr,
+      serviceChargeLkr: serviceChargeLkr,
+      rideCommissionLkr: rideCommissionLkr,
       title: (data['title'] as String?)?.trim() ?? 'Collected cash',
       subtitle: (data['subtitle'] as String?)?.trim() ?? '',
       createdAt: created is Timestamp ? created.toDate() : null,
@@ -74,6 +105,9 @@ class RiderCashSettlement {
     required this.id,
     required this.amountLkr,
     required this.cashCoveredLkr,
+    required this.productCashLkr,
+    required this.serviceChargeLkr,
+    required this.rideCommissionLkr,
     required this.status,
     required this.method,
     this.reference,
@@ -83,6 +117,9 @@ class RiderCashSettlement {
   final String id;
   final int amountLkr;
   final int cashCoveredLkr;
+  final int productCashLkr;
+  final int serviceChargeLkr;
+  final int rideCommissionLkr;
 
   /// `requested` | `confirmed` | `rejected`.
   final String status;
@@ -93,10 +130,15 @@ class RiderCashSettlement {
   factory RiderCashSettlement.fromDoc(String id, Map<String, dynamic> data) {
     final dynamic requested = data['requestedAt'];
     final String? ref = (data['reference'] as String?)?.trim();
+    final Map<String, dynamic> breakdown =
+        (data['breakdown'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
     return RiderCashSettlement(
       id: id,
       amountLkr: (data['amountLkr'] as num?)?.round() ?? 0,
       cashCoveredLkr: (data['cashCoveredLkr'] as num?)?.round() ?? 0,
+      productCashLkr: (breakdown['productCashLkr'] as num?)?.round() ?? 0,
+      serviceChargeLkr: (breakdown['serviceChargeLkr'] as num?)?.round() ?? 0,
+      rideCommissionLkr: (breakdown['rideCommissionLkr'] as num?)?.round() ?? 0,
       status: (data['status'] as String?)?.trim() ?? '',
       method: (data['method'] as String?)?.trim() ?? 'bank',
       reference: (ref == null || ref.isEmpty) ? null : ref,

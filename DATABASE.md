@@ -309,7 +309,7 @@ Rider self-write of `licensePhotoUrl`/`licenseExpiresAt`/`insurancePhotoUrl`/`in
 | Field | Type | Notes |
 |-------|------|--------|
 | `cashInHandLkr` | int | Collected cash the rider has not handed over: cash ride fares + COD `amountDueFromCustomer` |
-| `cashOwedToAdminLkr` | int | The slice of the above that must reach admin: shop product cash + ride commission |
+| `cashOwedToAdminLkr` | int | The slice of the above that must reach admin: shop product cash + service charge + ride commission |
 | `cashPendingSettlementLkr` | int | Locked in a handover waiting for admin confirmation |
 | `cashHoldActive` | bool | `true` once `cashInHandLkr` goes **above** `platform_config/fees.maxRiderCashInHandLkr` |
 | `cashHoldSince` | timestamp\|null | Stamped when the hold starts, cleared when it lifts |
@@ -325,7 +325,8 @@ One row per cash job. Written only by `onTripCompletedCreditRider` / `onOrderDel
 |-------|------|--------|
 | `type` | `'ride_cash'` \| `'order_cash'` | |
 | `cashLkr` | int | Cash the rider took from the customer |
-| `owedLkr` | int | Of that, what must reach admin (ride commission, or the order's `productCashLkr`) |
+| `owedLkr` | int | Of that, what must reach admin (ride commission, or the order's `productCashLkr` + `serviceCharge`) |
+| `breakdown` | map | `{productCashLkr, serviceChargeLkr, rideCommissionLkr}` — component split of `owedLkr`; absent on entries written before this field existed, in which case `owedLkr` is inferred as 100% `productCashLkr` (order) or 100% `rideCommissionLkr` (ride) |
 | `status` | `'open'` → `'pending_settlement'` → `'settled'` | Reject sends it back to `'open'` |
 | `settlementId` | string? | Set while pending/settled |
 | `tripId` / `orderId` | string? | Whichever applies |
@@ -341,7 +342,7 @@ A handover the rider asked admin to confirm (`riderRequestCashSettlement`), clos
 | `riderId` | string | |
 | `amountLkr` | int | Total owed to admin in this handover |
 | `cashCoveredLkr` | int | Total collected cash the handover clears |
-| `breakdown` | map | `{productCashLkr, rideCommissionLkr}` |
+| `breakdown` | map | `{productCashLkr, serviceChargeLkr, rideCommissionLkr}` |
 | `entryIds` / `orderIds` / `tripIds` | array\<string\> | Snapshot at request time, capped at 200 entries |
 | `entryCount` | int | |
 | `status` | `'requested'` \| `'confirmed'` \| `'rejected'` | |
@@ -703,7 +704,7 @@ Written only by Cloud Function `quoteRideFare` / `quoteRideFares` (Admin SDK). C
 | `payhere` | credited with fare − commission | untouched — the platform holds the cash |
 | `cash` | **not credited** — the rider was paid in full at the kerb | `ride_{tripId}` entry: `cashLkr` = fare, `owedLkr` = commission |
 
-`earnings_aggregates` is incremented by fare − commission either way, so the rider's earnings charts show what they actually earned. The same rule applies to deliveries in `onOrderDeliveredCreditRider`: a COD order records an `order_{orderId}` cash entry (`cashLkr` = `amountDueFromCustomer` or `total`, `owedLkr` = `productCashLkr`) and skips the wallet credit, while an online-paid order credits `deliveryFee` as before. The invariant is that `wallet.balanceLkr` only ever holds money the **platform** owes the rider.
+`earnings_aggregates` is incremented by fare − commission either way, so the rider's earnings charts show what they actually earned. The same rule applies to deliveries in `onOrderDeliveredCreditRider`: a COD order records an `order_{orderId}` cash entry (`cashLkr` = `amountDueFromCustomer` or `total`, `owedLkr` = `productCashLkr` + `serviceCharge`) and skips the wallet credit, while an online-paid order credits `deliveryFee` as before. The invariant is that `wallet.balanceLkr` only ever holds money the **platform** owes the rider.
 
 The rider app shows a ride-summary sheet on completion (fare, distance, route) instead of exiting immediately; for cash trips it stays until the rider confirms, or they can tap "Done" without confirming. The customer's live-tracking screen reflects the unconfirmed state as "Waiting for the driver to confirm cash payment" rather than assuming payment collected.
 

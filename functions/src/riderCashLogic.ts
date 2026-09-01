@@ -6,7 +6,7 @@
  * The model in one line: `wallet.balanceLkr` is what the *platform* owes the
  * rider, so a job whose money the rider physically pocketed never credits it.
  * Instead the collected cash lands in `cashInHandLkr`, and the slice that must
- * reach admin (shop product cash + ride commission) lands in
+ * reach admin (shop product cash + service charge + ride commission) lands in
  * `cashOwedToAdminLkr`.
  */
 
@@ -36,11 +36,23 @@ export type RiderCashCounters = {
   cashPendingSettlementLkr: number;
 };
 
+/** Component split of a CashEntryAmounts' owedLkr, for display + settlement bucketing. */
+export type CashOwedBreakdown = {
+  /** Shop's product cost the rider must return (orders only; 0 for rides). */
+  productCashLkr: number;
+  /** Service charge collected but owed back to the platform (orders only; 0 for rides). */
+  serviceChargeLkr: number;
+  /** Platform's ride commission (rides only; 0 for orders). */
+  rideCommissionLkr: number;
+};
+
 export type CashEntryAmounts = {
   /** Cash the rider physically took from the customer. */
   cashLkr: number;
-  /** Of that, what must reach admin. */
+  /** Of that, what must reach admin. Always equals the sum of `breakdown`. */
   owedLkr: number;
+  /** Component split of owedLkr. */
+  breakdown: CashOwedBreakdown;
 };
 
 export type CashSettlementAction = "confirmed" | "rejected";
@@ -104,7 +116,11 @@ export function cashEntryForTrip(args: {
   // Commission can never exceed the fare actually collected, otherwise a
   // misconfigured flat rate would invent debt on a cheap ride.
   const owedLkr = Math.min(cashLkr, clampNonNegative(toWholeLkr(args.commissionLkr)));
-  return {cashLkr, owedLkr};
+  return {
+    cashLkr,
+    owedLkr,
+    breakdown: {productCashLkr: 0, serviceChargeLkr: 0, rideCommissionLkr: owedLkr},
+  };
 }
 
 /**
@@ -119,6 +135,7 @@ export function cashEntryForOrder(args: {
   amountDueFromCustomerLkr: unknown;
   totalLkr: unknown;
   productCashLkr: unknown;
+  serviceChargeLkr: unknown;
   paymentStatus: unknown;
 }): CashEntryAmounts | null {
   const paid = String(args.paymentStatus ?? "").trim().toLowerCase() === "paid";
@@ -133,8 +150,18 @@ export function cashEntryForOrder(args: {
   if (cashLkr <= 0) {
     return null;
   }
-  const owedLkr = Math.min(cashLkr, clampNonNegative(toWholeLkr(args.productCashLkr)));
-  return {cashLkr, owedLkr};
+  const productCashLkr = clampNonNegative(toWholeLkr(args.productCashLkr));
+  const serviceChargeLkr = clampNonNegative(toWholeLkr(args.serviceChargeLkr));
+  // amountDueFromCustomer (= cashLkr) is always productCashLkr + serviceCharge +
+  // deliveryFee, and deliveryFee is never negative, so the two owed components
+  // can never exceed cashLkr in practice — the min() is a defensive backstop
+  // only, not a real redistribution case.
+  const owedLkr = Math.min(cashLkr, productCashLkr + serviceChargeLkr);
+  return {
+    cashLkr,
+    owedLkr,
+    breakdown: {productCashLkr, serviceChargeLkr, rideCommissionLkr: 0},
+  };
 }
 
 /** Counters after a cash job is recorded, plus the resulting hold state. */

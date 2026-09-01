@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/core/constants/app_colors.dart';
 import 'package:mnd_rider/core/utils/lkr_format.dart';
 import 'package:mnd_rider/core/utils/user_facing_error.dart';
-import 'package:mnd_rider/core/widgets/rider_branded_dialog.dart';
 import 'package:mnd_rider/core/widgets/rider_snackbar.dart';
 import 'package:mnd_rider/features/earnings/data/rider_cash_repository.dart';
+import 'package:mnd_rider/features/earnings/presentation/widgets/rider_cash_handover_confirm_dialog.dart';
 import 'package:mnd_rider/features/profile/data/rider_profile_repository.dart';
 import 'package:mnd_rider/features/profile/domain/rider_profile.dart';
 
@@ -25,14 +25,16 @@ class RiderCashAccountCard extends ConsumerStatefulWidget {
 class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
   bool _busy = false;
 
-  Future<void> _requestSettlement(int owedLkr) async {
-    final bool ok = await showRiderConfirmDialog(
+  Future<void> _requestSettlement(
+    int owedLkr,
+    int yourEarningLkr,
+    List<RiderCashBreakdownLine> breakdown,
+  ) async {
+    final bool ok = await showRiderCashHandoverConfirmDialog(
       context,
-      title: 'Hand over cash?',
-      message: 'This tells Admin you are handing over '
-          '${LkrFormat.money(owedLkr)} — shop totals plus ride commission. '
-          'Your cash stays outstanding until Admin confirms they received it.',
-      confirmLabel: 'Request confirm',
+      owedLkr: owedLkr,
+      yourEarningLkr: yourEarningLkr,
+      breakdown: breakdown,
     );
     if (!ok) {
       return;
@@ -83,6 +85,31 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
     final int cashInHand = profile?.cashInHandLkr ?? 0;
     final int owed = profile?.cashOwedToAdminLkr ?? 0;
     final bool held = profile?.isCashHeld ?? false;
+    final int yourEarning = (cashInHand - owed).clamp(0, cashInHand);
+
+    int foodCash = 0;
+    int rideCash = 0;
+    int productCash = 0;
+    int serviceCharge = 0;
+    int commission = 0;
+    for (final RiderCashEntry e in entries) {
+      if (e.isRide) {
+        rideCash += e.cashLkr;
+      } else {
+        foodCash += e.cashLkr;
+      }
+      productCash += e.productCashLkr;
+      serviceCharge += e.serviceChargeLkr;
+      commission += e.rideCommissionLkr;
+    }
+    final List<RiderCashBreakdownLine> owedBreakdown = <RiderCashBreakdownLine>[
+      if (productCash > 0)
+        RiderCashBreakdownLine(label: 'Shop product cost', amountLkr: productCash),
+      if (serviceCharge > 0)
+        RiderCashBreakdownLine(label: 'Service charge', amountLkr: serviceCharge),
+      if (commission > 0)
+        RiderCashBreakdownLine(label: 'Ride commission', amountLkr: commission),
+    ];
 
     // Nothing collected and nothing pending — don't take up space.
     if (cashInHand <= 0 && entries.isEmpty && pending == null) {
@@ -147,8 +174,18 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
                 color: held ? accent : cs.onSurfaceVariant,
               ),
             ),
+            if (entries.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 12),
+              _SourceSplit(foodCashLkr: foodCash, rideCashLkr: rideCash),
+            ],
             const SizedBox(height: 12),
-            _OwedBreakdown(entries: entries, owed: owed),
+            _OwedBreakdown(
+              productCashLkr: productCash,
+              serviceChargeLkr: serviceCharge,
+              rideCommissionLkr: commission,
+              owed: owed,
+              yourEarningLkr: yourEarning,
+            ),
             const SizedBox(height: 12),
             if (pending != null)
               _PendingBanner(settlement: pending)
@@ -158,7 +195,7 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
                 child: FilledButton.icon(
                   onPressed: (_busy || entries.isEmpty)
                       ? null
-                      : () => _requestSettlement(owed),
+                      : () => _requestSettlement(owed, yourEarning, owedBreakdown),
                   icon: _busy
                       ? const SizedBox(
                           width: 16,
@@ -180,25 +217,77 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
   }
 }
 
-/// Splits what admin is owed into the two buckets a rider recognises.
-class _OwedBreakdown extends StatelessWidget {
-  const _OwedBreakdown({required this.entries, required this.owed});
+/// Cash in hand split by where it came from — a rider mixing food deliveries
+/// and passenger rides carries one running total, but recognises the two
+/// sources separately.
+class _SourceSplit extends StatelessWidget {
+  const _SourceSplit({required this.foodCashLkr, required this.rideCashLkr});
 
-  final List<RiderCashEntry> entries;
-  final int owed;
+  final int foodCashLkr;
+  final int rideCashLkr;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    int shopTotal = 0;
-    int commission = 0;
-    for (final RiderCashEntry e in entries) {
-      if (e.isRide) {
-        commission += e.owedLkr;
-      } else {
-        shopTotal += e.owedLkr;
-      }
+    final ColorScheme cs = theme.colorScheme;
+
+    Widget stat(String label, int amountLkr) {
+      return Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              LkrFormat.money(amountLkr),
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      );
     }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: <Widget>[
+          stat('Food deliveries', foodCashLkr),
+          Container(width: 1, height: 30, color: cs.outlineVariant),
+          const SizedBox(width: 12),
+          stat('Rides', rideCashLkr),
+        ],
+      ),
+    );
+  }
+}
+
+/// The three-way owed breakdown, plus the rider's own kept earning shown
+/// with equal prominence — not just a caption underneath.
+class _OwedBreakdown extends StatelessWidget {
+  const _OwedBreakdown({
+    required this.productCashLkr,
+    required this.serviceChargeLkr,
+    required this.rideCommissionLkr,
+    required this.owed,
+    required this.yourEarningLkr,
+  });
+
+  final int productCashLkr;
+  final int serviceChargeLkr;
+  final int rideCommissionLkr;
+  final int owed;
+  final int yourEarningLkr;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     Widget row(String label, String value, {bool strong = false}) {
       return Padding(
@@ -226,17 +315,34 @@ class _OwedBreakdown extends StatelessWidget {
 
     return Column(
       children: <Widget>[
-        row('Shop totals', LkrFormat.money(shopTotal)),
-        row('Ride commission', LkrFormat.money(commission)),
+        if (productCashLkr > 0) row('Shop product cost', LkrFormat.money(productCashLkr)),
+        if (serviceChargeLkr > 0) row('Service charge', LkrFormat.money(serviceChargeLkr)),
+        if (rideCommissionLkr > 0) row('Ride commission', LkrFormat.money(rideCommissionLkr)),
         const Divider(height: 12),
         row('Owed to admin', LkrFormat.money(owed), strong: true),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'The rest of the cash is yours to keep.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.onlineGreen.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Your earning',
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                LkrFormat.money(yourEarningLkr),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: AppColors.onlineGreen,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
         ),
       ],
