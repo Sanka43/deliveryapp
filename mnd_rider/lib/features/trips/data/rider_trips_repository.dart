@@ -527,6 +527,20 @@ final StreamProvider<List<RiderPassengerTrip>> myActivePassengerTripsProvider =
   return ref.watch(riderTripsRepositoryProvider).watchMyActiveTrips();
 });
 
+/// A ride the rider just finished (or that got cancelled), kept visible on
+/// the Jobs tab for a short while instead of vanishing the instant it leaves
+/// `myActivePassengerTripsProvider`. Deliberately a separate stream: that
+/// provider also feeds `riderIsBusyProvider`, so widening it to include
+/// completed trips would wrongly keep a rider marked "busy" — and blocked
+/// from new offers — right after they finish a ride.
+final StreamProvider<List<RiderPassengerTrip>>
+    myRecentlyCompletedPassengerTripsProvider =
+    StreamProvider<List<RiderPassengerTrip>>((Ref ref) {
+  return ref
+      .watch(riderTripsRepositoryProvider)
+      .watchMyCompletedTrips(limit: 3);
+});
+
 final AutoDisposeStreamProviderFamily<RiderPassengerTrip?, String>
     riderPassengerTripProvider =
     StreamProvider.autoDispose.family<RiderPassengerTrip?, String>((Ref ref, String tripId) {
