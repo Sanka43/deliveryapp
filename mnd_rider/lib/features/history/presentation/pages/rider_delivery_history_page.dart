@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/core/constants/app_colors.dart';
 import 'package:mnd_rider/core/utils/lkr_format.dart';
+import 'package:mnd_rider/core/widgets/rider_empty_state.dart';
+import 'package:mnd_rider/core/widgets/rider_skeleton.dart';
 import 'package:mnd_rider/features/history/domain/rider_delivery_history_item.dart';
 import 'package:mnd_rider/features/history/presentation/providers/rider_delivery_history_provider.dart';
 
@@ -12,35 +14,151 @@ class RiderDeliveryHistoryPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final List<RiderDeliveryHistoryItem> items =
+    final List<RiderDeliveryHistoryItem> allItems =
         ref.watch(riderDeliveryHistoryProvider);
-    final ThemeData theme = Theme.of(context);
+    final RiderHistoryFilter filter = ref.watch(riderHistoryFilterProvider);
+    final List<RiderDeliveryHistoryItem> items = switch (filter) {
+      RiderHistoryFilter.all => allItems,
+      RiderHistoryFilter.delivery => allItems
+          .where((RiderDeliveryHistoryItem i) =>
+              i.kind == RiderHistoryKind.delivery)
+          .toList(growable: false),
+      RiderHistoryFilter.ride => allItems
+          .where(
+              (RiderDeliveryHistoryItem i) => i.kind == RiderHistoryKind.ride)
+          .toList(growable: false),
+    };
+    final bool hasMore = ref.watch(riderDeliveryHistoryHasMoreProvider);
+    final bool loadingMore = ref
+            .watch(riderDeliveredHistoryPagedProvider)
+            .isLoading ||
+        ref.watch(riderCompletedTripsProvider).isLoading;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Delivery history'),
+        title: const Text('Trip history'),
       ),
-      body: items.isEmpty
-          ? Center(
-              child: Text(
-                'No deliveries yet',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-              itemCount: items.length,
-              separatorBuilder: (BuildContext context, int index) =>
-                  const SizedBox(height: 12),
-              itemBuilder: (BuildContext context, int index) {
-                return _HistoryCard(
-                  item: items[index],
-                  formatMoney: _money,
-                );
-              },
+      body: Column(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: _HistoryFilterBar(
+              selected: filter,
+              onChanged: (RiderHistoryFilter f) =>
+                  ref.read(riderHistoryFilterProvider.notifier).state = f,
             ),
+          ),
+          Expanded(
+            child: items.isEmpty
+                ? (loadingMore
+                    ? const RiderSkeletonList(count: 5)
+                    : RiderEmptyState(
+                        icon: switch (filter) {
+                          RiderHistoryFilter.ride => Icons.two_wheeler_rounded,
+                          RiderHistoryFilter.delivery =>
+                            Icons.delivery_dining_rounded,
+                          RiderHistoryFilter.all =>
+                            Icons.local_shipping_outlined,
+                        },
+                        title: switch (filter) {
+                          RiderHistoryFilter.ride => 'No rides yet',
+                          RiderHistoryFilter.delivery => 'No deliveries yet',
+                          RiderHistoryFilter.all => 'No deliveries or rides yet',
+                        },
+                        subtitle: 'Completed trips and rides will show up here.',
+                      ))
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                    itemCount: items.length + (hasMore ? 1 : 0),
+                    separatorBuilder: (BuildContext context, int index) =>
+                        const SizedBox(height: 12),
+                    itemBuilder: (BuildContext context, int index) {
+                      if (index >= items.length) {
+                        return _LoadMoreRow(
+                          loading: loadingMore,
+                          onTap: loadingMore
+                              ? null
+                              : () => ref
+                                  .read(riderHistoryPageMultiplierProvider
+                                      .notifier)
+                                  .state++,
+                        );
+                      }
+                      return _HistoryCard(
+                        item: items[index],
+                        formatMoney: _money,
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryFilterBar extends StatelessWidget {
+  const _HistoryFilterBar({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final RiderHistoryFilter selected;
+  final ValueChanged<RiderHistoryFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<RiderHistoryFilter>(
+      style: SegmentedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        textStyle: Theme.of(context).textTheme.labelMedium,
+      ),
+      segments: const <ButtonSegment<RiderHistoryFilter>>[
+        ButtonSegment<RiderHistoryFilter>(
+          value: RiderHistoryFilter.all,
+          label: Text('All'),
+        ),
+        ButtonSegment<RiderHistoryFilter>(
+          value: RiderHistoryFilter.delivery,
+          label: Text('Delivery'),
+          icon: Icon(Icons.delivery_dining_rounded, size: 15),
+        ),
+        ButtonSegment<RiderHistoryFilter>(
+          value: RiderHistoryFilter.ride,
+          label: Text('Rides'),
+          icon: Icon(Icons.two_wheeler_rounded, size: 15),
+        ),
+      ],
+      selected: <RiderHistoryFilter>{selected},
+      showSelectedIcon: false,
+      onSelectionChanged: (Set<RiderHistoryFilter> v) => onChanged(v.first),
+    );
+  }
+}
+
+class _LoadMoreRow extends StatelessWidget {
+  const _LoadMoreRow({required this.loading, required this.onTap});
+
+  final bool loading;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: loading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : TextButton(
+                onPressed: onTap,
+                child: const Text('Load more'),
+              ),
+      ),
     );
   }
 }
@@ -57,11 +175,12 @@ class _HistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
     final Color statusColor =
-        item.completed ? AppColors.onlineGreen : theme.colorScheme.error;
+        item.completed ? AppColors.onlineGreen : cs.error;
 
     return Material(
-      color: AppColors.surfaceMuted,
+      color: cs.surfaceContainerLow,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -71,6 +190,8 @@ class _HistoryCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                _KindIcon(kind: item.kind),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,7 +228,13 @@ class _HistoryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      item.completed ? 'Completed' : 'Cancelled',
+                      item.completed
+                          ? (item.kind == RiderHistoryKind.ride
+                              ? 'Ride · Completed'
+                              : 'Delivery · Completed')
+                          : (item.kind == RiderHistoryKind.ride
+                              ? 'Ride · Cancelled'
+                              : 'Delivery · Cancelled'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: statusColor,
                         fontWeight: FontWeight.w700,
@@ -143,6 +270,33 @@ class _HistoryCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Round icon badge telling a passenger ride apart from a food delivery
+/// at a glance, since both kinds share this list.
+class _KindIcon extends StatelessWidget {
+  const _KindIcon({required this.kind});
+
+  final RiderHistoryKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isRide = kind == RiderHistoryKind.ride;
+    final Color tint = isRide ? AppColors.primaryBlue : AppColors.onlineGreen;
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        isRide ? Icons.two_wheeler_rounded : Icons.delivery_dining_rounded,
+        color: tint,
+        size: 20,
       ),
     );
   }

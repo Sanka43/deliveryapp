@@ -95,21 +95,12 @@ class RiderPassengerRidesSection extends ConsumerWidget {
         ...activeList.map((RiderPassengerTrip t) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: _RideCard(
-              title:
-                  '${t.vehicleType.toUpperCase()} · ${LkrFormat.money(t.estimatedFareLkr)}',
-              pickup: t.pickupLabel,
-              dropoff: t.dropoffLabel,
-              meta: _humanStatus(t.status) +
-                  (t.contactPhone.isNotEmpty ? ' · ${t.contactPhone}' : '') +
-                  (t.isOnlinePayment ? ' · Paid online' : ' · Cash'),
-              action: RiderPrimaryCta(
-                label: 'Open navigation',
-                height: AppSpacing.ctaHeight,
-                color: AppColors.primaryBlue,
-                icon: Icons.navigation_rounded,
-                onPressed: () => _openRide(context, t),
-              ),
+            child: _RideTile(
+              title: '${t.pickupLabel}  →  ${t.dropoffLabel}',
+              subtitle: '${t.vehicleType.toUpperCase()} · '
+                  '${_humanStatus(t.status)} · '
+                  '${LkrFormat.money(t.estimatedFareLkr)}',
+              onTap: () => _openRide(context, t),
             ),
           );
         }),
@@ -123,18 +114,14 @@ class RiderPassengerRidesSection extends ConsumerWidget {
               !t.isOnlinePayment && t.status.toLowerCase() == 'completed' && !t.isPaid;
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: _RideCard(
-              title:
-                  '${t.vehicleType.toUpperCase()} · ${LkrFormat.money(t.estimatedFareLkr)}',
-              pickup: t.pickupLabel,
-              dropoff: t.dropoffLabel,
-              meta: _humanStatus(t.status) +
-                  (t.isOnlinePayment ? ' · Paid online' : ' · Cash') +
-                  (needsCashConfirm ? ' · Payment not confirmed' : ''),
-              action: TextButton(
-                onPressed: () => _openRide(context, t),
-                child: Text(needsCashConfirm ? 'Confirm payment' : 'View'),
-              ),
+            child: _RideTile(
+              title: '${t.pickupLabel}  →  ${t.dropoffLabel}',
+              subtitle: '${t.vehicleType.toUpperCase()} · '
+                  '${_humanStatus(t.status)} · '
+                  '${LkrFormat.money(t.estimatedFareLkr)}'
+                  '${needsCashConfirm ? ' · Confirm payment' : ''}',
+              accentColor: needsCashConfirm ? AppColors.warningAmber : null,
+              onTap: () => _openRide(context, t),
             ),
           );
         }),
@@ -208,6 +195,78 @@ class RiderPassengerRidesSection extends ConsumerWidget {
           const SizedBox(height: AppSpacing.sectionGap),
         ],
       ],
+    );
+  }
+}
+
+/// Compact row tile matching the "My deliveries" list style — used for
+/// rides that are already active or finished, where tapping just opens
+/// the trip. Open (unclaimed) ride offers keep the fuller [_RideCard]
+/// below since accepting is a distinct action, not just a view.
+class _RideTile extends StatelessWidget {
+  const _RideTile({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.accentColor,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Color? accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 13, 10, 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface,
+                          ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: accentColor ?? cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: cs.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
