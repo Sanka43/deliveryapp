@@ -54,3 +54,6 @@ app.*.map.json
 /tools/firebase-cli/
 /.tools/
 /tools/firestore_rules_tests/node_modules/
+
+# Firebase CLI local hosting-deploy cache
+**/.firebase/
