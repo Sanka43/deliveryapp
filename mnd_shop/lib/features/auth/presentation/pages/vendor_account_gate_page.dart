@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
+import 'package:mnd_shop/features/auth/domain/vendor_deletion_status.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/shop_registration_form_page.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 
@@ -24,7 +26,10 @@ class VendorAccountGate extends ConsumerWidget {
       ),
       error: (Object e, StackTrace _) => _MessageScaffold(
         title: _vTxt(context, en: 'Could not load shop profile', si: 'shop පැතිකඩ පූරණය කළ නොහැක'),
-        body: '$e',
+        body: userFacingError(
+          e,
+          fallback: 'Please check your connection and try again.',
+        ),
         actions: <Widget>[
           FilledButton(
             onPressed: () => ref.invalidate(vendorAccountDocDataProvider),
@@ -34,10 +39,98 @@ class VendorAccountGate extends ConsumerWidget {
       ),
       data: (Map<String, dynamic>? doc) {
         if (doc != null && doc.isNotEmpty) {
+          if (VendorDeletionStatus.blocksAppAccess(doc)) {
+            return const _VendorDeletionBlockedPage();
+          }
+          if (VendorDeletionStatus.needsReRegistration(doc)) {
+            return const _VendorClosedReopenPage();
+          }
           return child;
         }
         return const _VendorProfileMissingPage();
       },
+    );
+  }
+}
+
+class _VendorClosedReopenPage extends ConsumerWidget {
+  const _VendorClosedReopenPage();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _MessageScaffold(
+      title: _vTxt(
+        context,
+        en: 'Register your shop again',
+        si: 'නැවත shop එක register කරන්න',
+      ),
+      body: _vTxt(
+        context,
+        en:
+            'Your previous shop on this login was closed. Complete registration '
+            'again to open a new storefront.',
+        si:
+            'මෙම login එකේ පැරණි shop එක වසා ඇත. නව shop එකක් සඳහා registration '
+            'එක නැවත සම්පූර්ණ කරන්න.',
+      ),
+      actions: <Widget>[
+        FilledButton(
+          onPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const ShopRegistrationFormPage(),
+              ),
+            );
+          },
+          child: Text(
+            _vTxt(context, en: 'Register shop', si: 'Shop register කරන්න'),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            await ref.read(firebaseAuthProvider).signOut();
+          },
+          child: Text(
+            _vTxt(
+              context,
+              en: 'Sign out and use another account',
+              si: 'වෙනත් ගිණුමකින් පිවිසෙන්න',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VendorDeletionBlockedPage extends ConsumerWidget {
+  const _VendorDeletionBlockedPage();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _MessageScaffold(
+      title: _vTxt(
+        context,
+        en: 'Shop account closed',
+        si: 'Shop ගිණුම වසා ඇත',
+      ),
+      body: _vTxt(
+        context,
+        en:
+            'Your shop account is being closed. Please wait a moment, then sign '
+            'out and try again. Contact MND support if this continues.',
+        si:
+            'මෙම vendor ගිණුම වසා ඉවත් කර ඇත. ඔබ sign out වෙයි. '
+            'වැරදියක් නම් MND support අමතන්න.',
+      ),
+      actions: <Widget>[
+        FilledButton(
+          onPressed: () async {
+            await ref.read(firebaseAuthProvider).signOut();
+          },
+          child: Text(_vTxt(context, en: 'Sign out', si: 'Sign out')),
+        ),
+      ],
     );
   }
 }

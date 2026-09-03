@@ -13,6 +13,7 @@ class ShopRegistrationPayload {
     required this.longitude,
     required this.shopDescription,
     required this.categoryLabel,
+    this.categoryIsGrocery,
     required this.shopTypeLabel,
     required this.openTime,
     required this.closeTime,
@@ -38,6 +39,11 @@ class ShopRegistrationPayload {
   final String shopDescription;
   /// Broad bucket (e.g. Food) — stored as `vendors.category`.
   final String categoryLabel;
+  /// Explicit admin-set flag from the selected `shop_categories` doc, when
+  /// available — preferred over parsing [categoryLabel] text so renaming a
+  /// category can't silently misclassify new vendor registrations. Null
+  /// when the category doc predates this field (falls back to text).
+  final bool? categoryIsGrocery;
   /// Specific kind (e.g. Rice and curry) — stored as `vendors.tag`.
   final String shopTypeLabel;
   final String openTime;

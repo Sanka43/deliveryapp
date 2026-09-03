@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/auth/presentation/widgets/shop_map_pick_result.dart';
 
 /// Default center (Colombo) when opening the picker.
@@ -126,7 +127,16 @@ class _ShopMapPickerPageState extends State<ShopMapPickerPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Could not get location: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(
+              userFacingError(
+                e,
+                fallback: 'Could not get location. Please try again.',
+              ),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) {

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/auth/data/shop_password_reset_repository.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/shop_forgot_password_otp_page.dart';
 import 'package:mnd_shop/features/auth/presentation/widgets/shop_auth_form_chrome.dart';
@@ -96,9 +97,19 @@ class _ShopForgotPasswordEmailPageState
         ),
       );
     } on ShopPasswordResetException catch (e) {
-      setState(() => _error = e.message);
+      setState(
+        () => _error = userFacingError(
+          e,
+          fallback: 'Could not send reset code. Please try again.',
+        ),
+      );
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(
+        () => _error = userFacingError(
+          e,
+          fallback: 'Could not send reset code. Please try again.',
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _busy = false);

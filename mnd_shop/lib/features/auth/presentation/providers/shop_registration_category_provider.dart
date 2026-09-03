@@ -5,10 +5,18 @@ import 'package:mnd_shop/core/constants/firebase_collections.dart';
 
 /// Admin-managed broad category (Food, Grocery). Used on vendor registration.
 final class ShopCategoryOption {
-  const ShopCategoryOption({required this.id, required this.label});
+  const ShopCategoryOption({
+    required this.id,
+    required this.label,
+    this.isGrocery,
+  });
 
   final String id;
   final String label;
+
+  /// Admin-set flag on the `shop_categories` doc, when present — null for
+  /// legacy category docs that predate this field.
+  final bool? isGrocery;
 }
 
 /// Active shop categories from Firestore (`shop_categories`), ordered.
@@ -29,7 +37,13 @@ final StreamProvider<List<ShopCategoryOption>> shopRegistrationCategoriesProvide
       }
       final String? label = (m['label'] as String?)?.trim();
       if (label != null && label.isNotEmpty) {
-        out.add(ShopCategoryOption(id: doc.id, label: label));
+        out.add(
+          ShopCategoryOption(
+            id: doc.id,
+            label: label,
+            isGrocery: m['isGrocery'] is bool ? m['isGrocery'] as bool : null,
+          ),
+        );
       }
     }
     return out;

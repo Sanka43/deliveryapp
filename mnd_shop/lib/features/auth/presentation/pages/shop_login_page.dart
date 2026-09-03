@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/features/auth/data/shop_vendor_access_service.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/shop_forgot_password_email_page.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/shop_registration_form_page.dart';
 import 'package:mnd_shop/features/auth/presentation/widgets/shop_legal_policy_dialog.dart';
@@ -159,24 +160,108 @@ class _ShopLoginPageState extends ConsumerState<ShopLoginPage> {
     }
     setState(() => _busy = true);
     try {
-      await ref
-          .read(firebaseAuthProvider)
-          .signInWithEmailAndPassword(
-            email: _email.text.trim(),
-            password: _password.text,
-          );
+      final FirebaseAuth auth = ref.read(firebaseAuthProvider);
+      await auth.signInWithEmailAndPassword(
+        email: _email.text.trim(),
+        password: _password.text,
+      );
+      final User? user = auth.currentUser;
+      if (user != null) {
+        final ShopVendorAccessResult access = await ref
+            .read(shopVendorAccessServiceProvider)
+            .evaluate(user);
+        if (access == ShopVendorAccessResult.customerAccount) {
+          await auth.signOut();
+          if (mounted) {
+            _showTopErrorSnackBar(
+              _vTxt(
+                context,
+                en: 'This is a customer account. Use the MND Customer app to sign in.',
+                si: 'මෙය customer ගිණුමකි. MND Customer app එක භාවිතා කරන්න.',
+              ),
+            );
+          }
+        } else if (access == ShopVendorAccessResult.riderAccount) {
+          await auth.signOut();
+          if (mounted) {
+            _showTopErrorSnackBar(
+              _vTxt(
+                context,
+                en: 'This is a rider account. Use the MND Rider app to sign in.',
+                si: 'මෙය rider ගිණුමකි. MND Rider app එක භාවිතා කරන්න.',
+              ),
+            );
+          }
+        } else if (access == ShopVendorAccessResult.deletionBlocked) {
+          await auth.signOut();
+          if (mounted) {
+            _showTopErrorSnackBar(
+              _vTxt(
+                context,
+                en:
+                    'Your shop account is still being closed. Wait a moment and try again.',
+                si:
+                    'ඔබේ shop ගිණුම තවම වසා දමමින් පවතී. මදක් රැඳී නැවත උත්සාහ කරන්න.',
+              ),
+            );
+          }
+        }
+      }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        _showTopErrorSnackBar(e.message ?? e.code);
+        _showTopErrorSnackBar(_mapAuthError(e));
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        _showTopErrorSnackBar(e.toString());
+        _showTopErrorSnackBar(
+          _vTxt(
+            context,
+            en: 'Could not sign in. Check your connection and try again.',
+            si: 'Sign in කළ නොහැක. සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.',
+          ),
+        );
       }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  String _mapAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return _vTxt(
+          context,
+          en: 'Enter a valid email address.',
+          si: 'වලංගු email ලිපිනයක් ඇතුල් කරන්න.',
+        );
+      case 'user-disabled':
+        return _vTxt(
+          context,
+          en: 'This account has been disabled. Contact support.',
+          si: 'මෙම ගිණුම අක්‍රිය කර ඇත. සහාය අමතන්න.',
+        );
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return _vTxt(
+          context,
+          en: 'Incorrect email or password.',
+          si: 'වැරදි email හෝ මුරපදය.',
+        );
+      case 'too-many-requests':
+        return _vTxt(
+          context,
+          en: 'Too many attempts. Wait a moment and try again.',
+          si: 'උත්සාහ බොහෝයි. මදක් රැඳී නැවත උත්සාහ කරන්න.',
+        );
+      default:
+        return _vTxt(
+          context,
+          en: 'Could not sign in. Try again.',
+          si: 'Sign in කළ නොහැක. නැවත උත්සාහ කරන්න.',
+        );
     }
   }
 
@@ -214,8 +299,13 @@ class _ShopLoginPageState extends ConsumerState<ShopLoginPage> {
         systemNavigationBarContrastEnforced: false,
       ),
       child: Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFF4A3FE0),
-      body: Stack(
+      // Shift hero + wave + logo + form together by keyboard height only —
+      // avoids form-only scroll overshooting to the top.
+      body: Transform.translate(
+        offset: Offset(0, -keyboardInset),
+        child: Stack(
         children: <Widget>[
           // 1. Hero background pinned to the top.
           Positioned(
@@ -244,7 +334,7 @@ class _ShopLoginPageState extends ConsumerState<ShopLoginPage> {
                       28,
                       75,
                       28,
-                      20 + bottomSafe + keyboardInset,
+                      20 + bottomSafe,
                     ),
                     child: Center(
                       child: ConstrainedBox(
@@ -591,6 +681,7 @@ class _ShopLoginPageState extends ConsumerState<ShopLoginPage> {
             ),
           ),
         ],
+      ),
       ),
       ),
     );

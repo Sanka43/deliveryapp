@@ -1,16 +1,13 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mnd_shop/core/media/shop_cover_image_picker.dart';
 import 'package:mnd_shop/features/auth/data/shop_registration_repository.dart';
 import 'package:mnd_shop/features/auth/domain/shop_registration_payload.dart';
 import 'package:mnd_shop/features/auth/presentation/providers/shop_registration_category_provider.dart';
 import 'package:mnd_shop/features/auth/presentation/widgets/shop_map_pick_result.dart';
 import 'package:mnd_shop/features/auth/presentation/widgets/shop_map_picker_page.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 /// Full vendor onboarding form (location, hours, wages, up to four shop photos).
 /// Creates `vendors/{uid}` with `approvalStatus: pending` and `active: false`.
@@ -40,6 +37,8 @@ class _ShopRegistrationFormPageState
   /// Set only via [Pin on map]; defaults to Colombo until pinned.
   double _pinLatitude = 6.9271;
   double _pinLongitude = 79.8612;
+  bool _locationPinned = false;
+  String _pinnedAddressLabel = '';
   final TextEditingController _hoursNote = TextEditingController();
 
   /// Doc id from `shop_categories` (or synthetic `__fb_*` when offline).
@@ -51,12 +50,14 @@ class _ShopRegistrationFormPageState
   final List<Uint8List?> _photos = List<Uint8List?>.filled(4, null);
 
   bool _submitting = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   String? _error;
 
   static const List<ShopCategoryOption> _fallbackCategories =
       <ShopCategoryOption>[
-        ShopCategoryOption(id: '__fb_food', label: 'Food'),
-        ShopCategoryOption(id: '__fb_grocery', label: 'Grocery'),
+        ShopCategoryOption(id: '__fb_food', label: 'Food', isGrocery: false),
+        ShopCategoryOption(id: '__fb_grocery', label: 'Grocery', isGrocery: true),
       ];
 
   static const Map<String, List<String>> _fallbackShopTypesByCategory =
@@ -91,55 +92,23 @@ class _ShopRegistrationFormPageState
     return '$h:$m';
   }
 
-  Future<bool> _ensurePhotoLibraryPermission() async {
-    if (kIsWeb) {
-      return true;
-    }
-    if (Platform.isIOS) {
-      final PermissionStatus s = await Permission.photos.request();
-      return s.isGranted || s.isLimited;
-    }
-    if (Platform.isAndroid) {
-      PermissionStatus s = await Permission.photos.request();
-      if (s.isGranted || s.isLimited) {
-        return true;
-      }
-      s = await Permission.storage.request();
-      return s.isGranted;
-    }
-    return true;
-  }
-
-  Future<void> _pickPhoto(int index) async {
-    final bool ok = await _ensurePhotoLibraryPermission();
-    if (!ok) {
-      return;
-    }
-    final ImagePicker picker = ImagePicker();
-    final XFile? file = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 85,
+  Future<void> _pickShopPhoto() async {
+    final Uint8List? bytes = await ShopCoverImagePicker.pickFromGalleryAndCrop(
+      context,
     );
-    if (file == null) {
-      return;
-    }
-    final Uint8List bytes = await file.readAsBytes();
-    if (!mounted) {
+    if (bytes == null || !mounted) {
       return;
     }
     setState(() {
-      _photos[index] = bytes;
-      if (index == 0) {
-        for (int i = 1; i < _photos.length; i++) {
-          _photos[i] = null;
-        }
+      _photos[0] = bytes;
+      for (int i = 1; i < _photos.length; i++) {
+        _photos[i] = null;
       }
     });
   }
 
-  void _clearPhoto(int index) {
-    setState(() => _photos[index] = null);
+  void _clearShopPhoto() {
+    setState(() => _photos[0] = null);
   }
 
   Future<void> _openMapPicker() async {
@@ -167,13 +136,30 @@ class _ShopRegistrationFormPageState
     setState(() {
       _pinLatitude = picked.latitude;
       _pinLongitude = picked.longitude;
+      _locationPinned = true;
       if (picked.suggestedAddressLine.trim().isNotEmpty) {
         _address.text = picked.suggestedAddressLine.trim();
       }
       if (picked.suggestedCity.trim().isNotEmpty) {
         _city.text = picked.suggestedCity.trim();
       }
+      _pinnedAddressLabel = _formatPinnedAddressLabel();
     });
+  }
+
+  String _formatPinnedAddressLabel() {
+    final String line = _address.text.trim();
+    final String city = _city.text.trim();
+    if (line.isNotEmpty && city.isNotEmpty) {
+      return '$line, $city';
+    }
+    if (line.isNotEmpty) {
+      return line;
+    }
+    if (city.isNotEmpty) {
+      return city;
+    }
+    return 'Lat ${_pinLatitude.toStringAsFixed(5)}, Lng ${_pinLongitude.toStringAsFixed(5)}';
   }
 
   Future<void> _pickTime({required bool open}) async {
@@ -223,9 +209,11 @@ class _ShopRegistrationFormPageState
       ref.read(shopRegistrationCategoriesProvider),
     );
     String categoryLabel = 'General';
+    bool? categoryIsGrocery;
     for (final ShopCategoryOption c in categoryOpts) {
       if (c.id == _selectedCategoryId) {
         categoryLabel = c.label;
+        categoryIsGrocery = c.isGrocery;
         break;
       }
     }
@@ -256,6 +244,7 @@ class _ShopRegistrationFormPageState
       longitude: ln,
       shopDescription: _shopDescription.text.trim(),
       categoryLabel: categoryLabel,
+      categoryIsGrocery: categoryIsGrocery,
       shopTypeLabel: shopTypeResolved,
       openTime: _fmtTime(_open),
       closeTime: _fmtTime(_close),
@@ -333,12 +322,45 @@ class _ShopRegistrationFormPageState
       setState(() => _error = 'Step 2: select category and shop type.');
       return false;
     }
-    if (_currentStep == 2 &&
-        (_pinLatitude.abs() > 90 || _pinLongitude.abs() > 180)) {
-      setState(() => _error = 'Step 3: set a valid map pin location.');
-      return false;
+    if (_currentStep == 2) {
+      if (!_locationPinned) {
+        setState(() => _error = 'Step 3: pin your shop location on the map.');
+        return false;
+      }
+      if (_pinLatitude.abs() > 90 || _pinLongitude.abs() > 180) {
+        setState(() => _error = 'Step 3: set a valid map pin location.');
+        return false;
+      }
     }
     return true;
+  }
+
+  void _goToStep(int step) {
+    if (step < 0 || step > 3 || step == _currentStep || _submitting) {
+      return;
+    }
+    if (step < _currentStep) {
+      setState(() {
+        _error = null;
+        _currentStep = step;
+      });
+      return;
+    }
+    if (!_validateCurrentStep()) {
+      return;
+    }
+    setState(() => _currentStep = step);
+  }
+
+  void _handleBack() {
+    if (_submitting) {
+      return;
+    }
+    if (_currentStep > 0) {
+      _prevStep();
+      return;
+    }
+    Navigator.of(context).maybePop<void>();
   }
 
   void _nextStep() {
@@ -443,7 +465,7 @@ class _ShopRegistrationFormPageState
           ),
           const SizedBox(height: 16),
           Text(
-            'Shop image',
+            'Shop image *',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -456,7 +478,7 @@ class _ShopRegistrationFormPageState
               borderRadius: BorderRadius.circular(12),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-                onTap: _submitting ? null : () => _pickPhoto(0),
+                onTap: _submitting ? null : _pickShopPhoto,
                 child: Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
@@ -491,7 +513,7 @@ class _ShopRegistrationFormPageState
                             minimumSize: const Size(36, 36),
                             padding: EdgeInsets.zero,
                           ),
-                          onPressed: () => _clearPhoto(0),
+                          onPressed: _clearShopPhoto,
                           icon: const Icon(Icons.close, size: 18),
                         ),
                       ),
@@ -607,12 +629,61 @@ class _ShopRegistrationFormPageState
                 v == null || v.trim().isEmpty ? 'Required' : null,
           ),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _submitting ? null : _openMapPicker,
-            style: pillOutlineStyle,
-            icon: const Icon(Icons.map_outlined, size: 18),
-            label: const Text('Pin on map'),
-          ),
+          if (_locationPinned) ...<Widget>[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5EE),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF8BC9A8)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      const Icon(
+                        Icons.location_on_rounded,
+                        color: Color(0xFF1F7A4A),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Pinned location',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFF1F7A4A),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _pinnedAddressLabel,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1E2330),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _submitting ? null : _openMapPicker,
+              style: pillOutlineStyle,
+              icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+              label: const Text('Change pinned location'),
+            ),
+          ] else ...<Widget>[
+            OutlinedButton.icon(
+              onPressed: _submitting ? null : _openMapPicker,
+              style: pillOutlineStyle,
+              icon: const Icon(Icons.map_outlined, size: 18),
+              label: const Text('Pin on map'),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: <Widget>[
@@ -685,16 +756,39 @@ class _ShopRegistrationFormPageState
           const SizedBox(height: 12),
           TextFormField(
             controller: _password,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Password *'),
+            obscureText: _obscurePassword,
+            decoration: InputDecoration(
+              labelText: 'Password *',
+              suffixIcon: IconButton(
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
+              ),
+            ),
             validator: (String? v) =>
                 v == null || v.length < 6 ? 'Min 6 characters' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _confirmPassword,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Confirm password *'),
+            obscureText: _obscureConfirmPassword,
+            decoration: InputDecoration(
+              labelText: 'Confirm password *',
+              suffixIcon: IconButton(
+                onPressed: () => setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                ),
+                icon: Icon(
+                  _obscureConfirmPassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
+              ),
+            ),
             validator: (String? v) =>
                 v == null || v.isEmpty ? 'Required' : null,
           ),
@@ -702,24 +796,37 @@ class _ShopRegistrationFormPageState
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3F5FF),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        centerTitle: false,
-        title: Text(
-          'MND Shop Manager',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF1E2330),
-            letterSpacing: -0.2,
-          ),
-        ),
-      ),
-      body: SafeArea(
+    return PopScope(
+      canPop: _currentStep == 0 && !_submitting,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) {
+          return;
+        }
+        _handleBack();
+      },
+      child: Stack(
+        children: <Widget>[
+          Scaffold(
+            backgroundColor: const Color(0xFFF3F5FF),
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: _submitting ? null : _handleBack,
+              ),
+              centerTitle: false,
+              title: Text(
+                'MND Shop Manager',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF1E2330),
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+            body: SafeArea(
         child: Theme(
           data: theme.copyWith(
             inputDecorationTheme: InputDecorationTheme(
@@ -824,24 +931,35 @@ class _ShopRegistrationFormPageState
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Container(
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD7DCEC),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: (_currentStep + 1) / 4,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF3C58B8),
-                                  borderRadius: BorderRadius.circular(999),
+                        Row(
+                          children: List<Widget>.generate(4, (int i) {
+                            final bool active = i == _currentStep;
+                            final bool completed = i < _currentStep;
+                            return Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.only(left: i == 0 ? 0 : 4),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: _submitting
+                                        ? null
+                                        : () => _goToStep(i),
+                                    borderRadius: BorderRadius.circular(999),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: active || completed
+                                            ? const Color(0xFF3C58B8)
+                                            : const Color(0xFFD7DCEC),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
+                            );
+                          }),
                         ),
                         const SizedBox(height: 16),
                         Container(
@@ -959,6 +1077,51 @@ class _ShopRegistrationFormPageState
             },
           ),
         ),
+      ),
+    ),
+          if (_submitting)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.45),
+                child: Center(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 32),
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: CircularProgressIndicator(strokeWidth: 3),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Creating your shop account…',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Uploading photos and saving your details. Please wait.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
