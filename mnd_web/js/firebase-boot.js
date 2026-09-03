@@ -7,6 +7,7 @@
   let auth = null;
   let db = null;
   let storage = null;
+  let functionsInstance = null;
 
   function initFirebase() {
     if (!window.firebase || !window.__FIREBASE_CONFIG__) {
@@ -20,7 +21,11 @@
       db = firebase.firestore();
     }
     storage = firebase.storage();
-    return { auth, db, storage };
+    if (!functionsInstance && typeof firebase.functions === "function") {
+      // Matches the region every callable is deployed to (functions/src/*).
+      functionsInstance = firebase.app().functions("asia-south1");
+    }
+    return { auth, db, storage, functions: functionsInstance };
   }
 
   async function ensureFirestoreAuth() {
@@ -130,6 +135,12 @@
         initFirebase();
       }
       return storage;
+    },
+    get functions() {
+      if (!functionsInstance) {
+        initFirebase();
+      }
+      return functionsInstance;
     },
   };
 

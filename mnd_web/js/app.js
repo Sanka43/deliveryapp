@@ -42,6 +42,10 @@
     // Flat cut the platform keeps per completed passenger ride. Mirrors
     // DEFAULT_RIDE_COMMISSION_LKR in functions/src/riderCashLogic.ts.
     rideCommissionLkr: 0,
+    // Flat cut the platform keeps out of the delivery fee per delivered
+    // order. Mirrors DEFAULT_ORDER_RIDER_COMMISSION_LKR in
+    // functions/src/riderCashLogic.ts.
+    orderRiderCommissionLkr: 0,
     // Cash a rider may hold before new jobs stop being claimable. Mirrors
     // DEFAULT_MAX_CASH_IN_HAND_LKR in functions/src/riderCashLogic.ts.
     maxRiderCashInHandLkr: 7000,
@@ -105,6 +109,14 @@
   /** One-shot reads; avoids stale cache sync over the Listen channel. */
   const FS_GET_SERVER = { source: "server" };
 
+  // "delivered" is deliberately not selectable here — only the rider app's
+  // own "Confirm delivered" flow (completeDeliveryOrder) computes the real
+  // productCashLkr / amountDueFromCustomer / deliveryFee for the order.
+  // Setting status straight to "delivered" from this form bypasses that
+  // calculation entirely, leaving those fields at 0 and undercharging the
+  // rider for cash they actually owe. An order that's genuinely already
+  // delivered still shows "Delivered" here (resolveOrderStatusOptions keeps
+  // the current status visible) — this only blocks *setting* it that way.
   const ORDER_STATUSES_DELIVERY = [
     "placed",
     "confirmed",
@@ -112,7 +124,6 @@
     "ready",
     "out_for_delivery",
     "on_the_way",
-    "delivered",
     "cancelled",
   ];
 
@@ -6258,6 +6269,7 @@
             ? PLATFORM_FEES_DEFAULTS.serviceChargePercent
             : Number(d.serviceChargePercent),
         rideCommissionLkr: Number(d.rideCommissionLkr) || 0,
+        orderRiderCommissionLkr: Number(d.orderRiderCommissionLkr) || 0,
         maxRiderCashInHandLkr:
           Number(d.maxRiderCashInHandLkr) > 0
             ? Number(d.maxRiderCashInHandLkr)
@@ -6285,6 +6297,7 @@
     };
     setVal("fee-service-charge-pct", f.serviceChargePercent);
     setVal("fee-ride-commission", f.rideCommissionLkr);
+    setVal("fee-order-rider-commission", f.orderRiderCommissionLkr);
     setVal("fee-max-cash-in-hand", f.maxRiderCashInHandLkr);
     setVal("fee-min-delivery", f.minDeliveryFeeLkr);
     setVal("fee-per-km", f.pricePerKmLkr);
@@ -6304,6 +6317,10 @@
       rideCommissionLkr: Math.max(
         0,
         Math.round(Number(document.getElementById("fee-ride-commission").value) || 0)
+      ),
+      orderRiderCommissionLkr: Math.max(
+        0,
+        Math.round(Number(document.getElementById("fee-order-rider-commission").value) || 0)
       ),
       maxRiderCashInHandLkr: Math.max(
         0,
@@ -6330,6 +6347,7 @@
     cache.platformFees = {
       serviceChargePercent: payload.serviceChargePercent,
       rideCommissionLkr: payload.rideCommissionLkr,
+      orderRiderCommissionLkr: payload.orderRiderCommissionLkr,
       maxRiderCashInHandLkr: payload.maxRiderCashInHandLkr,
       minDeliveryFeeLkr: payload.minDeliveryFeeLkr,
       pricePerKmLkr: payload.pricePerKmLkr,

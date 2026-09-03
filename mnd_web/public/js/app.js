@@ -1681,16 +1681,18 @@
     const list = cache.customers;
     tbody.innerHTML =
       list.length === 0
-        ? `<tr><td colspan="5"><div class="empty-state">No customer profiles.</div></td></tr>`
+        ? `<tr><td colspan="6"><div class="empty-state">No customer profiles.</div></td></tr>`
         : list
             .map(
               (u) => `<tr>
         <td><code>${escapeHtml(u.id)}</code></td>
-        <td>${escapeHtml(u.displayName || "â€”")}</td>
-        <td>${escapeHtml(u.role || "â€”")}</td>
-        <td>${escapeHtml(u.phoneNumber || u.phone || "â€”")}</td>
+        <td>${escapeHtml(u.displayName || "—")}</td>
+        <td>${escapeHtml(u.role || "—")}</td>
+        <td>${escapeHtml(u.phoneNumber || u.phone || "—")}</td>
+        <td><strong>${escapeHtml(String(jobPostCreditsOf(u)))}</strong></td>
         <td class="row-actions">
           <button type="button" class="btn btn-ghost btn-sm" data-view-customer="${escapeHtml(u.id)}">View</button>
+          <button type="button" class="btn btn-primary btn-sm" data-grant-credits="${escapeHtml(u.id)}">Grant credits</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-customer="${escapeHtml(u.id)}">Delete</button>
         </td>
       </tr>`
@@ -1699,9 +1701,51 @@
     tbody.querySelectorAll("[data-view-customer]").forEach((btn) => {
       btn.addEventListener("click", () => openCustomerView(btn.getAttribute("data-view-customer")));
     });
+    tbody.querySelectorAll("[data-grant-credits]").forEach((btn) => {
+      btn.addEventListener("click", () => promptGrantJobCredits(btn.getAttribute("data-grant-credits")));
+    });
     tbody.querySelectorAll("[data-del-customer]").forEach((btn) => {
       btn.addEventListener("click", () => deleteCustomer(btn.getAttribute("data-del-customer")));
     });
+  }
+
+  function jobPostCreditsOf(u) {
+    const n = Number(u?.jobPostCredits);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  async function promptGrantJobCredits(uid) {
+    if (!uid || !auth.currentUser) return;
+    const u = cache.customers.find((x) => x.id === uid);
+    const current = jobPostCreditsOf(u);
+    const name = u?.displayName || uid;
+    const raw = window.prompt(
+      `Grant job post credits to ${name}\nCurrent credits: ${current}\nEnter amount to add (1, 5, 10, or 20):`,
+      "5"
+    );
+    if (raw == null) return;
+    const amount = Number(String(raw).trim());
+    if (![1, 5, 10, 20].includes(amount)) {
+      alert("Choose 1, 5, 10, or 20 credits.");
+      return;
+    }
+    try {
+      await db.collection(COL.customers).doc(uid).set(
+        {
+          jobPostCredits: firebase.firestore.FieldValue.increment(amount),
+          jobPostCreditsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          jobPostCreditsUpdatedBy: auth.currentUser.uid,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      alert(`Granted ${amount} job credit(s).`);
+      await loadCustomers();
+      if (currentView === "customers") renderCustomers();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Could not grant credits.");
+    }
   }
 
   function renderRatings() {
@@ -1805,11 +1849,17 @@
     openModal(
       "Customer profile",
       `<pre style="margin:0;max-height:50vh;overflow:auto;font-size:12px;color:var(--text)">${escapeHtml(json)}</pre>
-      <p style="color:var(--muted);font-size:0.85rem">Firestore rules allow admin read/delete on customers, not admin-side profile edits.</p>`,
+      <p style="color:var(--muted);font-size:0.85rem">Job credits: <strong>${escapeHtml(String(jobPostCreditsOf(u)))}</strong>. Admin can grant credits after offline payment.</p>
+      <div class="row-actions" style="margin-top:8px">
+        <button type="button" class="btn btn-primary btn-sm" data-grant-credits-modal="${escapeHtml(u.id)}">Grant credits</button>
+      </div>`,
       "readonly",
       null
     );
     modalSave.style.display = "none";
+    document.querySelectorAll("[data-grant-credits-modal]").forEach((btn) => {
+      btn.addEventListener("click", () => promptGrantJobCredits(btn.getAttribute("data-grant-credits-modal")));
+    });
   }
 
   async function openOrderEdit(id) {

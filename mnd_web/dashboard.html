@@ -9,7 +9,7 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="favicon.png" type="image/png" sizes="32x32" />
     <link rel="shortcut icon" href="favicon.ico" />
-    <link rel="stylesheet" href="css/styles.css?v=product-add-shop-first-20260807" />
+    <link rel="stylesheet" href="css/styles.css?v=rides-tab-20260901" />
   </head>
   <body class="dashboard-page">
     <div id="auth-gate" class="auth-gate" aria-live="polite">
@@ -41,6 +41,10 @@
           <button type="button" class="nav-btn" data-nav="orders">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg>
             Orders
+          </button>
+          <button type="button" class="nav-btn" data-nav="rides">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6.5" cy="16.5" r="2.5"/><circle cx="17.5" cy="16.5" r="2.5"/><path d="M6.5 16.5L10 8h3.5l2.5 5.5M10 8l-2 5.5h5"/></svg>
+            Rides
           </button>
           <p class="nav-group-label">Catalog</p>
           <button type="button" class="nav-btn" data-nav="vendors">
@@ -94,6 +98,11 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
             Rider cash
             <span id="nav-rider-cash" class="nav-badge" hidden>0</span>
+          </button>
+          <button type="button" class="nav-btn" data-nav="withdrawals">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            Withdrawals
+            <span id="nav-withdrawals" class="nav-badge" hidden>0</span>
           </button>
           <button type="button" class="nav-btn" data-nav="customers">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
@@ -264,6 +273,45 @@
                       <th>Customer</th>
                       <th>Shop / address</th>
                       <th>Total</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section data-view="rides" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Rides</h3>
+              </div>
+              <p style="color: var(--muted); margin-top: 0">
+                Passenger ride bookings (Bike / Wheel / Car) &middot; Firestore <code>trips</code>.
+              </p>
+              <div class="toolbar">
+                <input type="search" id="filter-rides" placeholder="Search trip, customer, rider, route…" />
+                <select id="filter-ride-status">
+                  <option value="">All statuses</option>
+                  <option value="searching">Searching</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="arrived">Arrived</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div class="table-wrap">
+                <table id="table-rides">
+                  <thead>
+                    <tr>
+                      <th>Trip</th>
+                      <th>Customer</th>
+                      <th>Rider</th>
+                      <th>Route</th>
+                      <th>Fare</th>
                       <th>Status</th>
                       <th>Actions</th>
                     </tr>
@@ -763,6 +811,37 @@
             </div>
           </section>
 
+          <section data-view="withdrawals" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Withdrawal requests</h3>
+                  <p class="panel-sub">
+                    Riders cashing out their wallet balance (bank/mobile payout) &middot;
+                    Firestore <code>riders/{id}/withdrawals</code>
+                  </p>
+                </div>
+                <button type="button" id="btn-reload-withdrawals" class="btn btn-ghost btn-sm" style="width: auto">Reload</button>
+              </div>
+              <div class="table-wrap">
+                <table id="table-withdrawals">
+                  <thead>
+                    <tr>
+                      <th>Rider</th>
+                      <th>Amount</th>
+                      <th>Method</th>
+                      <th>Account</th>
+                      <th>Note</th>
+                      <th>Requested</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
           <section data-view="rider-cash" class="view" hidden>
             <div class="panel">
               <div class="panel-header">
@@ -925,6 +1004,14 @@
                   </p>
                 </div>
                 <div class="form-group">
+                  <label for="fee-order-rider-commission">Delivery rider commission (LKR, flat per delivered order)</label>
+                  <input type="number" id="fee-order-rider-commission" min="0" step="1" />
+                  <p class="panel-sub" style="margin: 4px 0 0">
+                    Kept by the platform out of every delivery fee. On a cash order the rider owes
+                    this back to admin alongside the shop's product cost and the service charge.
+                  </p>
+                </div>
+                <div class="form-group">
                   <label for="fee-max-cash-in-hand">Max rider cash in hand (LKR)</label>
                   <input type="number" id="fee-max-cash-in-hand" min="0" step="1" />
                   <p class="panel-sub" style="margin: 4px 0 0">
@@ -933,11 +1020,11 @@
                   </p>
                 </div>
                 <div class="form-group">
-                  <label for="fee-min-delivery">Min delivery fee (LKR, first 2.5 km)</label>
+                  <label for="fee-min-delivery">Min delivery fee (LKR, first 1.5 km)</label>
                   <input type="number" id="fee-min-delivery" min="0" step="1" />
                 </div>
                 <div class="form-group">
-                  <label for="fee-per-km">Price per km after 2.5 km (LKR)</label>
+                  <label for="fee-per-km">Price per km after 1.5 km (LKR)</label>
                   <input type="number" id="fee-per-km" min="0" step="1" />
                 </div>
                 <div class="form-group">
@@ -1045,9 +1132,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
-    <script src="js/firebase-config.js?v=ongoing-riders-20260803"></script>
-    <script src="js/firebase-boot.js?v=ongoing-riders-20260803"></script>
-    <script src="js/ui-helpers.js?v=ongoing-riders-20260803"></script>
-    <script src="js/app.js?v=product-add-shop-first-20260807"></script>
+    <script src="js/firebase-config.js?v=rides-tab-20260901"></script>
+    <script src="js/firebase-boot.js?v=rides-tab-20260901"></script>
+    <script src="js/ui-helpers.js?v=rides-tab-20260901"></script>
+    <script src="js/app.js?v=rides-tab-20260901"></script>
   </body>
 </html>
