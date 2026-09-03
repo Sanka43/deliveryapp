@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 enum ShopPushType {
   newOrder,
+  orderReminder,
   orderCancelled,
   approval,
   unknown,
@@ -43,6 +44,8 @@ class ShopPushMessage {
       case 'order_new':
       case 'new_order':
         return ShopPushType.newOrder;
+      case 'order_reminder':
+        return ShopPushType.orderReminder;
       case 'order_cancelled':
       case 'order_canceled':
         return ShopPushType.orderCancelled;
@@ -65,6 +68,7 @@ class ShopPushMessage {
   static String _defaultTitle(ShopPushType type) {
     return switch (type) {
       ShopPushType.newOrder => 'New order',
+      ShopPushType.orderReminder => 'Order waiting',
       ShopPushType.orderCancelled => 'Order cancelled',
       ShopPushType.approval => 'Shop approval update',
       ShopPushType.unknown => 'MND Shop',
@@ -74,6 +78,7 @@ class ShopPushMessage {
   static String _defaultBody(ShopPushType type) {
     return switch (type) {
       ShopPushType.newOrder => 'A new order is waiting for confirmation.',
+      ShopPushType.orderReminder => 'Please confirm or reject this order.',
       ShopPushType.orderCancelled => 'An order was cancelled.',
       ShopPushType.approval => 'Your shop approval status changed.',
       ShopPushType.unknown => 'You have a new notification.',
@@ -107,6 +112,7 @@ class ShopPushMessage {
     }
     final ShopPushType type = switch (values['type']) {
       'newOrder' => ShopPushType.newOrder,
+      'orderReminder' => ShopPushType.orderReminder,
       'orderCancelled' => ShopPushType.orderCancelled,
       'approval' => ShopPushType.approval,
       _ => ShopPushType.unknown,

@@ -46,26 +46,65 @@ class ShopLocalNotifications {
     }
 
     _alertSound = await _loadAlertSound();
-    await ensureOrdersChannel(_alertSound);
+    await ensureAllOrdersChannels();
   }
 
-  /// Creates (or reuses) the Android channel for [sound]. Channel sound is
-  /// immutable after first create, so each sound uses its own channel id.
-  static Future<void> ensureOrdersChannel(VendorAlertSound sound) async {
-    _alertSound = sound;
+  /// Creates the FCM default channel plus every tone-specific channel.
+  /// Channel sound is immutable after first create, so each sound has its own id.
+  static Future<void> ensureAllOrdersChannels() async {
     final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
         _plugin.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.createNotificationChannel(
+    if (androidPlugin == null) {
+      return;
+    }
+
+    // Old-generation channels may exist with a broken (silent) sound locked in
+    // by Android; remove them so only the current v2 channels remain.
+    for (final String legacyId in ShopPushChannels.legacyChannelIds) {
+      try {
+        await androidPlugin.deleteNotificationChannel(channelId: legacyId);
+      } catch (_) {
+        // Best effort: a failed delete must not block channel setup.
+      }
+    }
+
+    await androidPlugin.createNotificationChannel(
       AndroidNotificationChannel(
-        ShopPushChannels.ordersChannelIdFor(sound),
+        ShopPushChannels.ordersChannelId,
         ShopPushChannels.ordersChannelName,
         description: ShopPushChannels.ordersChannelDescription,
         importance: Importance.max,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound(sound.androidRawName),
+        sound: const RawResourceAndroidNotificationSound(
+          ShopPushChannels.androidSound,
+        ),
       ),
     );
+
+    for (final VendorAlertSound sound in VendorAlertSound.values) {
+      await androidPlugin.createNotificationChannel(
+        AndroidNotificationChannel(
+          ShopPushChannels.ordersChannelIdFor(sound),
+          ShopPushChannels.ordersChannelName,
+          description: ShopPushChannels.ordersChannelDescription,
+          importance: Importance.max,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound(sound.androidRawName),
+        ),
+      );
+    }
+  }
+
+  /// Creates (or reuses) the Android channel for [sound] and marks it selected.
+  static Future<void> ensureOrdersChannel(VendorAlertSound sound) async {
+    _alertSound = sound;
+    await ensureAllOrdersChannels();
+  }
+
+  static Future<VendorAlertSound> currentAlertSound() async {
+    _alertSound = await _loadAlertSound();
+    return _alertSound;
   }
 
   static Future<void> show(ShopPushMessage message) async {

@@ -11,6 +11,30 @@ enum VendorAlertSound {
     label: 'You have a new order',
     assetPath: 'sounds/you_have_a_new_order.mp3',
     androidRawName: 'you_have_a_new_order',
+  ),
+  newNotification(
+    id: 'new_notification',
+    label: 'New notification',
+    assetPath: 'sounds/new_notification.mp3',
+    androidRawName: 'new_notification',
+  ),
+  bellNotification(
+    id: 'bell_notification',
+    label: 'Bell notification',
+    assetPath: 'sounds/bell_notification.wav',
+    androidRawName: 'bell_notification',
+  ),
+  dingDong(
+    id: 'ding_dong',
+    label: 'Ding dong',
+    assetPath: 'sounds/ding_dong.wav',
+    androidRawName: 'ding_dong',
+  ),
+  notificationBell(
+    id: 'notification_bell',
+    label: 'Notification bell',
+    assetPath: 'sounds/notification_bell.wav',
+    androidRawName: 'notification_bell',
   );
 
   const VendorAlertSound({

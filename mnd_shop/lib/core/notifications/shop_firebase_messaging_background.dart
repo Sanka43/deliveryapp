@@ -8,6 +8,12 @@ import 'package:mnd_shop/firebase_options.dart';
 Future<void> shopFirebaseMessagingBackgroundHandler(
   RemoteMessage message,
 ) async {
+  // When FCM includes a notification payload, Android already shows the system
+  // tray item. Only show a local notification for data-only messages.
+  if (message.notification != null) {
+    return;
+  }
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

@@ -38,6 +38,7 @@ class _ShopPushNotificationBootstrapState
   void _handleNotificationTap(ShopPushMessage message) {
     switch (message.type) {
       case ShopPushType.newOrder:
+      case ShopPushType.orderReminder:
       case ShopPushType.orderCancelled:
         ref.read(vendorShellTabIndexProvider.notifier).state = 2;
       case ShopPushType.approval:

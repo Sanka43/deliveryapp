@@ -6,7 +6,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mnd_shop/core/constants/firebase_collections.dart';
 import 'package:mnd_shop/core/notifications/shop_local_notifications.dart';
+import 'package:mnd_shop/core/notifications/shop_push_channels.dart';
 import 'package:mnd_shop/core/notifications/shop_push_message.dart';
+import 'package:mnd_shop/core/notifications/vendor_alert_sound.dart';
 
 typedef ShopPushTapCallback = void Function(ShopPushMessage message);
 
@@ -98,6 +100,36 @@ class ShopFirebaseMessagingService {
     }
   }
 
+  /// Writes preferred Android FCM channel/sound onto the vendor doc so Cloud
+  /// Functions can target the channel the app created.
+  Future<void> syncNotificationChannelPrefs({
+    required String vendorId,
+    VendorAlertSound? sound,
+  }) async {
+    final String storeId = vendorId.trim().isNotEmpty
+        ? vendorId.trim()
+        : _currentVendorId;
+    if (storeId.isEmpty) {
+      return;
+    }
+    final VendorAlertSound selected =
+        sound ?? await ShopLocalNotifications.currentAlertSound();
+    await ShopLocalNotifications.ensureOrdersChannel(selected);
+    try {
+      await _firestore
+          .collection(FirebaseCollections.vendors)
+          .doc(storeId)
+          .set(<String, dynamic>{
+        'androidNotificationChannelId':
+            ShopPushChannels.ordersChannelIdFor(selected),
+        'androidNotificationSound': selected.androidRawName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e, st) {
+      debugPrint('Shop notification channel sync failed: $e\n$st');
+    }
+  }
+
   Future<void> syncDeviceToken({required String vendorId}) async {
     final User? user = _auth.currentUser;
     final String storeId = vendorId.trim();
@@ -111,6 +143,8 @@ class ShopFirebaseMessagingService {
       }
       final String tokenDocId = token.replaceAll('/', '_');
       final Timestamp now = Timestamp.now();
+      final VendorAlertSound selected =
+          await ShopLocalNotifications.currentAlertSound();
 
       await _firestore
           .collection(FirebaseCollections.deviceTokens)
@@ -131,6 +165,9 @@ class ShopFirebaseMessagingService {
           .set(<String, dynamic>{
         'fcmToken': token,
         'fcmTokenUpdatedAt': now,
+        'androidNotificationChannelId':
+            ShopPushChannels.ordersChannelIdFor(selected),
+        'androidNotificationSound': selected.androidRawName,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e, st) {

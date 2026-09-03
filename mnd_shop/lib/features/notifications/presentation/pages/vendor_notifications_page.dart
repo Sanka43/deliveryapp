@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/notifications/data/vendor_notifications_repository.dart';
 import 'package:mnd_shop/features/notifications/domain/vendor_notification.dart';
 import 'package:mnd_shop/features/notifications/presentation/providers/vendor_notifications_providers.dart';
@@ -21,6 +22,7 @@ class VendorNotificationsPage extends ConsumerWidget {
   static IconData _iconForType(String type) {
     switch (type) {
       case VendorNotification.kTypeOrderNew:
+      case VendorNotification.kTypeOrderReminder:
         return Icons.receipt_long_rounded;
       case VendorNotification.kTypeOrderCancelled:
         return Icons.cancel_outlined;
@@ -78,7 +80,7 @@ class VendorNotificationsPage extends ConsumerWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    'Could not load notifications.\n$e',
+                    'Could not load notifications.\n${userFacingError(e, fallback: 'Please check your connection and try again.')}',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(color: cs.error),
                   ),

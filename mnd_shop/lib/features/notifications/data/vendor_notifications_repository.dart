@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/firebase_collections.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/notifications/domain/vendor_notification.dart';
 
 /// Firestore: `vendors/{vendorId}/notifications/{notificationId}`.
@@ -132,9 +133,9 @@ class VendorNotificationsRepository {
       );
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? 'Could not update notification.';
+      return userFacingError(e, fallback: 'Could not update notification.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not update notification.');
     }
   }
 
@@ -169,9 +170,9 @@ class VendorNotificationsRepository {
       await batch.commit();
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? 'Could not update notifications.';
+      return userFacingError(e, fallback: 'Could not update notifications.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not update notifications.');
     }
   }
 }

@@ -23,6 +23,7 @@ class VendorNotification {
   final String? orderId;
 
   static const String kTypeOrderNew = 'order_new';
+  static const String kTypeOrderReminder = 'order_reminder';
   static const String kTypeOrderCancelled = 'order_cancelled';
   static const String kTypeApproval = 'approval';
   static const String kTypeSystem = 'system';
