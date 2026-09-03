@@ -94,11 +94,16 @@ flowchart TB
 | `uid` | string | ✓ | Same as document ID |
 | `fullName` | string | ✓ | Display name |
 | `phone` | string | ✓ | E.164 (`+94771234567`) |
-| `email` | string | | Synthetic auth email |
+| `email` | string | | Legacy synthetic auth email (no longer written on register) |
 | `nicNumber` | string | ✓ | National ID |
 | `profilePhotoUrl` | string | | Storage URL |
-| `licensePhotoUrl` | string | | Storage URL |
-| `vehicleType` | string | ✓ | `bike` \| `three_wheeler` \| `van` |
+| `licensePhotoUrl` | string | | Driving license Storage URL |
+| `vehiclePhotoUrl` | string | | Vehicle photo Storage URL |
+| `insurancePhotoUrl` | string | | Insurance document Storage URL |
+| `insuranceExpiresAt` | timestamp | | Insurance expiry (date) |
+| `revenueLicensePhotoUrl` | string | | Revenue license Storage URL |
+| `revenueLicenseExpiresAt` | timestamp | | Revenue license expiry (date) |
+| `vehicleType` | string | ✓ | `bike` \| `three_wheeler` \| `car` \| `van` |
 | `vehicleNumber` | string | ✓ | Plate / reg |
 | `city` | string | ✓ | Operating city |
 | `role` | string | ✓ | `rider` |
@@ -132,10 +137,14 @@ flowchart TB
   "uid": "RIDER_UID_abc123",
   "fullName": "Kamal Perera",
   "phone": "+94771234567",
-  "email": "rider.94771234567@riders.mnd.app",
   "nicNumber": "199512345V",
   "profilePhotoUrl": "https://storage.googleapis.com/.../profile.jpg",
   "licensePhotoUrl": "https://storage.googleapis.com/.../license.jpg",
+  "vehiclePhotoUrl": "https://storage.googleapis.com/.../vehicle.jpg",
+  "insurancePhotoUrl": "https://storage.googleapis.com/.../insurance.jpg",
+  "insuranceExpiresAt": "2027-03-15T00:00:00.000Z",
+  "revenueLicensePhotoUrl": "https://storage.googleapis.com/.../revenue_license.jpg",
+  "revenueLicenseExpiresAt": "2026-12-31T00:00:00.000Z",
   "vehicleType": "bike",
   "vehicleNumber": "ABC-1234",
   "city": "Colombo",

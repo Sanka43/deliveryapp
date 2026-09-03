@@ -12,7 +12,7 @@ Production Firestore and Storage rules for the rider app live in the shared Fire
 
 ## Authentication model
 
-- Riders sign in with **Firebase Auth** (phone OTP and/or email/password).
+- Riders sign in with **Firebase Auth** via **phone OTP only** (SMSlenz Cloud Functions → custom token).
 - Every protected path requires `request.auth != null`.
 - **Self-access** is enforced with `request.auth.uid == riderId` (or `userId` on token/notification docs).
 - **Admin** access uses `customers/{uid}.role` in `['admin','Admin','ADMIN']` (existing platform convention).

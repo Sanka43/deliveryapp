@@ -38,16 +38,18 @@ lib/
 │   └── widgets/              # Reusable UI (cards, auth shell, stats)
 └── features/
     ├── auth/                 # Login, register, session
-    ├── dashboard/            # Online state + earnings summary
-    ├── delivery_requests/    # Incoming job offer UI
-    ├── earnings/             # Daily / weekly / monthly
-    ├── history/              # Delivered orders
-    ├── jobs/                 # Home tab (online toggle, orders)
+    ├── dashboard/            # Map home, online state, stats
+    ├── delivery_requests/    # Nearby job offer overlay
+    ├── earnings/             # Wallet, charts, cash remit, withdrawals
+    ├── history/              # Delivered orders + rides
+    ├── jobs/                 # Jobs tab (active, open pool, rides)
+    ├── notifications/        # In-app rider inbox
     ├── orders/               # Repository, domain, detail
     ├── presence/             # riders/{uid} online flag
     ├── profile/              # Profile, avatar, settings
     ├── shell/                # Bottom nav + lifecycle wrappers
-    └── trip/                 # Active delivery + map navigation
+    ├── trip/                 # Active shop delivery + map navigation
+    └── trips/                # Passenger rides + ride navigation
 ```
 
 Each feature follows **data → domain → presentation** where applicable.
@@ -58,13 +60,12 @@ Each feature follows **data → domain → presentation** where applicable.
 |------|--------|
 | `/auth/splash` | Splash → routes by session |
 | `/auth/onboarding` | 3-slide intro (first launch) |
-| `/auth/login` | Phone OTP or phone + password |
+| `/auth/login` | Phone number → SMSlenz OTP |
 | `/auth/otp` | 6-digit verification |
-| `/auth/register` | Full rider onboarding form |
+| `/auth/register` | Rider onboarding (personal, docs, vehicle) |
 
-**Registration** writes `riders/{uid}` with NIC, vehicle, photos, `registrationComplete: true`.  
-**Login:** Firebase Phone Auth (OTP) or email/password derived from `+94` number.  
-**Debug:** use dev OTP `123456` on login screen (debug builds only).
+**Registration** writes `riders/{uid}` with NIC, vehicle, photos, `registrationComplete: true` after phone OTP.  
+**Login:** SMSlenz OTP via Cloud Functions (`requestPhoneOtp` / `verifyPhoneOtp`) → Firebase custom token.
 
 ## Routing
 
@@ -72,17 +73,23 @@ Each feature follows **data → domain → presentation** where applicable.
 |------|--------|
 | `/auth/login` | Sign in |
 | `/auth/register` | Rider registration |
-| `/home` | Shell (Jobs, Earnings, Profile) |
+| `/home` | Shell tabs: Home, Jobs, Earnings, Profile |
 | `/order/:orderId` | Order detail |
-| `/trip/:orderId` | Active trip (pass `RiderOrderDetail` as `extra` when possible) |
-| `/history` | Delivery history |
-| `/offer` | Full-screen incoming job (modal) |
+| `/trip/:orderId` | Active shop delivery map |
+| `/ride/:tripId` | Active passenger ride map |
+| `/history` | Delivery + ride history |
+| `/notifications` | Rider inbox |
+| `/earnings/transactions` | Wallet ledger |
+| `/settings` | Availability, push prefs, appearance |
+| `/profile/edit` | Edit profile |
+
+Incoming delivery offers use a **global bottom overlay** (not a dedicated route).
 
 Auth redirect: unsigned users → login; signed-in on auth routes → `/home`.
 
 ## Firebase services
 
-- **FirebaseAuthService** — email/password sign-in and registration
+- **FirebaseAuthService** — auth state / sign-out helpers (OTP sign-in lives in `RiderAuthRepository`)
 - **FirebaseFirestoreService** — collection access wrapper
 - **FirebaseStorageService** — `riders/{uid}/avatar.jpg`
 - **FirebaseMessagingService** — permissions, topic `mnd_rider_jobs`, `device_tokens` sync
@@ -92,7 +99,10 @@ Repositories (`RiderOrdersRepository`, `RiderPresenceRepository`, etc.) use Fire
 ## Firestore (rider flows)
 
 - **`riders/{uid}`** — profile, `online`, live location
+- **`rider_locations/{uid}`** — public GPS for customer tracking
 - **`orders`** — `openForRiders` + `status: ready` pool; claim sets `assignedRiderId`, `out_for_delivery`
+- **`trips`** — passenger rides (`searching` → `accepted` → …)
+- **`riders/{uid}/notifications`** — in-app inbox
 - **`device_tokens`** — FCM tokens per user
 
 See repo root [DATABASE.md](../DATABASE.md) for full schema.
@@ -109,6 +119,13 @@ cd mnd_rider
 flutter pub get
 flutter run
 ```
+
+For road-following (not straight-line) routes on the live trip map, the same
+`GOOGLE_MAPS_KEY` also needs to reach Dart (the Directions API call can't
+read `android/local.properties`). Run via `./run_dev.ps1` (reads the key from
+`android/local.properties` and passes `--dart-define=GOOGLE_MAPS_KEY=...`
+automatically) instead of a bare `flutter run`. Without the define, the map
+falls back to a straight line between points.
 
 ## Dark / light mode
 
