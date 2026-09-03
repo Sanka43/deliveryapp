@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/products/presentation/widgets/vendor_products_ui.dart';
 import 'package:mnd_shop/features/products/data/vendor_product_repository.dart';
@@ -14,9 +15,10 @@ String vendorPriceLabelLkr(int lkr) => 'Rs. ${lkr.toDouble().toStringAsFixed(2)}
 bool vendorCatalogCanAddProducts(
   String effectiveStoreId, {
   required int productCount,
+  bool isGrocery = false,
 }) {
   return effectiveStoreId.trim().isNotEmpty &&
-      productCount < vendorMaxProductsPerShop;
+      productCount < vendorProductLimitForShop(isGrocery: isGrocery);
 }
 
 Future<void> confirmDeleteVendorProduct(
@@ -41,7 +43,16 @@ Future<void> confirmDeleteVendorProduct(
     }
   } on Exception catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            userFacingError(
+              e,
+              fallback: 'Could not delete. Please try again.',
+            ),
+          ),
+        ),
+      );
     }
   }
 }

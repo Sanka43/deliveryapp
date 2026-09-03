@@ -3,10 +3,17 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/firebase_collections.dart';
+import 'package:mnd_shop/features/products/domain/product_option_labels.dart';
 import 'package:mnd_shop/features/products/domain/vendor_product.dart';
 
-/// Hard cap on catalogue size for a single shop.
+/// Hard cap on catalogue size for a single food shop.
 const int vendorMaxProductsPerShop = 30;
+
+/// Higher cap for grocery shops (larger catalogs).
+const int vendorMaxGroceryProductsPerShop = 100;
+
+int vendorProductLimitForShop({required bool isGrocery}) =>
+    isGrocery ? vendorMaxGroceryProductsPerShop : vendorMaxProductsPerShop;
 
 final Provider<VendorProductRepository> vendorProductRepositoryProvider =
     Provider<VendorProductRepository>((Ref ref) {
@@ -110,10 +117,14 @@ class VendorProductRepository {
     required bool active,
     required int stockQty,
     required String etaLabel,
+    bool manageStock = false,
+    String productCategory = '',
+    int? maxProducts,
   }) async {
+    final int cap = maxProducts ?? vendorMaxProductsPerShop;
     final int existing = await countByStore(storeId);
-    if (existing >= vendorMaxProductsPerShop) {
-      throw const VendorProductLimitExceededException();
+    if (existing >= cap) {
+      throw VendorProductLimitExceededException(max: cap);
     }
     final DocumentReference<Map<String, dynamic>> doc = _products.doc(
       productId,
@@ -131,7 +142,9 @@ class VendorProductRepository {
         lookupKey: lookupKey,
         active: active,
         stockQty: stockQty.clamp(0, 9999999),
+        manageStock: manageStock,
         etaLabel: etaLabel.trim(),
+        productCategory: productCategory.trim(),
         sizeOptions: sizeOptions,
       ).toFirestore(storeName: storeName, lookupKey: lookupKey),
     );
@@ -148,6 +161,8 @@ class VendorProductRepository {
     required bool active,
     required int stockQty,
     required String etaLabel,
+    bool manageStock = false,
+    String productCategory = '',
   }) async {
     final String lookupKey = buildLookupKey(name, existing.id);
     await _products
@@ -164,13 +179,15 @@ class VendorProductRepository {
             lookupKey: lookupKey,
             active: active,
             stockQty: stockQty.clamp(0, 9999999),
+            manageStock: manageStock,
             etaLabel: etaLabel.trim(),
+            productCategory: productCategory.trim(),
             sizeOptions: sizeOptions,
           ).toFirestore(storeName: storeName, lookupKey: lookupKey),
         );
   }
 
-  /// Sets on-hand quantity (clamped ≥ 0).
+  /// Sets on-hand quantity (clamped ≥ 0) and enables stock tracking.
   Future<void> setProductStock({
     required String productId,
     required int quantity,
@@ -183,7 +200,10 @@ class VendorProductRepository {
     await _firestore.runTransaction((Transaction tx) async {
       final DocumentSnapshot<Map<String, dynamic>> snap = await tx.get(ref);
       final int previous = (snap.data()?['stockQty'] as num?)?.round() ?? 0;
-      tx.update(ref, <String, dynamic>{'stockQty': q});
+      tx.update(ref, <String, dynamic>{
+        'stockQty': q,
+        'manageStock': true,
+      });
       _writeStockMovement(
         tx: tx,
         productId: productId,
@@ -216,7 +236,10 @@ class VendorProductRepository {
       final Map<String, dynamic>? data = snap.data();
       final int current = (data?['stockQty'] as num?)?.round() ?? 0;
       final int next = (current + delta).clamp(0, 9999999);
-      tx.update(ref, <String, dynamic>{'stockQty': next});
+      tx.update(ref, <String, dynamic>{
+        'stockQty': next,
+        'manageStock': true,
+      });
       _writeStockMovement(
         tx: tx,
         productId: productId,
@@ -239,23 +262,15 @@ class VendorProductRepository {
     if (clean.isEmpty) {
       return;
     }
-    final WriteBatch batch = _firestore.batch();
+    // Per-product transactions so concurrent sales cannot be overwritten by a
+    // stale read-then-batch write.
     for (final MapEntry<String, int> entry in clean.entries) {
-      final DocumentReference<Map<String, dynamic>> ref = _products.doc(
-        entry.key,
-      );
-      final DocumentSnapshot<Map<String, dynamic>> snap = await ref.get();
-      final int previous = (snap.data()?['stockQty'] as num?)?.round() ?? 0;
-      batch.update(ref, <String, dynamic>{'stockQty': entry.value});
-      _writeStockMovement(
-        batch: batch,
+      await setProductStock(
         productId: entry.key,
-        previousQty: previous,
-        nextQty: entry.value,
+        quantity: entry.value,
         reason: reason,
       );
     }
-    await batch.commit();
   }
 
   Future<void> autoHideOutOfStockProducts(String storeId) async {
@@ -267,10 +282,17 @@ class VendorProductRepository {
       return;
     }
     final WriteBatch batch = _firestore.batch();
+    var any = false;
     for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
+      if (doc.data()['manageStock'] != true) {
+        continue;
+      }
       batch.update(doc.reference, <String, dynamic>{'active': false});
+      any = true;
     }
-    await batch.commit();
+    if (any) {
+      await batch.commit();
+    }
   }
 
   Stream<List<Map<String, dynamic>>> watchStockMovements(String productId) {
@@ -342,5 +364,41 @@ class VendorProductRepository {
     } on Object {
       // Malformed URL / refFromURL — ignore.
     }
+  }
+
+  /// Remembers non-preset food types on `vendors/{storeId}.customFoodTypes`
+  /// so they appear as chips on future add-product forms.
+  Future<void> mergeCustomFoodTypes({
+    required String storeId,
+    required Iterable<String> types,
+  }) async {
+    final String id = storeId.trim();
+    if (id.isEmpty) {
+      return;
+    }
+    final List<String> cleaned = <String>[];
+    final Set<String> seen = <String>{};
+    for (final String raw in types) {
+      final String t = raw.trim();
+      if (t.isEmpty || t.length > 40) {
+        continue;
+      }
+      // Presets are hardcoded in the form — no need to persist.
+      if (kFoodTypePresets.any((String p) => p.toLowerCase() == t.toLowerCase())) {
+        continue;
+      }
+      if (seen.add(t.toLowerCase())) {
+        cleaned.add(t);
+      }
+    }
+    if (cleaned.isEmpty) {
+      return;
+    }
+    await _firestore.collection(FirebaseCollections.vendors).doc(id).set(
+      <String, dynamic>{
+        'customFoodTypes': FieldValue.arrayUnion(cleaned),
+      },
+      SetOptions(merge: true),
+    );
   }
 }

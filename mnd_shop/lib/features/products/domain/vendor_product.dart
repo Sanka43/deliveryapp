@@ -25,6 +25,8 @@ class VendorProduct {
     required this.active,
     required this.stockQty,
     required this.etaLabel,
+    this.manageStock = false,
+    this.productCategory = '',
     this.sizeOptions = const <ProductSizeOption>[],
   });
 
@@ -39,8 +41,14 @@ class VendorProduct {
   final bool active;
   /// On-hand units (missing in older docs → 0).
   final int stockQty;
+  /// When false, customer ignores [stockQty] (always available if active).
+  /// Missing field in Firestore → false (unmanaged).
+  final bool manageStock;
   /// Product-level ETA text (e.g. 10-15 min).
   final String etaLabel;
+
+  /// Grocery aisle label (e.g. Dairy). Empty for food / legacy docs.
+  final String productCategory;
 
   /// Optional priced variants. When non-empty, [priceLkr] should be the minimum option price.
   final List<ProductSizeOption> sizeOptions;
@@ -85,7 +93,9 @@ class VendorProduct {
       lookupKey: lookup,
       active: map['active'] is bool ? map['active'] as bool : true,
       stockQty: stock,
+      manageStock: map['manageStock'] == true,
       etaLabel: ((map['eta'] as String?) ?? '').trim(),
+      productCategory: ((map['productCategory'] as String?) ?? '').trim(),
       sizeOptions: options,
     );
   }
@@ -130,7 +140,9 @@ class VendorProduct {
       'lookupKey': lookupKey,
       'active': active,
       'stockQty': stockQty,
+      'manageStock': manageStock,
       'eta': etaLabel,
+      'productCategory': productCategory,
       'sizeOptions': sizeOptions
           .map(
             (ProductSizeOption e) => <String, dynamic>{

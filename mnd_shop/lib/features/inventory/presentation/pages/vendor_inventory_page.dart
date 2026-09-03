@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_dashboard_ui.dart';
 import 'package:mnd_shop/features/products/data/vendor_product_repository.dart';
@@ -57,12 +58,16 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
         products
             .where(
               (VendorProduct p) =>
-                  p.stockQty > 0 && p.stockQty <= vendorLowStockMax,
+                  p.manageStock &&
+                  p.stockQty > 0 &&
+                  p.stockQty <= vendorLowStockMax,
             )
             .toList(growable: false),
       _InventoryFilter.out =>
         products
-            .where((VendorProduct p) => p.stockQty == 0)
+            .where(
+              (VendorProduct p) => p.manageStock && p.stockQty == 0,
+            )
             .toList(growable: false),
       _InventoryFilter.offline =>
         products.where((VendorProduct p) => !p.active).toList(growable: false),
@@ -166,7 +171,7 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'Could not load inventory.\n$e',
+                'Could not load inventory.\n${userFacingError(e, fallback: 'Please check your connection and try again.')}',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: VendorDashboardTheme.mutedText(context),
@@ -178,11 +183,15 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
             final int low = products
                 .where(
                   (VendorProduct p) =>
-                      p.stockQty > 0 && p.stockQty <= vendorLowStockMax,
+                      p.manageStock &&
+                      p.stockQty > 0 &&
+                      p.stockQty <= vendorLowStockMax,
                 )
                 .length;
             final int out = products
-                .where((VendorProduct p) => p.stockQty == 0)
+                .where(
+                  (VendorProduct p) => p.manageStock && p.stockQty == 0,
+                )
                 .length;
             final int offline = products
                 .where((VendorProduct p) => !p.active)
@@ -557,19 +566,24 @@ class _InventoryProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final bool out = product.stockQty == 0;
-    final bool low =
-        product.stockQty > 0 && product.stockQty <= vendorLowStockMax;
-    final Color statusColor = out
-        ? AppColors.orderRejectRed
-        : low
-            ? AppColors.pendingAmber
-            : AppColors.openGreen;
-    final String statusLabel = out
-        ? 'Out of stock'
-        : low
-            ? 'Low stock'
-            : 'In stock';
+    final bool out = product.manageStock && product.stockQty == 0;
+    final bool low = product.manageStock &&
+        product.stockQty > 0 &&
+        product.stockQty <= vendorLowStockMax;
+    final Color statusColor = !product.manageStock
+        ? VendorDashboardTheme.mutedText(context)
+        : out
+            ? AppColors.orderRejectRed
+            : low
+                ? AppColors.pendingAmber
+                : AppColors.openGreen;
+    final String statusLabel = !product.manageStock
+        ? 'Not tracked'
+        : out
+            ? 'Out of stock'
+            : low
+                ? 'Low stock'
+                : 'In stock';
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -798,7 +812,14 @@ class _StockHistorySheet extends ConsumerWidget {
               child: history.when(
                 loading: () =>
                     const Center(child: CircularProgressIndicator.adaptive()),
-                error: (Object e, StackTrace _) => Center(child: Text('$e')),
+                error: (Object e, StackTrace _) => Center(
+                  child: Text(
+                    userFacingError(
+                      e,
+                      fallback: 'Could not load stock history.',
+                    ),
+                  ),
+                ),
                 data: (List<Map<String, dynamic>> rows) {
                   if (rows.isEmpty) {
                     return Center(

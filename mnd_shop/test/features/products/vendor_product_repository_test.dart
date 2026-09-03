@@ -23,6 +23,7 @@ void main() {
       int stockQty = 5,
       bool active = true,
       String storeId = 'store-1',
+      bool manageStock = true,
     }) async {
       await firestore
           .collection(FirebaseCollections.products)
@@ -37,6 +38,7 @@ void main() {
             'lookupKey': id,
             'active': active,
             'stockQty': stockQty,
+            'manageStock': manageStock,
           });
     }
 
@@ -273,6 +275,37 @@ void main() {
             .exists,
         isFalse,
       );
+    });
+
+    test('createProduct allows grocery cap via maxProducts', () async {
+      await seedStoreProducts('store-1', vendorMaxProductsPerShop);
+
+      await repo.createProduct(
+        productId: 'groc-1',
+        storeId: 'store-1',
+        storeName: 'Mart',
+        name: 'Rice 1kg',
+        description: '',
+        priceLkr: 300,
+        sizeOptions: const <ProductSizeOption>[
+          ProductSizeOption(name: '1kg', priceLkr: 300),
+        ],
+        imageUrl: '',
+        active: true,
+        stockQty: 8,
+        etaLabel: 'Ready now',
+        productCategory: 'Fresh Produce',
+        maxProducts: vendorMaxGroceryProductsPerShop,
+      );
+
+      final Map<String, dynamic>? created =
+          (await firestore
+                  .collection(FirebaseCollections.products)
+                  .doc('groc-1')
+                  .get())
+              .data();
+      expect(created?['productCategory'], 'Fresh Produce');
+      expect(await repo.countByStore('store-1'), vendorMaxProductsPerShop + 1);
     });
   });
 }

@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
 import 'package:mnd_shop/features/inventory/presentation/pages/vendor_inventory_page.dart';
+import 'package:mnd_shop/features/offers/presentation/pages/vendor_offers_page.dart';
 import 'package:mnd_shop/features/products/data/vendor_product_repository.dart';
 import 'package:mnd_shop/features/products/domain/vendor_product.dart';
 import 'package:mnd_shop/features/products/presentation/pages/product_form_page.dart';
@@ -35,6 +37,7 @@ class VendorCatalogHubPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(vendorStoreFromProfileProvider);
+    ref.watch(vendorCatalogKindHealProvider);
     // Nested Scaffold inside IndexedStack often yields a zero-height body; use Material
     // so the catalogue always fills the tab and products actually paint.
     return Material(
@@ -106,7 +109,10 @@ class _VendorCatalogUnifiedBodyState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${_vTxt(context, en: 'Update failed', si: 'යාවත්කාලීන කිරීම අසාර්ථකයි')}: $e',
+              userFacingError(
+                e,
+                fallback: 'Could not update. Please try again.',
+              ),
             ),
           ),
         );
@@ -125,16 +131,18 @@ class _VendorCatalogUnifiedBodyState
   }
 
   void _openAddProduct() {
+    final bool isGrocery = ref.read(isGroceryShopProvider);
+    final int maxProducts = vendorProductLimitForShop(isGrocery: isGrocery);
     final List<VendorProduct>? list =
         ref.read(vendorProductsStreamProvider).asData?.value;
-    if (list != null && list.length >= vendorMaxProductsPerShop) {
+    if (list != null && list.length >= maxProducts) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _vTxt(
               context,
-              en: 'Maximum $vendorMaxProductsPerShop products',
-              si: 'උපරිම නිෂ්පාදන $vendorMaxProductsPerShop',
+              en: 'Maximum $maxProducts products',
+              si: 'උපරිම නිෂ්පාදන $maxProducts',
             ),
           ),
         ),
@@ -157,6 +165,7 @@ class _VendorCatalogUnifiedBodyState
         (VendorProduct p) =>
             p.name.toLowerCase().contains(q) ||
             p.lookupKey.contains(q) ||
+            p.productCategory.toLowerCase().contains(q) ||
             p.description.toLowerCase().contains(q),
       );
     }
@@ -234,7 +243,10 @@ class _VendorCatalogUnifiedBodyState
               messenger.showSnackBar(
                 SnackBar(
                   content: Text(
-                    '${_vTxt(context, en: 'Delete failed', si: 'මැකීම අසාර්ථකයි')}: $e',
+                    userFacingError(
+                      e,
+                      fallback: 'Could not delete. Please try again.',
+                    ),
                   ),
                 ),
               );
@@ -258,6 +270,9 @@ class _VendorCatalogUnifiedBodyState
   @override
   Widget build(BuildContext context) {
     ref.watch(vendorStoreFromProfileProvider);
+    ref.watch(vendorCatalogKindHealProvider);
+    final bool isGrocery = ref.watch(isGroceryShopProvider);
+    final int maxProducts = vendorProductLimitForShop(isGrocery: isGrocery);
     final String catalogStoreId = ref
         .watch(vendorProductCatalogStoreIdProvider)
         .trim();
@@ -277,6 +292,8 @@ class _VendorCatalogUnifiedBodyState
             onSearchChanged: (_) => setState(() {}),
             showSearch: false,
             showAddProduct: false,
+            isGrocery: isGrocery,
+            maxProducts: maxProducts,
           ),
           Expanded(
             child: _catalogScrollBody(child: const _SignInRequiredPane()),
@@ -291,12 +308,16 @@ class _VendorCatalogUnifiedBodyState
         products.when(
           data: (List<VendorProduct> list) {
             final int out = list
-                .where((VendorProduct p) => p.stockQty == 0)
+                .where(
+                  (VendorProduct p) => p.manageStock && p.stockQty == 0,
+                )
                 .length;
             final int low = list
                 .where(
                   (VendorProduct p) =>
-                      p.stockQty > 0 && p.stockQty <= vendorLowStockMax,
+                      p.manageStock &&
+                      p.stockQty > 0 &&
+                      p.stockQty <= vendorLowStockMax,
                 )
                 .length;
             final int activeCount = list
@@ -305,6 +326,7 @@ class _VendorCatalogUnifiedBodyState
             final bool showAddProduct = vendorCatalogCanAddProducts(
               catalogStoreId,
               productCount: list.length,
+              isGrocery: isGrocery,
             );
             return _CatalogStaticHeader(
               topInset: topInset,
@@ -317,8 +339,10 @@ class _VendorCatalogUnifiedBodyState
               searchController: _searchController,
               onSearchChanged: (_) => setState(() {}),
               showAddProduct: showAddProduct,
-              atProductLimit: list.length >= vendorMaxProductsPerShop,
+              atProductLimit: list.length >= maxProducts,
               onAddProduct: _openAddProduct,
+              isGrocery: isGrocery,
+              maxProducts: maxProducts,
             );
           },
           loading: () => _CatalogStaticHeader(
@@ -329,8 +353,11 @@ class _VendorCatalogUnifiedBodyState
             showAddProduct: vendorCatalogCanAddProducts(
               catalogStoreId,
               productCount: 0,
+              isGrocery: isGrocery,
             ),
             onAddProduct: _openAddProduct,
+            isGrocery: isGrocery,
+            maxProducts: maxProducts,
           ),
           error: (Object error, StackTrace stackTrace) => _CatalogStaticHeader(
             topInset: topInset,
@@ -339,8 +366,11 @@ class _VendorCatalogUnifiedBodyState
             showAddProduct: vendorCatalogCanAddProducts(
               catalogStoreId,
               productCount: 0,
+              isGrocery: isGrocery,
             ),
             onAddProduct: _openAddProduct,
+            isGrocery: isGrocery,
+            maxProducts: maxProducts,
           ),
         ),
         Expanded(
@@ -361,12 +391,16 @@ class _VendorCatalogUnifiedBodyState
                 }
 
                 final int out = list
-                    .where((VendorProduct p) => p.stockQty == 0)
+                    .where(
+                      (VendorProduct p) => p.manageStock && p.stockQty == 0,
+                    )
                     .length;
                 final int low = list
                     .where(
                       (VendorProduct p) =>
-                          p.stockQty > 0 && p.stockQty <= vendorLowStockMax,
+                          p.manageStock &&
+                          p.stockQty > 0 &&
+                          p.stockQty <= vendorLowStockMax,
                     )
                     .length;
                 final List<VendorProduct> visible = _applyQuerySortFilter(list);
@@ -439,7 +473,14 @@ class _VendorCatalogUnifiedBodyState
               error: (Object e, StackTrace _) => _catalogScrollBody(
                 child: Column(
                   children: <Widget>[
-                    Expanded(child: _CatalogErrorPane(message: '$e')),
+                    Expanded(
+                      child: _CatalogErrorPane(
+                        message: userFacingError(
+                          e,
+                          fallback: 'Please check your connection and try again.',
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -462,6 +503,8 @@ class _CatalogStaticHeader extends StatelessWidget {
     this.showAddProduct = false,
     this.atProductLimit = false,
     this.onAddProduct,
+    this.isGrocery = false,
+    this.maxProducts = vendorMaxProductsPerShop,
   });
 
   final double topInset;
@@ -472,6 +515,8 @@ class _CatalogStaticHeader extends StatelessWidget {
   final bool showAddProduct;
   final bool atProductLimit;
   final VoidCallback? onAddProduct;
+  final bool isGrocery;
+  final int maxProducts;
 
   @override
   Widget build(BuildContext context) {
@@ -505,6 +550,7 @@ class _CatalogStaticHeader extends StatelessWidget {
                 showAddProduct: showAddProduct,
                 atProductLimit: atProductLimit,
                 onAddProduct: onAddProduct,
+                maxProducts: maxProducts,
               ),
             ),
           if (metrics != null)
@@ -523,11 +569,12 @@ class _CatalogStaticHeader extends StatelessWidget {
   }
 }
 
-class _CatalogTitleRow extends StatelessWidget {
+class _CatalogTitleRow extends ConsumerWidget {
   const _CatalogTitleRow();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool isGrocery = ref.watch(isGroceryShopProvider);
     final ThemeData theme = Theme.of(context);
     final TextStyle titleStyle = GoogleFonts.bebasNeue(
       textStyle: theme.textTheme.headlineMedium,
@@ -547,18 +594,83 @@ class _CatalogTitleRow extends StatelessWidget {
             style: titleStyle,
           ),
         ),
-        IconButton.filledTonal(
-          tooltip: _vTxt(context, en: 'Inventory', si: 'තොගය'),
+        _CatalogOffersAction(
           onPressed: () {
             Navigator.of(context).push<void>(
               MaterialPageRoute<void>(
-                builder: (_) => const VendorInventoryPage(),
+                builder: (_) => const VendorOffersPage(),
               ),
             );
           },
-          icon: const Icon(Icons.warehouse_outlined),
         ),
+        // Stock management is a grocery-only concept (the add/edit form's
+        // Stock card is likewise hidden for food products) — without this
+        // gate a food-shop vendor could open Inventory and turn on
+        // manageStock/stockQty for a food product through a side door.
+        if (isGrocery) ...<Widget>[
+          const SizedBox(width: 6),
+          IconButton.filledTonal(
+            tooltip: _vTxt(context, en: 'Inventory', si: 'තොගය'),
+            onPressed: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const VendorInventoryPage(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.warehouse_outlined),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+/// Compact labeled Offers CTA — icon + visible "Offers" label.
+class _CatalogOffersAction extends StatelessWidget {
+  const _CatalogOffersAction({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color fill = AppColors.pendingAmber.withValues(
+      alpha: isDark ? 0.22 : 0.16,
+    );
+    final Color fg = isDark
+        ? const Color(0xFFFFD280)
+        : const Color(0xFF9A5B00);
+
+    return Tooltip(
+      message: _vTxt(context, en: 'Offers', si: 'Offers'),
+      child: Material(
+        color: fill,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(999),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(Icons.local_offer_rounded, size: 18, color: fg),
+                const SizedBox(width: 6),
+                Text(
+                  _vTxt(context, en: 'Offers', si: 'Offers'),
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: fg,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                        height: 1.1,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -571,6 +683,7 @@ class _CatalogSearchAddRow extends StatelessWidget {
     required this.showAddProduct,
     this.atProductLimit = false,
     this.onAddProduct,
+    this.maxProducts = vendorMaxProductsPerShop,
   });
 
   final TextEditingController searchController;
@@ -578,6 +691,7 @@ class _CatalogSearchAddRow extends StatelessWidget {
   final bool showAddProduct;
   final bool atProductLimit;
   final VoidCallback? onAddProduct;
+  final int maxProducts;
 
   @override
   Widget build(BuildContext context) {
@@ -596,7 +710,7 @@ class _CatalogSearchAddRow extends StatelessWidget {
           _CatalogHeaderAddButton(onPressed: onAddProduct),
         ] else if (atProductLimit) ...<Widget>[
           const SizedBox(width: 10),
-          _CatalogProductLimitHint(),
+          _CatalogProductLimitHint(maxProducts: maxProducts),
         ],
       ],
     );
@@ -604,6 +718,10 @@ class _CatalogSearchAddRow extends StatelessWidget {
 }
 
 class _CatalogProductLimitHint extends StatelessWidget {
+  const _CatalogProductLimitHint({this.maxProducts = vendorMaxProductsPerShop});
+
+  final int maxProducts;
+
   @override
   Widget build(BuildContext context) {
     final Color muted = VendorProductsTheme.mutedText(context);
@@ -614,8 +732,8 @@ class _CatalogProductLimitHint extends StatelessWidget {
         child: Text(
           _vTxt(
             context,
-            en: 'Max $vendorMaxProductsPerShop products',
-            si: 'උපරිම $vendorMaxProductsPerShop',
+            en: 'Max $maxProducts products',
+            si: 'උපරිම $maxProducts',
           ),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
             color: muted,
@@ -1200,6 +1318,10 @@ class _CatalogErrorPane extends StatelessWidget {
 const int _kProductCardSubtitleMax = 40;
 
 String _categorySubtitle(VendorProduct p) {
+  final String aisle = p.productCategory.trim();
+  if (aisle.isNotEmpty) {
+    return aisle;
+  }
   final String d = p.description.trim();
   if (d.isEmpty) {
     return 'General';
@@ -1239,8 +1361,9 @@ class _ModernProductCard extends StatelessWidget {
     final Color accent = VendorProductsTheme.accent(context);
 
     final int q = product.stockQty;
-    final bool isOut = q == 0;
-    final bool isLow = q > 0 && q <= vendorLowStockMax;
+    final bool tracks = product.manageStock;
+    final bool isOut = tracks && q == 0;
+    final bool isLow = tracks && q > 0 && q <= vendorLowStockMax;
     final Color cardBg = VendorProductsTheme.productCardBackground(
       context,
       isOut: isOut,
@@ -1379,6 +1502,7 @@ class _ModernProductCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         _ProductStockButton(
                           stockQty: q,
+                          manageStock: tracks,
                           busy: busy,
                           onPressed: onSetQuantity,
                         ),
@@ -1398,11 +1522,13 @@ class _ModernProductCard extends StatelessWidget {
 class _ProductStockButton extends StatefulWidget {
   const _ProductStockButton({
     required this.stockQty,
+    required this.manageStock,
     required this.busy,
     required this.onPressed,
   });
 
   final int stockQty;
+  final bool manageStock;
   final bool busy;
   final VoidCallback onPressed;
 
@@ -1435,11 +1561,17 @@ class _ProductStockButtonState extends State<_ProductStockButton> {
 
     final String label = widget.busy
         ? _vTxt(context, en: 'Updating…', si: 'යාවත්කාලීන කරමින්…')
-        : _vTxt(
-            context,
-            en: 'Stock · ${widget.stockQty}',
-            si: 'තොගය · ${widget.stockQty}',
-          );
+        : widget.manageStock
+            ? _vTxt(
+                context,
+                en: 'Stock · ${widget.stockQty}',
+                si: 'තොගය · ${widget.stockQty}',
+              )
+            : _vTxt(
+                context,
+                en: 'Not tracked',
+                si: 'සොයා නොබලයි',
+              );
 
     return AnimatedScale(
       scale: _pressed && !widget.busy ? 0.97 : 1,
