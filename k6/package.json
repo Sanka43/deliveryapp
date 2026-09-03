@@ -1,0 +1,12 @@
+{
+  "name": "mnd-k6-support",
+  "private": true,
+  "type": "module",
+  "description": "Node-side support scripts for the k6 performance tests (seeding + token minting). The k6 test scripts themselves run under k6, not Node.",
+  "scripts": {
+    "seed": "node seed/seed-and-mint-tokens.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2"
+  }
+}
