@@ -48,14 +48,12 @@ Future<void> main() async {
         library: 'mnd_shop startup',
       ),
     );
-    runApp(_StartupFailureApp(error: error));
+    runApp(const _StartupFailureApp());
   }
 }
 
 class _StartupFailureApp extends StatelessWidget {
-  const _StartupFailureApp({required this.error});
-
-  final Object error;
+  const _StartupFailureApp();
 
   @override
   Widget build(BuildContext context) {
@@ -77,10 +75,10 @@ class _StartupFailureApp extends StatelessWidget {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    error.toString(),
+                  const Text(
+                    'Something went wrong while starting the app. Please try again.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 12),
+                    style: TextStyle(fontSize: 12),
                   ),
                 ],
               ),

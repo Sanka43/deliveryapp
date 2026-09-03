@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 import 'package:mnd_shop/core/media/shop_cover_image_spec.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 
 /// Full-screen crop UI locked to the customer app shop card aspect ratio.
 class ShopCoverImageCropPage extends StatefulWidget {
@@ -40,7 +41,14 @@ class _ShopCoverImageCropPageState extends State<ShopCoverImageCropPage> {
         Navigator.of(context).pop(croppedImage);
       case CropFailure(:final Object cause):
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not crop image: $cause')),
+          SnackBar(
+            content: Text(
+              userFacingError(
+                cause,
+                fallback: 'Could not crop image. Please try again.',
+              ),
+            ),
+          ),
         );
     }
   }

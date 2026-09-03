@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_shop/app/navigation/root_navigator_key.dart';
 import 'package:mnd_shop/app/providers/locale_provider.dart';
 import 'package:mnd_shop/app/providers/shop_auth_state_provider.dart';
 import 'package:mnd_shop/app/providers/theme_mode_provider.dart';
+import 'package:mnd_shop/app/widgets/app_update_gate.dart';
 import 'package:mnd_shop/app/widgets/shop_push_notification_bootstrap.dart';
 import 'package:mnd_shop/core/locale/app_language_option.dart';
 import 'package:mnd_shop/core/theme/app_theme.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/shop_login_page.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/vendor_account_gate_page.dart';
@@ -27,6 +30,7 @@ class MndShopApp extends ConsumerWidget {
     final Locale? locale = ref.watch(appLocaleProvider).valueOrNull;
 
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'MND Vendor',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
@@ -55,7 +59,7 @@ class MndShopApp extends ConsumerWidget {
             systemNavigationBarContrastEnforced: false,
           ),
           child: VendorResponsiveAppFrame(
-            child: child ?? const SizedBox.shrink(),
+            child: AppUpdateGate(child: child ?? const SizedBox.shrink()),
           ),
         );
       },
@@ -115,7 +119,10 @@ class MndShopApp extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '$e',
+                    userFacingError(
+                      e,
+                      fallback: 'Please check your connection and try again.',
+                    ),
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
