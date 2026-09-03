@@ -12,9 +12,16 @@ final Provider<VendorCatalogMetricsSnapshot> vendorCatalogMetricsProvider =
   if (list.isEmpty) {
     return VendorCatalogMetricsSnapshot.empty;
   }
-  final int out = list.where((VendorProduct p) => p.stockQty == 0).length;
+  final int out = list
+      .where((VendorProduct p) => p.manageStock && p.stockQty == 0)
+      .length;
   final int low = list
-      .where((VendorProduct p) => p.stockQty > 0 && p.stockQty <= vendorLowStockMax)
+      .where(
+        (VendorProduct p) =>
+            p.manageStock &&
+            p.stockQty > 0 &&
+            p.stockQty <= vendorLowStockMax,
+      )
       .length;
   final int active = list.where((VendorProduct p) => p.active).length;
   return VendorCatalogMetricsSnapshot(

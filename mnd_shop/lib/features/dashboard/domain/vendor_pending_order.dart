@@ -1,11 +1,15 @@
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mnd_shop/features/products/domain/product_option_labels.dart';
 
 class VendorPendingOrder {
   const VendorPendingOrder({
     required this.id,
     required this.customerPhone,
+    this.customerName = '',
+    this.orderSource = '',
+    this.isGuestCustomer = false,
     required this.itemsSummary,
     required this.itemLines,
     this.items = const <VendorOrderLineItem>[],
@@ -20,12 +24,27 @@ class VendorPendingOrder {
     this.statusKey = '',
     this.trackingNumber,
     this.fulfillmentMode = 'delivery',
+    this.hasAssignedRider = false,
+    this.assignedRiderId = '',
+    this.deliveryAddressLabel = '',
+    this.productCashStatus = '',
+    this.productCashLkr = 0,
   });
 
   final String id;
 
   /// Customer phone from delivery address (empty when unknown).
   final String customerPhone;
+
+  /// Display name when present (vendor-manual / guest orders).
+  final String customerName;
+
+  /// e.g. `vendor_manual` or empty for customer-app orders.
+  final String orderSource;
+
+  final bool isGuestCustomer;
+
+  bool get isVendorManual => orderSource == 'vendor_manual';
   final String itemsSummary;
 
   /// One line per order item (e.g. `2× Faluda`) for bulleted UI lists.
@@ -54,7 +73,38 @@ class VendorPendingOrder {
   /// `delivery` or `selfPickup` from Firestore.
   final String fulfillmentMode;
 
+  /// True when a rider has been assigned (`assignedRiderId` / `riderId`).
+  final bool hasAssignedRider;
+
+  /// Raw rider uid when assigned (empty otherwise) — used to fetch contact info.
+  final String assignedRiderId;
+
+  /// Single-line delivery / pickup address for kitchen UI.
+  final String deliveryAddressLabel;
+
+  /// Admin product-cash ledger: none | owed | remitted_to_admin | settled_to_shop.
+  final String productCashStatus;
+  final double productCashLkr;
+
   bool get isSelfPickup => fulfillmentMode == 'selfPickup';
+
+  bool get hasProductCashLedger =>
+      productCashStatus == 'owed' ||
+      productCashStatus == 'remitted_to_admin' ||
+      productCashStatus == 'settled_to_shop';
+
+  String get productCashBadgeLabel {
+    switch (productCashStatus) {
+      case 'owed':
+        return 'CASH OWED';
+      case 'remitted_to_admin':
+        return 'CASH WITH ADMIN';
+      case 'settled_to_shop':
+        return 'CASH SETTLED';
+      default:
+        return '';
+    }
+  }
 
   /// Shop keeps product sales only (excludes delivery + platform order commission).
   double get shopTotal {
@@ -104,9 +154,21 @@ class VendorPendingOrder {
     final String status =
         (data['status'] as String?)?.trim().toLowerCase() ?? '';
     final String? tn = (data['trackingNumber'] as String?)?.trim();
+    final String assigned =
+        (data['assignedRiderId'] as String?)?.trim() ??
+        (data['riderId'] as String?)?.trim() ??
+        '';
+    final String addressLabel = _addressLabel(addr);
+    final String customerName =
+        (data['customerName'] as String?)?.trim() ?? '';
+    final String orderSource =
+        (data['orderSource'] as String?)?.trim().toLowerCase() ?? '';
     return VendorPendingOrder(
       id: id,
       customerPhone: customerPhone,
+      customerName: customerName,
+      orderSource: orderSource,
+      isGuestCustomer: data['isGuestCustomer'] == true,
       itemsSummary: itemsSummary,
       itemLines: itemLines,
       items: items,
@@ -124,7 +186,29 @@ class VendorPendingOrder {
           (data['fulfillmentMode'] as String?)?.trim().isNotEmpty == true
           ? (data['fulfillmentMode'] as String).trim()
           : 'delivery',
+      hasAssignedRider: assigned.isNotEmpty,
+      assignedRiderId: assigned,
+      deliveryAddressLabel: addressLabel,
+      productCashStatus:
+          (data['productCashStatus'] as String?)?.trim().toLowerCase() ?? '',
+      productCashLkr: _readDouble(data['productCashLkr']),
     );
+  }
+
+  static String _addressLabel(Map<String, dynamic>? addr) {
+    if (addr == null) {
+      return '';
+    }
+    final List<String> parts = <String>[
+      (addr['line1'] as String?)?.trim() ??
+          (addr['addressLine1'] as String?)?.trim() ??
+          '',
+      (addr['line2'] as String?)?.trim() ??
+          (addr['addressLine2'] as String?)?.trim() ??
+          '',
+      (addr['city'] as String?)?.trim() ?? '',
+    ].where((String p) => p.isNotEmpty).toList();
+    return parts.join(', ');
   }
 
   static int _readInt(Object? v) {
@@ -161,12 +245,23 @@ class VendorPendingOrder {
             : productName;
         final int quantity = math.max(1, _readInt(value['quantity']));
         final double lineTotal = _readDouble(value['lineTotal']);
+        final String selectedSize =
+            (value['selectedSize'] as String?)?.trim() ?? '';
+        final List<dynamic> extrasRaw =
+            value['extras'] as List<dynamic>? ?? const <dynamic>[];
+        final List<String> extras = extrasRaw
+            .whereType<Map<String, dynamic>>()
+            .map((Map<String, dynamic> e) => (e['name'] as String?)?.trim() ?? '')
+            .where((String name) => name.isNotEmpty)
+            .toList(growable: false);
         items.add(
           VendorOrderLineItem(
             productKey: productKey,
             productName: productName,
             quantity: quantity,
             lineTotal: lineTotal,
+            selectedSize: selectedSize,
+            extras: extras,
           ),
         );
       }
@@ -207,10 +302,30 @@ class VendorOrderLineItem {
     required this.productName,
     required this.quantity,
     required this.lineTotal,
+    this.selectedSize = '',
+    this.extras = const <String>[],
   });
 
   final String productKey;
   final String productName;
   final int quantity;
   final double lineTotal;
+
+  /// Size / variant chosen at checkout (e.g. `Large`), empty when not applicable.
+  final String selectedSize;
+
+  /// Add-on names chosen for this line (e.g. `Extra cheese`).
+  final List<String> extras;
+
+  /// Splits `selectedSize` into type + size using the product form's
+  /// `{Type} · {Size}` combo convention (e.g. `Chicken · Full`). Falls back
+  /// to a plain size with no type when it doesn't match that shape.
+  ({String? type, String size}) get typeAndSize {
+    final ({String type, String size})? combo =
+        parseTypeSizeComboLabel(selectedSize);
+    if (combo != null) {
+      return (type: combo.type, size: combo.size);
+    }
+    return (type: null, size: selectedSize);
+  }
 }

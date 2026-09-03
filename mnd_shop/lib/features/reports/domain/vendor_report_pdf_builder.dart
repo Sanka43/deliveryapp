@@ -104,8 +104,6 @@ class VendorReportPdfBuilder {
             children: <pw.Widget>[
               _metricBox('Discounts', _money(data.discountLkr)),
               pw.SizedBox(width: 8),
-              _metricBox('Delivery fees', _money(data.deliveryFeeLkr)),
-              pw.SizedBox(width: 8),
               _metricBox(
                 'Cancel rate',
                 '${data.cancellationRatePercent.toStringAsFixed(1)}%',

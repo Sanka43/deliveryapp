@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import 'package:mnd_shop/app/providers/vendor_shell_tab_provider.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
+import 'package:mnd_shop/features/dashboard/domain/vendor_open_hours.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_sales_summary.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_catalog_metrics_snapshot.dart';
@@ -20,6 +23,7 @@ import 'package:mnd_shop/features/incoming_orders/presentation/pages/incoming_ve
 import 'package:mnd_shop/features/notifications/presentation/pages/vendor_notifications_page.dart';
 import 'package:mnd_shop/features/notifications/presentation/providers/vendor_notifications_providers.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
+import 'package:mnd_shop/features/orders/presentation/widgets/vendor_order_items_list.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_dashboard_ui.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
@@ -48,6 +52,19 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncOpenHoursFromSchedule();
+    });
+  }
+
+  Future<void> _syncOpenHoursFromSchedule() async {
+    final String storeId = ref.read(vendorEffectiveStoreIdProvider).trim();
+    if (storeId.isEmpty) {
+      return;
+    }
+    await ref
+        .read(vendorOrdersRepositoryProvider)
+        .syncVendorOpenStatusFromSchedule(storeId);
   }
 
   @override
@@ -145,6 +162,7 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
     ref.invalidate(vendorUnreadNotificationCountProvider);
     ref.invalidate(vendorNotificationsListProvider);
     ref.invalidate(vendorProductsStreamProvider);
+    await _syncOpenHoursFromSchedule();
     await Future<void>.delayed(const Duration(milliseconds: 450));
   }
 
@@ -166,6 +184,10 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
     ref.watch(shopAuthStateProvider);
     ref.watch(vendorAccountDocDataProvider);
     final String storeId = ref.watch(vendorEffectiveStoreIdProvider).trim();
+    final User? authUser = ref.watch(shopAuthStateProvider).valueOrNull;
+    final String resolvedStoreId = storeId.isNotEmpty
+        ? storeId
+        : (authUser?.uid.trim() ?? '');
     final String? storeAccessError = ref.watch(vendorStoreAccessErrorProvider);
     final String shopName = ref.watch(vendorShopDisplayNameProvider);
     final int unreadNotifications =
@@ -192,6 +214,24 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
 
     final bool liveFromFirestore = activeAsync.valueOrNull ?? true;
     final bool isOpen = liveFromFirestore && !pendingApproval && !rejected;
+
+    final DateTime? openOverrideUntil = () {
+      final Object? raw = vendorDoc?['openOverrideUntil'];
+      if (raw is Timestamp) {
+        return raw.toDate();
+      }
+      return null;
+    }();
+    final String scheduleSubtitle = localizeVendorOpenSubtitle(
+      vendorOpenStatusSubtitle(
+        isOpen: isOpen,
+        now: now,
+        openingHours: vendorDoc?['openingHours'],
+        openOverrideUntil: openOverrideUntil,
+        canToggle: canToggleLive,
+      ),
+      languageCode: Localizations.localeOf(context).languageCode,
+    );
 
     return Scaffold(
       backgroundColor: VendorDashboardTheme.canvas(context),
@@ -269,14 +309,15 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                                   ),
                                 _StoreStatusHeroCard(
                                   isOpen: isOpen,
+                                  scheduleSubtitle: scheduleSubtitle,
                                   pulseAnimation: _pulseController,
                                   sales: sales,
                                   board: orderBoard,
                                   catalog: catalog,
                                   canToggle: canToggleLive,
-                                  storeId: storeId,
+                                  storeId: resolvedStoreId,
                                   onToggle: (bool value) async {
-                                    if (storeId.isEmpty) {
+                                    if (resolvedStoreId.isEmpty) {
                                       _snack(
                                         context,
                                         _vTxt(
@@ -290,7 +331,7 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                                     }
                                     final String? err = await ref
                                         .read(vendorOrdersRepositoryProvider)
-                                        .setVendorActive(storeId, value);
+                                        .setVendorActive(resolvedStoreId, value);
                                     if (context.mounted && err != null) {
                                       _snack(context, err, error: true);
                                     }
@@ -308,9 +349,10 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                                   ),
                                 const SizedBox(height: 12),
                                 _IncomingOrdersSection(
-                                  storeId: storeId,
+                                  storeId: resolvedStoreId,
                                   board: board,
                                   ref: ref,
+                                  hasVendorProfile: vendorDoc != null,
                                 ),
                                 const SizedBox(height: 12),
                                 board.when(
@@ -381,11 +423,13 @@ class _IncomingOrdersSection extends StatelessWidget {
     required this.storeId,
     required this.board,
     required this.ref,
+    required this.hasVendorProfile,
   });
 
   final String storeId;
   final AsyncValue<VendorOrderBoard> board;
   final WidgetRef ref;
+  final bool hasVendorProfile;
 
   static const int _homePreviewLimit = 3;
 
@@ -471,15 +515,23 @@ class _IncomingOrdersSection extends StatelessWidget {
                   return _EmptyOrdersPanel(
                     title: _vTxt(
                       context,
-                      en: 'Link your store',
-                      si: 'ඔබේ සාප්පුව සම්බන්ධ කරන්න',
+                      en: hasVendorProfile
+                          ? 'No incoming orders yet'
+                          : 'Setting up your shop',
+                      si: hasVendorProfile
+                          ? 'තවම එන ඇණවුම් නැත'
+                          : 'ඔබේ සාප්පුව සකසමින්',
                     ),
-                    subtitle: _vTxt(
-                      context,
-                      en: 'Add your store ID under Products so incoming orders can load.',
-                      si: 'එන ඇණවුම් ලැබීමට Products යටතේ store ID එක එක් කරන්න.',
-                    ),
-                    icon: Icons.storefront_outlined,
+                    subtitle: hasVendorProfile
+                        ? null
+                        : _vTxt(
+                            context,
+                            en: 'Your shop link is syncing. Pull to refresh in a moment.',
+                            si: 'ඔබේ සාප්පු link එක sync වෙමින්. මොහොතකින් refresh කරන්න.',
+                          ),
+                    icon: hasVendorProfile
+                        ? Icons.move_to_inbox_rounded
+                        : Icons.storefront_outlined,
                     embeddedInSection: true,
                   );
                 }
@@ -562,12 +614,19 @@ class _IncomingOrdersSection extends StatelessWidget {
                 );
               },
               loading: () => const _OrdersLoadingSkeleton(),
-              error: (Object e, _) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  '${_vTxt(context, en: 'Could not load orders.', si: 'ඇණවුම් පූරණය කළ නොහැක.')}\n$e',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: cs.error),
+              error: (Object e, _) => _EmptyOrdersPanel(
+                title: _vTxt(
+                  context,
+                  en: 'No incoming orders yet',
+                  si: 'තවම එන ඇණවුම් නැත',
                 ),
+                subtitle: _vTxt(
+                  context,
+                  en: 'Orders will appear here when customers place them.',
+                  si: 'පාරිභෝගිකයන් ඇණවුම් දාන විට මෙතන පෙන්වයි.',
+                ),
+                icon: Icons.move_to_inbox_rounded,
+                embeddedInSection: true,
               ),
             ),
           ),
@@ -714,6 +773,7 @@ class _ApprovalBanner extends StatelessWidget {
 class _StoreStatusHeroCard extends StatelessWidget {
   const _StoreStatusHeroCard({
     required this.isOpen,
+    required this.scheduleSubtitle,
     required this.pulseAnimation,
     required this.sales,
     required this.board,
@@ -724,6 +784,7 @@ class _StoreStatusHeroCard extends StatelessWidget {
   });
 
   final bool isOpen;
+  final String scheduleSubtitle;
   final Animation<double> pulseAnimation;
   final VendorSalesSummary sales;
   final VendorOrderBoard board;
@@ -923,6 +984,17 @@ class _StoreStatusHeroCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                scheduleSubtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  fontWeight: FontWeight.w500,
+                  height: 1.25,
+                ),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -1397,18 +1469,11 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                       horizontal: 14,
                       vertical: 12,
                     ),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        order.itemsSummary,
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: primaryText,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
-                        ),
-                      ),
+                    child: VendorOrderItemsList(
+                      items: order.items,
+                      primaryText: primaryText,
+                      mutedText: mutedText,
+                      maxRows: 3,
                     ),
                   ),
                 ),
