@@ -94,6 +94,10 @@ flutter:
     - assets/shop_login_bg.png
     - assets/sounds/new_order.mp3
     - assets/sounds/you_have_a_new_order.mp3
+    - assets/sounds/new_notification.mp3
+    - assets/sounds/bell_notification.wav
+    - assets/sounds/ding_dong.wav
+    - assets/sounds/notification_bell.wav
 
 flutter_launcher_icons:
   android: true

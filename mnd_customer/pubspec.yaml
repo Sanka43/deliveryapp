@@ -58,14 +58,33 @@ flutter:
   uses-material-design: true
   assets:
     - assets/app_icon.png
+    - assets/animations/delivery_bike.json
     - assets/images/categories/category_food.png
     - assets/images/categories/category_groceries.png
     - assets/images/categories/category_ride.png
     - assets/images/categories/category_jobs.png
+    - assets/images/dishes/rice_curry.png
+    - assets/images/dishes/fried_rice.png
+    - assets/images/dishes/kottu.png
+    - assets/images/dishes/pasta.png
+    - assets/images/dishes/noodles.png
+    - assets/images/dishes/beverages.png
+    - assets/images/dishes/desert.png
+    - assets/images/dishes/shot_eats.png
+    - assets/images/rides/vehicle_car.png
+    - assets/images/rides/vehicle_bike.png
+    - assets/images/rides/vehicle_wheel.png
+    - assets/vehicles/
+    - assets/images/onboarding/order.jpg
+    - assets/images/onboarding/track.jpg
+    - assets/images/onboarding/more.jpg
+    - assets/images/auth/login_hero.jpg
 
 flutter_launcher_icons:
   android: true
   ios: true
+  web:
+    generate: true
   image_path: assets/app_icon.png
-  adaptive_icon_background: "#000000"
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: assets/app_icon.png
