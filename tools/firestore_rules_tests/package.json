@@ -1,0 +1,13 @@
+{
+  "name": "firestore-rules-tests",
+  "private": true,
+  "description": "Security rules regression tests (run: firebase emulators:exec --only firestore \"node run_tests.mjs\" from repo root)",
+  "type": "module",
+  "scripts": {
+    "test": "node run_tests.mjs"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.17.0"
+  }
+}

@@ -1133,6 +1133,7 @@ service cloud.firestore {
                 'cancelledAt', 'cancelledBy', 'updatedAt'
               ]))
             || c.hasOnly(['storeRated', 'storeRatingStars', 'updatedAt'])
+            || c.hasOnly(['riderRated', 'riderRatingStars', 'updatedAt'])
           );
       }
 
@@ -1417,16 +1418,9 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Customer → rider ratings (one doc per delivered order; doc id == orderId).
+    // Customer → rider ratings (one doc per completed order or ride trip;
+    // doc id == orderId or tripId, whichever collection actually has it).
     match /rider_ratings/{orderId} {
-      function riderRatingOrder() {
-        return get(/databases/$(database)/documents/orders/$(orderId)).data;
-      }
-
-      function riderRatingOrderExists() {
-        return exists(/databases/$(database)/documents/orders/$(orderId));
-      }
-
       function riderRatingOrderRiderId(o) {
         return 'riderId' in o && o.riderId is string && o.riderId.size() > 0
           ? o.riderId
@@ -1435,9 +1429,15 @@ service cloud.firestore {
 
       function validRiderRatingCreate() {
         let d = request.resource.data;
-        let o = riderRatingOrder();
+        // A rating doc's id is either a delivery order id or a ride trip
+        // id — check both collections rather than assuming one.
+        let orderExists = exists(/databases/$(database)/documents/orders/$(orderId));
+        let tripExists = exists(/databases/$(database)/documents/trips/$(orderId));
+        let o = orderExists
+          ? get(/databases/$(database)/documents/orders/$(orderId)).data
+          : get(/databases/$(database)/documents/trips/$(orderId)).data;
         return isSignedIn()
-          && riderRatingOrderExists()
+          && (orderExists || tripExists)
           && d.orderId == orderId
           && d.customerId == request.auth.uid
           && o.customerId == request.auth.uid
@@ -1628,6 +1628,19 @@ service cloud.firestore {
           ]);
       }
 
+      /// Customer may rate the rider once, only after the trip is completed
+      /// — mirrors validCustomerOrderUpdate's riderRated/riderRatingStars path.
+      function validCustomerRateTrip() {
+        let o = request.resource.data;
+        let c = o.diff(resource.data).affectedKeys();
+        return isSignedIn()
+          && resource.data.customerId == request.auth.uid
+          && resource.data.status == 'completed'
+          && (!('riderRated' in resource.data) || resource.data.riderRated != true)
+          && tripCoreFieldsUnchanged()
+          && c.hasOnly(['riderRated', 'riderRatingStars', 'updatedAt']);
+      }
+
       function validRiderClaimTrip() {
         let o = request.resource.data;
         let c = o.diff(resource.data).affectedKeys();
@@ -1730,7 +1743,8 @@ service cloud.firestore {
         || validRiderClaimTrip()
         || validRiderTripProgress()
         || validRiderStopAdvance()
-        || validCustomerCancelSearchingTrip();
+        || validCustomerCancelSearchingTrip()
+        || validCustomerRateTrip();
 
       allow delete: if isAdmin();
     }

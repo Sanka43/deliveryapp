@@ -1,35 +1,92 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // Store ownership mirrors the app/Firestore model: the folder is either the
+    // vendor's own uid (self-registered shops) or a legacy slug store whose
+    // vendors/{storeId}.uid back-references this user.
+    function isStoreOwner(storeId) {
+      return request.auth != null
+        && (storeId == request.auth.uid
+          || firestore.get(/databases/(default)/documents/vendors/$(storeId)).data.uid
+            == request.auth.uid);
+    }
+
+    function isAdminUser() {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/customers/$(request.auth.uid)).data.role
+          in ['admin', 'Admin', 'ADMIN'];
+    }
+
+    function isCatalogImageUpload() {
+      return request.resource.size > 0
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Shop app uploads product images here; customer app reads for catalogue.
+    // Public read so guests / unsigned-in browsing can resolve & show catalog images.
     match /vendor_products/{storeId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-        && request.resource.size < 10 * 1024 * 1024;
+      allow read: if true;
+      allow write: if (isStoreOwner(storeId) || isAdminUser())
+        && isCatalogImageUpload();
+      allow delete: if isStoreOwner(storeId) || isAdminUser();
     }
 
-    // Shop registration / storefront gallery (same auth requirement as product uploads).
+    // Shop registration / storefront gallery (same public-read model as products).
     match /vendor_storefront/{storeId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-        && request.resource.size < 10 * 1024 * 1024;
+      allow read: if true;
+      allow write: if (isStoreOwner(storeId) || isAdminUser())
+        && isCatalogImageUpload();
+      allow delete: if isStoreOwner(storeId) || isAdminUser();
     }
 
-    // MND Jobs module: listing banner/logo and applicant CVs.
+    // Shop offer promo images; public read for customer banners.
+    match /vendor_offers/{storeId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if (isStoreOwner(storeId) || isAdminUser())
+        && isCatalogImageUpload();
+      allow delete: if isStoreOwner(storeId) || isAdminUser();
+    }
+
+    // MND Jobs module: listing banner/logo. Owner-only write after job doc exists.
     match /jobs/{jobId}/{allPaths=**} {
+      function isJobOwner() {
+        return request.auth != null
+          && firestore.exists(/databases/(default)/documents/jobs/$(jobId))
+          && firestore.get(/databases/(default)/documents/jobs/$(jobId)).data.userId
+            == request.auth.uid;
+      }
+
+      function isJobImageOrDocUpload() {
+        return request.resource.size > 0
+          && request.resource.size < 10 * 1024 * 1024
+          && (
+            request.resource.contentType.matches('image/.*')
+            || request.resource.contentType == 'application/pdf'
+          );
+      }
+
       allow read: if request.auth != null;
-      allow write: if request.auth != null
-        && request.resource.size > 0
-        && request.resource.size < 10 * 1024 * 1024;
+      allow write: if (isJobOwner() || isAdminUser()) && isJobImageOrDocUpload();
+      allow delete: if isJobOwner() || isAdminUser();
     }
 
     match /job_applications/{userId}/{allPaths=**} {
+      function isCvUpload() {
+        return request.resource.size > 0
+          && request.resource.size < 10 * 1024 * 1024
+          && request.resource.contentType in [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          ];
+      }
+
       allow read: if request.auth != null
         && request.auth.uid == userId;
       allow write: if request.auth != null
         && request.auth.uid == userId
-        && request.resource.size > 0
-        && request.resource.size < 10 * 1024 * 1024;
+        && isCvUpload();
     }
 
     // Rider app: profile + license photos (`riders/{uid}/profile.jpg`, etc.).
@@ -44,9 +101,26 @@ service firebase.storage {
           && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
       }
 
-      allow read: if request.auth != null;
+      allow read: if isRiderOwner() || isAdminUser();
       allow write: if isRiderOwner() && isRiderImageUpload();
-      allow delete: if isRiderOwner();
+      allow delete: if isRiderOwner() || isAdminUser();
+    }
+
+    // Customer app: profile photo (`customers/{uid}/profile.jpg`).
+    match /customers/{userId}/{allPaths=**} {
+      function isCustomerOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function isCustomerImageUpload() {
+        return request.resource.size > 0
+          && request.resource.size < 5 * 1024 * 1024
+          && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+      }
+
+      allow read: if request.auth != null;
+      allow write: if isCustomerOwner() && isCustomerImageUpload();
+      allow delete: if isCustomerOwner();
     }
   }
 }

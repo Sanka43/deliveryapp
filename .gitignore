@@ -47,3 +47,10 @@ app.*.map.json
 # Local machine paths + Google Maps key — never commit API keys
 **/android/local.properties
 **/ios/Flutter/Secrets.xcconfig
+**/dart_defines.json
+
+# Portable Node / Firebase CLI (local machine only)
+/tools/node/
+/tools/firebase-cli/
+/.tools/
+/tools/firestore_rules_tests/node_modules/
