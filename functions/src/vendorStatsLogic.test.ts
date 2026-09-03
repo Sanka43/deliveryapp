@@ -52,6 +52,7 @@ test("completed order increments daily, weekly, monthly, and product stats once"
     netSalesLkr: 1500,
     discountLkr: 0,
     deliveryFeeLkr: 0,
+    serviceChargeLkr: 0,
     completedOrders: 1,
   });
   assert.deepEqual(mutations[4].increments, {
@@ -80,6 +81,7 @@ test("placed to completed update increments sales", () => {
     netSalesLkr: 1500,
     discountLkr: 0,
     deliveryFeeLkr: 0,
+    serviceChargeLkr: 0,
     completedOrders: 1,
   });
 });
@@ -96,6 +98,7 @@ test("placed to delivered update increments sales", () => {
     netSalesLkr: 1500,
     discountLkr: 0,
     deliveryFeeLkr: 0,
+    serviceChargeLkr: 0,
     completedOrders: 1,
   });
 });
@@ -128,6 +131,7 @@ test("completed to cancelled reverses sales and increments cancellations", () =>
     netSalesLkr: -1500,
     discountLkr: -0,
     deliveryFeeLkr: -0,
+    serviceChargeLkr: -0,
     completedOrders: -1,
   });
   assert.deepEqual(mutations[8].increments, {cancelledOrders: 1});

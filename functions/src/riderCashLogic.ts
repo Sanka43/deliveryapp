@@ -13,6 +13,9 @@
 /** Flat LKR the platform keeps per completed passenger ride. */
 export const DEFAULT_RIDE_COMMISSION_LKR = 0;
 
+/** Flat LKR the platform keeps per delivered food order, out of the delivery fee. */
+export const DEFAULT_ORDER_RIDER_COMMISSION_LKR = 0;
+
 /** Cash a rider may hold before new jobs stop being claimable. */
 export const DEFAULT_MAX_CASH_IN_HAND_LKR = 7000;
 
@@ -42,7 +45,13 @@ export type CashOwedBreakdown = {
   productCashLkr: number;
   /** Service charge collected but owed back to the platform (orders only; 0 for rides). */
   serviceChargeLkr: number;
-  /** Platform's ride commission (rides only; 0 for orders). */
+  /**
+   * Platform's cut of what the rider collected: the flat per-ride commission
+   * for passenger trips, or the flat per-order delivery commission for food
+   * orders. Named for its ride origin, but shared by both job types — the
+   * settlement math (riderRequestCashSettlement) and the rider app already
+   * sum it generically across entry types.
+   */
   rideCommissionLkr: number;
 };
 
@@ -137,6 +146,8 @@ export function cashEntryForOrder(args: {
   productCashLkr: unknown;
   serviceChargeLkr: unknown;
   paymentStatus: unknown;
+  /** Platform's flat delivery commission, out of the delivery fee. Defaults to 0. */
+  riderCommissionLkr?: unknown;
 }): CashEntryAmounts | null {
   const paid = String(args.paymentStatus ?? "").trim().toLowerCase() === "paid";
   if (paid) {
@@ -153,14 +164,20 @@ export function cashEntryForOrder(args: {
   const productCashLkr = clampNonNegative(toWholeLkr(args.productCashLkr));
   const serviceChargeLkr = clampNonNegative(toWholeLkr(args.serviceChargeLkr));
   // amountDueFromCustomer (= cashLkr) is always productCashLkr + serviceCharge +
-  // deliveryFee, and deliveryFee is never negative, so the two owed components
-  // can never exceed cashLkr in practice — the min() is a defensive backstop
-  // only, not a real redistribution case.
-  const owedLkr = Math.min(cashLkr, productCashLkr + serviceChargeLkr);
+  // deliveryFee, and deliveryFee is never negative, so productCash + serviceCharge
+  // can never exceed cashLkr in practice. The commission comes out of that
+  // remaining deliveryFee slice, capped so it can never dip into the shop's or
+  // platform's own share.
+  const deliveryFeeLkr = clampNonNegative(cashLkr - productCashLkr - serviceChargeLkr);
+  const riderCommissionLkr = Math.min(
+    deliveryFeeLkr,
+    clampNonNegative(toWholeLkr(args.riderCommissionLkr ?? 0)),
+  );
+  const owedLkr = Math.min(cashLkr, productCashLkr + serviceChargeLkr + riderCommissionLkr);
   return {
     cashLkr,
     owedLkr,
-    breakdown: {productCashLkr, serviceChargeLkr, rideCommissionLkr: 0},
+    breakdown: {productCashLkr, serviceChargeLkr, rideCommissionLkr: riderCommissionLkr},
   };
 }
 

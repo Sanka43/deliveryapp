@@ -2,6 +2,7 @@ import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
+import {computeServiceChargeLkr} from "./serviceCharge";
 
 export type CouponDiscountType = "flat" | "percent";
 
@@ -116,6 +117,10 @@ export const onOrderCreatedValidateCoupon = onDocumentCreated(
     }
 
     const rawCode = String(data.couponCode ?? "").trim();
+    // Orders created by placeCashOnDeliveryOrder already validated + incremented.
+    if (data.serverPlaced === true) {
+      return;
+    }
     if (!rawCode) {
       if (Number(data.discount ?? 0) !== 0) {
         logger.warn("Order has discount without couponCode", {
@@ -134,11 +139,19 @@ export const onOrderCreatedValidateCoupon = onDocumentCreated(
       ? computeDiscountLkr(coupon, subtotal)
       : 0;
     const statedDiscount = Number(data.discount ?? 0);
-    const expectedTotal = Math.max(0, subtotal - expectedDiscount + deliveryFee);
+    const expectedServiceCharge = computeServiceChargeLkr(subtotal);
+    const statedServiceCharge = Number(data.serviceCharge ?? 0);
+    const expectedTotal = Math.max(
+      0,
+      subtotal - expectedDiscount + deliveryFee + expectedServiceCharge,
+    );
 
     const patch: Record<string, unknown> = {};
     if (statedDiscount !== expectedDiscount) {
       patch.discount = expectedDiscount;
+    }
+    if (statedServiceCharge !== expectedServiceCharge) {
+      patch.serviceCharge = expectedServiceCharge;
     }
     if (Number(data.total ?? 0) !== expectedTotal) {
       patch.total = expectedTotal;

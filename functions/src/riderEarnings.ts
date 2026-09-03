@@ -78,14 +78,16 @@ function periodKeys(at: Date): {daily: string; weekly: string; monthly: string} 
 /**
  * Server-authoritative delivery payout. Credits the assigned rider exactly
  * once when an order transitions to `delivered`, using the order's own
- * `deliveryFee`. Clients can no longer write wallet/earnings docs, so this is
- * the only earnings source of truth.
+ * `deliveryFee` minus the platform's flat `orderRiderCommissionLkr`. Clients
+ * can no longer write wallet/earnings docs, so this is the only earnings
+ * source of truth.
  *
  * The wallet only holds what the *platform* owes the rider. On a COD order
  * the rider walked away with the customer's cash — delivery fee included — so
- * the fee is recorded as earned but never credited to the withdrawable
- * balance; the collected cash goes on the rider's cash ledger instead, where
- * it counts toward the cash-in-hand limit.
+ * the net (fee minus commission) is recorded as earned but never credited to
+ * the withdrawable balance; the collected cash goes on the rider's cash
+ * ledger instead, with the commission marked owed to admin alongside the shop
+ * product cost and service charge.
  */
 export const onOrderDeliveredCreditRider = onDocumentUpdated(
   {document: "orders/{orderId}", region: REGION},
@@ -108,12 +110,15 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
       return;
     }
     const amount = Math.round(Number(after.deliveryFee ?? 0));
+    const {orderRiderCommissionLkr, maxRiderCashInHandLkr} =
+      await loadPlatformFeeConfig();
     const cashEntry = cashEntryForOrder({
       amountDueFromCustomerLkr: after.amountDueFromCustomer,
       totalLkr: after.total,
       productCashLkr: after.productCashLkr,
       serviceChargeLkr: after.serviceCharge,
       paymentStatus: after.paymentStatus,
+      riderCommissionLkr: orderRiderCommissionLkr,
     });
     if ((!Number.isFinite(amount) || amount <= 0) && cashEntry == null) {
       logger.info("Delivered order has no fee and no cash; nothing to record", {
@@ -123,7 +128,15 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
       return;
     }
 
-    const {maxRiderCashInHandLkr} = await loadPlatformFeeConfig();
+    // Commission comes out of the delivery fee regardless of who collected
+    // it — a PayHere order credits the net to the wallet, a cash order marks
+    // the same slice owed to admin via cashEntry above.
+    const commissionLkr = Math.min(
+      Math.max(amount, 0),
+      Math.max(0, orderRiderCommissionLkr),
+    );
+    const netEarningLkr = Math.max(amount, 0) - commissionLkr;
+
     const db = getFirestore();
     const riderRef = db.collection("riders").doc(riderId);
     const txnRef = riderRef.collection("transactions").doc(`earning_${orderId}`);
@@ -145,7 +158,9 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
       tx.set(txnRef, {
         type: "delivery_earning",
         status: "completed",
-        amountLkr: amount,
+        amountLkr: netEarningLkr,
+        feeLkr: amount,
+        commissionLkr,
         collectedInCash: cashEntry != null,
         orderId,
         title: storeName,
@@ -155,13 +170,13 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
 
       // Cash orders paid the rider at the door — crediting the withdrawable
       // balance too would pay the delivery fee out twice.
-      if (cashEntry == null && amount > 0) {
+      if (cashEntry == null && netEarningLkr > 0) {
         tx.set(
           walletRef,
           {
-            balanceLkr: Number(w.balanceLkr ?? 0) + amount,
+            balanceLkr: Number(w.balanceLkr ?? 0) + netEarningLkr,
             pendingWithdrawalLkr: Number(w.pendingWithdrawalLkr ?? 0),
-            lifetimeEarnedLkr: Number(w.lifetimeEarnedLkr ?? 0) + amount,
+            lifetimeEarnedLkr: Number(w.lifetimeEarnedLkr ?? 0) + netEarningLkr,
             lifetimeWithdrawnLkr: Number(w.lifetimeWithdrawnLkr ?? 0),
             updatedAt: FieldValue.serverTimestamp(),
           },
@@ -169,7 +184,7 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
         );
       }
 
-      if (amount > 0) {
+      if (netEarningLkr > 0) {
         const aggregates: Array<[string, string]> = [
           [keys.daily, "daily"],
           [keys.weekly, "weekly"],
@@ -180,7 +195,7 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
             riderRef.collection("earnings_aggregates").doc(key),
             {
               periodType,
-              totalLkr: FieldValue.increment(amount),
+              totalLkr: FieldValue.increment(netEarningLkr),
               tripCount: FieldValue.increment(1),
               updatedAt: FieldValue.serverTimestamp(),
             },
@@ -209,6 +224,8 @@ export const onOrderDeliveredCreditRider = onDocumentUpdated(
       riderId,
       orderId,
       amount,
+      commissionLkr,
+      netEarningLkr,
       cashCollectedLkr: cashEntry?.cashLkr ?? 0,
     });
 

@@ -183,6 +183,61 @@ describe("cashEntryForOrder", () => {
     );
   });
 
+  it("adds the delivery rider commission to owed alongside product cost and service charge", () => {
+    // Matches the rider's own example: order 1000, service charge 50,
+    // delivery fee 400, commission 20 -> owed 1000+50+20=1070, rider keeps 380.
+    assert.deepEqual(
+      cashEntryForOrder({
+        amountDueFromCustomerLkr: 1450,
+        totalLkr: 1450,
+        productCashLkr: 1000,
+        serviceChargeLkr: 50,
+        paymentStatus: "pending",
+        riderCommissionLkr: 20,
+      }),
+      {
+        cashLkr: 1450,
+        owedLkr: 1070,
+        breakdown: {productCashLkr: 1000, serviceChargeLkr: 50, rideCommissionLkr: 20},
+      },
+    );
+  });
+
+  it("defaults the commission to 0 when not provided", () => {
+    assert.deepEqual(
+      cashEntryForOrder({
+        amountDueFromCustomerLkr: 1450,
+        totalLkr: 1450,
+        productCashLkr: 1000,
+        serviceChargeLkr: 50,
+        paymentStatus: "pending",
+      }),
+      {
+        cashLkr: 1450,
+        owedLkr: 1050,
+        breakdown: {productCashLkr: 1000, serviceChargeLkr: 50, rideCommissionLkr: 0},
+      },
+    );
+  });
+
+  it("caps the commission at the remaining delivery fee, never dipping into product cost", () => {
+    assert.deepEqual(
+      cashEntryForOrder({
+        amountDueFromCustomerLkr: 1450,
+        totalLkr: 1450,
+        productCashLkr: 1000,
+        serviceChargeLkr: 50,
+        paymentStatus: "pending",
+        riderCommissionLkr: 999999,
+      }),
+      {
+        cashLkr: 1450,
+        owedLkr: 1450,
+        breakdown: {productCashLkr: 1000, serviceChargeLkr: 50, rideCommissionLkr: 400},
+      },
+    );
+  });
+
   it("clamps owedLkr when product cost + service charge overshoot cash collected", () => {
     // Not reachable via the real order math (amountDueFromCustomer always
     // includes a non-negative deliveryFee on top of these two), but defended

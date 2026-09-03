@@ -5,8 +5,11 @@ import {
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
+import {isPresenceFresh} from "./riderPresence";
 
-const SHOP_ORDERS_CHANNEL_ID = "mnd_shop_orders";
+// Must match ShopPushChannels.ordersChannelId in the shop app. Bumped to v2
+// when channel ids were versioned to escape silent-locked channels.
+const SHOP_ORDERS_CHANNEL_ID = "mnd_shop_orders_v2";
 const SHOP_ORDER_SOUND = "new_order";
 
 const STATUS_COPY: Record<string, {title: string; body: string}> = {
@@ -61,8 +64,13 @@ async function countOnlineApprovedRiders(): Promise<number> {
     .limit(20)
     .get();
   return snap.docs.filter((doc) => {
-    const status = String(doc.data().status ?? "").trim().toLowerCase();
-    return status === "approved" || status === "active";
+    const data = doc.data();
+    const status = String(data.status ?? "").trim().toLowerCase();
+    if (status !== "approved" && status !== "active") {
+      return false;
+    }
+    // Ignore ghost riders whose heartbeat stopped (app killed / offline).
+    return isPresenceFresh(data.locationUpdatedAt);
   }).length;
 }
 
@@ -132,7 +140,7 @@ function orderReference(data: OrderNotificationData): string {
   return String(data.trackingNumber ?? "").trim();
 }
 
-function vendorOrderBody(data: OrderNotificationData): string {
+export function vendorOrderBody(data: OrderNotificationData): string {
   const tracking = orderReference(data);
   const total = moneyLabel(data.total);
   const deliveryAddress =
@@ -144,7 +152,7 @@ function vendorOrderBody(data: OrderNotificationData): string {
   return parts.length > 0 ? parts.join(" · ") : "Open the order board for details.";
 }
 
-async function writeVendorNotification(input: {
+export async function writeVendorNotification(input: {
   vendorId: string;
   notificationId: string;
   orderId?: string;
@@ -184,7 +192,7 @@ async function writeVendorNotification(input: {
   });
 }
 
-async function sendPushToVendor(input: {
+export async function sendPushToVendor(input: {
   vendorId: string;
   orderId?: string;
   type: string;
@@ -196,7 +204,8 @@ async function sendPushToVendor(input: {
     .collection("vendors")
     .doc(input.vendorId)
     .get();
-  const token = String(vendorSnap.data()?.fcmToken ?? "").trim();
+  const vendorData = vendorSnap.data() ?? {};
+  const token = String(vendorData.fcmToken ?? "").trim();
   if (!token) {
     logger.warn("No vendor FCM token; inbox notification only", {
       vendorId: input.vendorId,
@@ -205,6 +214,13 @@ async function sendPushToVendor(input: {
     });
     return;
   }
+
+  const channelId =
+    String(vendorData.androidNotificationChannelId ?? "").trim() ||
+    SHOP_ORDERS_CHANNEL_ID;
+  const sound =
+    String(vendorData.androidNotificationSound ?? "").trim() ||
+    SHOP_ORDER_SOUND;
 
   const payload = {
     notification: {title: input.title, body: input.body},
@@ -219,8 +235,8 @@ async function sendPushToVendor(input: {
     android: {
       priority: "high" as const,
       notification: {
-        channelId: SHOP_ORDERS_CHANNEL_ID,
-        sound: SHOP_ORDER_SOUND,
+        channelId,
+        sound,
       },
     },
     apns: {payload: {aps: {sound: "default"}}},
@@ -308,6 +324,68 @@ async function notifyCustomerOrderEvent(input: {
   }
 }
 
+async function writeRiderInboxNotification(input: {
+  riderId: string;
+  notificationId: string;
+  type: string;
+  title: string;
+  body: string;
+  orderId?: string;
+  amountLkr?: number;
+}): Promise<void> {
+  const riderId = input.riderId.trim();
+  if (!riderId) {
+    return;
+  }
+  await getFirestore()
+    .collection("riders")
+    .doc(riderId)
+    .collection("notifications")
+    .doc(input.notificationId)
+    .set(
+      {
+        type: input.type,
+        title: input.title,
+        body: input.body,
+        orderId: input.orderId ?? null,
+        amountLkr: input.amountLkr ?? null,
+        read: false,
+        createdAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+    );
+}
+
+async function sendPushToRider(input: {
+  riderId: string;
+  title: string;
+  body: string;
+  type: string;
+  orderId?: string;
+}): Promise<void> {
+  const riderSnap = await getFirestore().collection("riders").doc(input.riderId).get();
+  const token = String(riderSnap.data()?.fcmToken ?? "").trim();
+  if (!token) {
+    return;
+  }
+  try {
+    await getMessaging().send({
+      token,
+      notification: {title: input.title, body: input.body},
+      data: {
+        type: input.type,
+        orderId: input.orderId ?? "",
+        title: input.title,
+        body: input.body,
+      },
+      android: {priority: "high" as const},
+      apns: {payload: {aps: {sound: "default"}}},
+    });
+  } catch (err) {
+    logger.warn("Rider FCM send failed", {err, riderId: input.riderId});
+  }
+}
+
 export const onOrderCreatedNotify = onDocumentCreated(
   {document: "orders/{orderId}", region: "asia-south1"},
   async (event) => {
@@ -315,8 +393,13 @@ export const onOrderCreatedNotify = onDocumentCreated(
     if (!data) {
       return;
     }
-    const customerId = String(data.customerId ?? "");
     const status = String(data.status ?? "placed");
+    if (status === "draft_payment") {
+      // Order isn't real yet — wait for payHereNotify to confirm payment
+      // and flip it to "placed" (see onOrderStatusUpdatedNotify below).
+      return;
+    }
+    const customerId = String(data.customerId ?? "");
     const storeName = String(data.storeName ?? "");
     const trackingNumber = String(data.trackingNumber ?? "");
     const vendorId = String(data.vendorId ?? data.vendorStoreId ?? "");
@@ -369,10 +452,23 @@ export const onOrderStatusUpdatedNotify = onDocumentUpdated(
     if (nextStatus === "ready" && isDelivery && after.openForRiders === true) {
       noRidersOnline = (await countOnlineApprovedRiders()) === 0;
     }
-    const msg = statusMessage(nextStatus, storeName, trackingNumber, {
-      isDelivery,
-      noRidersOnline,
-    });
+    const cancelledByShopMiss =
+      nextStatus === "cancelled" &&
+      String(after.cancellationReason ?? "").trim() === "vendor_no_response";
+    let msg = cancelledByShopMiss ?
+      {
+        title: "Order cancelled",
+        body: storeName ?
+          `${storeName} did not confirm in time. Your order was cancelled.` :
+          "The store did not confirm in time. Your order was cancelled.",
+      } :
+      statusMessage(nextStatus, storeName, trackingNumber, {
+        isDelivery,
+        noRidersOnline,
+      });
+    if (cancelledByShopMiss && trackingNumber) {
+      msg = {...msg, body: `${msg.body} (${trackingNumber})`};
+    }
 
     const writes: Array<Promise<void>> = [
       notifyCustomerOrderEvent({
@@ -384,6 +480,22 @@ export const onOrderStatusUpdatedNotify = onDocumentUpdated(
         status: nextStatus,
       }),
     ];
+    if (nextStatus === "placed" && prevStatus === "draft_payment") {
+      // PayHere payment just confirmed — this is the order's real "new
+      // order" moment, equivalent to what onOrderCreatedNotify sends for
+      // COD orders at creation time.
+      writes.push(
+        writeVendorNotification({
+          vendorId,
+          notificationId: `${event.params.orderId}_order_new`,
+          orderId: event.params.orderId,
+          type: "order_new",
+          title: "New order",
+          body: vendorOrderBody(after),
+          status: nextStatus,
+        }),
+      );
+    }
     if (nextStatus === "cancelled") {
       writes.push(
         writeVendorNotification({
@@ -396,6 +508,63 @@ export const onOrderStatusUpdatedNotify = onDocumentUpdated(
           status: nextStatus,
         }),
       );
+      const assignedRider = String(
+        after.assignedRiderId ?? after.riderId ?? "",
+      ).trim();
+      if (assignedRider) {
+        const tracking = orderReference(after) || event.params.orderId;
+        writes.push(
+          (async () => {
+            await writeRiderInboxNotification({
+              riderId: assignedRider,
+              notificationId: `${event.params.orderId}_cancelled`,
+              type: "order_cancelled",
+              title: "Order cancelled",
+              body: `Delivery ${tracking} was cancelled.`,
+              orderId: event.params.orderId,
+            });
+            await sendPushToRider({
+              riderId: assignedRider,
+              title: "Order cancelled",
+              body: `Delivery ${tracking} was cancelled.`,
+              type: "order_cancelled",
+              orderId: event.params.orderId,
+            });
+          })(),
+        );
+      }
+    }
+
+    if (nextStatus === "delivered") {
+      const assignedRider = String(
+        after.assignedRiderId ?? after.riderId ?? "",
+      ).trim();
+      if (assignedRider) {
+        const tracking = orderReference(after) || event.params.orderId;
+        const fee = Number(after.deliveryFee ?? 0);
+        const feeLabel =
+          Number.isFinite(fee) && fee > 0 ? ` · Rs. ${fee.toFixed(0)}` : "";
+        writes.push(
+          (async () => {
+            await writeRiderInboxNotification({
+              riderId: assignedRider,
+              notificationId: `${event.params.orderId}_delivered`,
+              type: "delivery_completed",
+              title: "Delivery completed",
+              body: `Order ${tracking} delivered${feeLabel}.`,
+              orderId: event.params.orderId,
+              amountLkr: Number.isFinite(fee) ? Math.round(fee) : undefined,
+            });
+            await sendPushToRider({
+              riderId: assignedRider,
+              title: "Delivery completed",
+              body: `Order ${tracking} delivered${feeLabel}.`,
+              type: "delivery_completed",
+              orderId: event.params.orderId,
+            });
+          })(),
+        );
+      }
     }
 
     await Promise.all(writes);

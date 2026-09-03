@@ -120,7 +120,14 @@ function periodMutations(
   const grossLkr = readNumber(order.total) * direction;
   const discountLkr = readNumber(order.discount) * direction;
   const deliveryFeeLkr = readNumber(order.deliveryFee) * direction;
-  const netSalesLkr = (readNumber(order.total) - readNumber(order.deliveryFee)) * direction;
+  const serviceChargeLkr = readNumber(order.serviceCharge) * direction;
+  // Service charge is a platform fee, not shop revenue — exclude it from
+  // net sales the same way delivery fee already is.
+  const netSalesLkr =
+    (readNumber(order.total) -
+      readNumber(order.deliveryFee) -
+      readNumber(order.serviceCharge)) *
+    direction;
   return [
     {
       collection: "daily_stats",
@@ -131,6 +138,7 @@ function periodMutations(
         netSalesLkr,
         discountLkr,
         deliveryFeeLkr,
+        serviceChargeLkr,
         completedOrders: direction,
       },
     },
@@ -143,6 +151,7 @@ function periodMutations(
         netSalesLkr,
         discountLkr,
         deliveryFeeLkr,
+        serviceChargeLkr,
         completedOrders: direction,
       },
     },
@@ -155,6 +164,7 @@ function periodMutations(
         netSalesLkr,
         discountLkr,
         deliveryFeeLkr,
+        serviceChargeLkr,
         completedOrders: direction,
       },
     },
@@ -167,6 +177,7 @@ function periodMutations(
         netSalesLkr,
         discountLkr,
         deliveryFeeLkr,
+        serviceChargeLkr,
         completedOrders: direction,
       },
     },
