@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_listing.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/job_constants.dart';
 import 'package:mnd_delivery_app/features/admin/presentation/widgets/admin_job_approval_card.dart';
@@ -32,6 +35,7 @@ class _AdminJobsPageState extends ConsumerState<AdminJobsPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.backgroundCanvas,
       appBar: AppBar(
         title: const Text('Jobs moderation'),
         bottom: TabBar(
@@ -75,10 +79,17 @@ class _JobsTab extends ConsumerWidget {
       error: (Object e, _) => Center(child: Text('$e')),
       data: (List<JobListing> list) {
         if (list.isEmpty) {
-          return Center(child: Text('No $status jobs'));
+          return Center(
+            child: Text(
+              'No $status jobs',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+          );
         }
         return ListView.builder(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.md),
           itemCount: list.length,
           itemBuilder: (_, int i) {
             final JobListing job = list[i];
@@ -105,10 +116,17 @@ class _ReportedJobsTab extends ConsumerWidget {
         final List<JobListing> reported =
             list.where((JobListing j) => j.reportedCount > 0).toList();
         if (reported.isEmpty) {
-          return const Center(child: Text('No reported jobs'));
+          return Center(
+            child: Text(
+              'No reported jobs',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+          );
         }
         return ListView.builder(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.md),
           itemCount: reported.length,
           itemBuilder: (_, int i) => _AdminJobTile(job: reported[i]),
         );
@@ -125,21 +143,38 @@ class _AdminJobTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final JobsRepository repo = ref.read(jobsRepositoryProvider);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: MndPremiumCard(
+        borderRadius: AppColors.cardRadiusMd,
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(job.title, style: Theme.of(context).textTheme.titleMedium),
-            Text('${job.companyName} · ${job.status}'),
+            Text(
+              job.title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+            ),
+            Text(
+              '${job.companyName} · ${job.status}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
             if (job.reportedCount > 0)
-              Text('Reports: ${job.reportedCount}',
-                  style: const TextStyle(color: Colors.orange)),
-            const SizedBox(height: 8),
+              Text(
+                'Reports: ${job.reportedCount}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            const SizedBox(height: AppSpacing.sm),
             Wrap(
-              spacing: 8,
+              spacing: AppSpacing.sm,
               children: <Widget>[
                 if (job.status == JobConstants.statusPending)
                   FilledButton(

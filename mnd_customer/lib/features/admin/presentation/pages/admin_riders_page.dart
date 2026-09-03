@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_empty_state.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/admin/data/admin_riders_repository.dart';
 
 final AutoDisposeStreamProvider<List<AdminRiderRow>> adminPendingRidersProvider =
@@ -16,28 +22,22 @@ class AdminRidersPage extends ConsumerWidget {
         ref.watch(adminPendingRidersProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Rider approvals'),
-      ),
+      backgroundColor: AppColors.backgroundCanvas,
+      appBar: mndPageAppBar(title: 'Rider approvals'),
       body: riders.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (Object e, _) => Center(child: Text('$e')),
         data: (List<AdminRiderRow> list) {
           if (list.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No riders waiting for approval.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            return const MndEmptyState(
+              icon: Icons.delivery_dining_outlined,
+              title: 'No riders waiting for approval',
             );
           }
           return ListView.separated(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.md),
             itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
             itemBuilder: (BuildContext context, int index) {
               final AdminRiderRow rider = list[index];
               return _RiderApprovalCard(rider: rider);
@@ -72,16 +72,14 @@ class _RiderApprovalCardState extends ConsumerState<_RiderApprovalCard> {
     }
     setState(() => _busy = false);
     if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      showMndSnackBar(context, err, variant: MndSnackBarVariant.error);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            status == 'approved'
-                ? '${widget.rider.fullName} approved'
-                : '${widget.rider.fullName} rejected',
-          ),
-        ),
+      showMndSnackBar(
+        context,
+        status == 'approved'
+            ? '${widget.rider.fullName} approved'
+            : '${widget.rider.fullName} rejected',
+        variant: MndSnackBarVariant.success,
       );
     }
   }
@@ -91,48 +89,63 @@ class _RiderApprovalCardState extends ConsumerState<_RiderApprovalCard> {
     final AdminRiderRow rider = widget.rider;
     final ThemeData theme = Theme.of(context);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              rider.fullName.isEmpty ? 'Unnamed rider' : rider.fullName,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+    return MndPremiumCard(
+      borderRadius: AppColors.cardRadiusMd,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            rider.fullName.isEmpty ? 'Unnamed rider' : rider.fullName,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Phone: ${rider.phone}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          Text(
+            'City: ${rider.city}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          Text(
+            'Vehicle: ${rider.vehicleType} · ${rider.vehicleNumber}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _busy ? null : () => _setStatus('rejected'),
+                  child: const Text('Reject'),
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text('Phone: ${rider.phone}'),
-            Text('City: ${rider.city}'),
-            Text('Vehicle: ${rider.vehicleType} · ${rider.vehicleNumber}'),
-            const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _busy ? null : () => _setStatus('rejected'),
-                    child: const Text('Reject'),
-                  ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _busy ? null : () => _setStatus('approved'),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Approve'),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _busy ? null : () => _setStatus('approved'),
-                    child: _busy
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Approve'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

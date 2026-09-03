@@ -1,10 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/widgets/logout_action_button.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_empty_state.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/admin/data/admin_orders_repository.dart';
+import 'package:mnd_delivery_app/features/auth/presentation/providers/user_role_provider.dart';
 
 final AutoDisposeStreamProvider<List<AdminOrderRow>> adminOrdersListProvider =
     StreamProvider.autoDispose<List<AdminOrderRow>>((Ref ref) {
+  final AsyncValue<String?> role = ref.watch(userRoleProvider);
+  final bool isAdmin = role.maybeWhen(
+    data: (String? r) => r?.trim().toLowerCase() == 'admin',
+    orElse: () => false,
+  );
+  if (!isAdmin) {
+    return Stream<List<AdminOrderRow>>.value(const <AdminOrderRow>[]);
+  }
   return ref.watch(adminOrdersRepositoryProvider).watchRecentOrders();
 });
 
@@ -46,10 +61,12 @@ class AdminOrdersPage extends ConsumerWidget {
       return;
     }
     if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      showMndSnackBar(context, err, variant: MndSnackBarVariant.error);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rider assigned.')),
+      showMndSnackBar(
+        context,
+        'Rider assigned.',
+        variant: MndSnackBarVariant.success,
       );
     }
   }
@@ -59,8 +76,9 @@ class AdminOrdersPage extends ConsumerWidget {
     final AsyncValue<List<AdminOrderRow>> orders = ref.watch(adminOrdersListProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Orders (admin)'),
+      backgroundColor: AppColors.backgroundCanvas,
+      appBar: mndPageAppBar(
+        title: 'Orders (admin)',
         actions: const <Widget>[
           LogoutActionButton(),
         ],
@@ -68,36 +86,61 @@ class AdminOrdersPage extends ConsumerWidget {
       body: orders.when(
         data: (List<AdminOrderRow> list) {
           if (list.isEmpty) {
-            return const Center(child: Text('No orders found.'));
+            return const MndEmptyState(
+              icon: Icons.receipt_long_outlined,
+              title: 'No orders found',
+            );
           }
           return ListView.separated(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.md),
             itemCount: list.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
             itemBuilder: (BuildContext context, int i) {
               final AdminOrderRow row = list[i];
-              return ListTile(
-                title: Text(
-                  row.referenceForDisplay,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: row.trackingNumber?.trim().isNotEmpty == true
-                      ? Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w600,
-                          )
-                      : null,
-                ),
-                subtitle: Text(
-                  'status: ${row.status}\nstore: ${row.vendorId}\ncustomer: ${row.customerId}\n'
-                  'rider: ${row.riderId ?? '—'}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                isThreeLine: true,
-                trailing: IconButton(
-                  tooltip: 'Assign rider',
-                  icon: const Icon(Icons.delivery_dining_outlined),
-                  onPressed: () => _promptAssign(context, ref, row),
+              return MndPremiumCard(
+                borderRadius: AppColors.cardRadiusMd,
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            row.referenceForDisplay,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: (row.trackingNumber?.trim().isNotEmpty ==
+                                    true
+                                ? Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w700,
+                                    )
+                                : Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    )),
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            'status: ${row.status}\nstore: ${row.vendorId}\ncustomer: ${row.customerId}\n'
+                            'rider: ${row.riderId ?? '—'}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Assign rider',
+                      icon: const Icon(
+                        Icons.delivery_dining_outlined,
+                        color: AppColors.brandPrimary,
+                      ),
+                      onPressed: () => _promptAssign(context, ref, row),
+                    ),
+                  ],
                 ),
               );
             },

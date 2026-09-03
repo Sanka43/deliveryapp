@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_listing.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_providers.dart';
 
@@ -35,18 +36,11 @@ class _AdminJobApprovalCardState extends ConsumerState<AdminJobApprovalCard> {
     try {
       await action();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(success),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        showMndSnackBar(context, success, variant: MndSnackBarVariant.success);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
-        );
+        showMndSnackBar(context, '$e', variant: MndSnackBarVariant.error);
       }
     } finally {
       if (mounted) {
