@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
@@ -7,10 +9,10 @@ import 'package:mnd_shop/app/providers/vendor_shell_tab_provider.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
 import 'package:mnd_shop/core/media/shop_cover_image_spec.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/billing/presentation/pages/vendor_monthly_fees_page.dart';
-import 'package:mnd_shop/features/notifications/presentation/pages/vendor_notifications_page.dart';
-import 'package:mnd_shop/features/notifications/presentation/providers/vendor_notifications_providers.dart';
+import 'package:mnd_shop/features/dashboard/domain/vendor_open_hours.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
@@ -20,9 +22,11 @@ import 'package:mnd_shop/features/profile/presentation/pages/vendor_language_pag
 import 'package:mnd_shop/features/profile/presentation/pages/vendor_notification_settings_page.dart';
 import 'package:mnd_shop/features/profile/presentation/pages/vendor_profile_page.dart';
 import 'package:mnd_shop/features/profile/presentation/pages/vendor_settings_actions.dart';
+import 'package:mnd_shop/features/auth/domain/vendor_deletion_status.dart';
 import 'package:mnd_shop/features/auth/presentation/widgets/shop_legal_policy_dialog.dart';
 import 'package:mnd_shop/features/profile/presentation/pages/vendor_shop_gallery_page.dart';
 import 'package:mnd_shop/features/profile/presentation/widgets/vendor_settings_tiles.dart';
+import 'package:mnd_shop/features/jobs/presentation/pages/vendor_jobs_page.dart';
 import 'package:mnd_shop/features/reports/presentation/pages/vendor_reports_page.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
 
@@ -95,8 +99,6 @@ class VendorSettingsPage extends ConsumerWidget {
     final bool canToggleLive =
         approval == null || approval.isEmpty || approval == 'approved';
     final String email = (doc?['email'] as String?)?.trim() ?? '';
-    final int unread =
-        ref.watch(vendorUnreadNotificationCountProvider).valueOrNull ?? 0;
     final Locale? locale = ref.watch(appLocaleProvider).valueOrNull;
     final double gutter = vendorResponsiveHorizontalPadding(context);
 
@@ -191,23 +193,6 @@ class VendorSettingsPage extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             VendorSettingsNavTile(
-              icon: Icons.notifications_none_outlined,
-              label: _vTxt(context, en: 'Notifications', si: 'දැනුම්දීම්'),
-              subtitle: _vTxt(
-                context,
-                en: 'Order and account messages',
-                si: 'ඇණවුම් සහ ගිණුම් පණිවිඩ',
-              ),
-              trailingBadge: unread,
-              onTap: () {
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const VendorNotificationsPage(),
-                  ),
-                );
-              },
-            ),
-            VendorSettingsNavTile(
               icon: Icons.lock_reset_rounded,
               label: _vTxt(
                 context,
@@ -295,6 +280,22 @@ class VendorSettingsPage extends ConsumerWidget {
               },
             ),
             VendorSettingsNavTile(
+              icon: Icons.work_outline_rounded,
+              label: _vTxt(context, en: 'Jobs', si: 'රැකියා'),
+              subtitle: _vTxt(
+                context,
+                en: 'Post vacancies and manage applicants',
+                si: 'රැකියා පළ කර අයදුම්කරුවන් කළමනාකරණය කරන්න',
+              ),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const VendorJobsPage(),
+                  ),
+                );
+              },
+            ),
+            VendorSettingsNavTile(
               icon: Icons.receipt_long_outlined,
               label: _vTxt(
                 context,
@@ -314,20 +315,21 @@ class VendorSettingsPage extends ConsumerWidget {
                 );
               },
             ),
-            VendorSettingsNavTile(
-              icon: Icons.delete_outline_rounded,
-              label: _vTxt(
-                context,
-                en: 'Request account deletion',
-                si: 'Request account deletion',
+            if (VendorDeletionStatus.canRequestDeletion(doc))
+              VendorSettingsNavTile(
+                icon: Icons.delete_outline_rounded,
+                label: _vTxt(
+                  context,
+                  en: 'Close shop account',
+                  si: 'Close shop account',
+                ),
+                subtitle: _vTxt(
+                  context,
+                  en: 'Permanently close this shop and remove sign-in',
+                  si: 'Permanently close this shop and remove sign-in',
+                ),
+                onTap: () => _requestAccountDeletion(context, ref, shopName),
               ),
-              subtitle: _vTxt(
-                context,
-                en: 'Close this shop after support review',
-                si: 'Close this shop after support review',
-              ),
-              onTap: () => _requestAccountDeletion(context, ref, shopName),
-            ),
             VendorSettingsNavTile(
               icon: Icons.logout_rounded,
               label: _vTxt(context, en: 'Log out', si: 'ඉවත් වන්න'),
@@ -355,114 +357,254 @@ class VendorSettingsPage extends ConsumerWidget {
     WidgetRef ref,
     String shopName,
   ) async {
-    final TextEditingController reasonController = TextEditingController();
-    final bool? ok = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Request account deletion'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'This will submit a deletion request for $shopName. Your shop '
-                'will be closed for new orders while MND support reviews it.',
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Completed orders, payouts, tax, and legal records may be kept '
-                'where required.',
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: reasonController,
-                maxLines: 3,
-                maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: 'Reason (optional)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
+    final User? user = ref.read(firebaseAuthProvider).currentUser;
+    final String email = user?.email?.trim() ?? '';
+    if (user == null || email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in again to request account deletion.'),
         ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-              foregroundColor: Theme.of(ctx).colorScheme.onError,
-            ),
-            child: const Text('Submit request'),
-          ),
-        ],
-      ),
+      );
+      return;
+    }
+
+    final _AccountDeletionInput? input = await showDialog<_AccountDeletionInput>(
+      context: context,
+      builder: (BuildContext ctx) => _AccountDeletionDialog(shopName: shopName),
     );
-    final String reason = reasonController.text;
-    reasonController.dispose();
-    if (ok != true || !context.mounted) {
+    if (input == null || !context.mounted) {
+      return;
+    }
+    if (input.password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter your password to continue.')),
+      );
       return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Submitting deletion request...')),
+      const SnackBar(content: Text('Closing shop account...')),
     );
     try {
+      final AuthCredential credential = EmailAuthProvider.credential(
+        email: email,
+        password: input.password,
+      );
+      await user.reauthenticateWithCredential(credential);
       await ref
           .read(vendorAccountDeletionRepositoryProvider)
-          .requestDeletion(reason: reason);
-      ref.invalidate(vendorAccountDocDataProvider);
-      ref.invalidate(vendorStoreActiveProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Deletion request submitted. Your shop is now closed for new orders.',
-            ),
+          .requestDeletion(reason: input.reason);
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: const Text('Shop account closed'),
+          content: const Text(
+            'Your shop is now closed for new orders and your sign-in has been '
+            'removed. MND may keep order, payout, and tax records where required '
+            'by law.\n\nYou will be signed out now.',
           ),
+          actions: <Widget>[
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      if (!context.mounted) {
+        return;
+      }
+      await ref.read(vendorStoreIdProvider.notifier).setStoreId('');
+      ref.invalidate(vendorShellTabIndexProvider);
+      await ref.read(firebaseAuthProvider).signOut();
+    } on FirebaseAuthException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        final String message = e.code == 'wrong-password' ||
+                e.code == 'invalid-credential'
+            ? 'Incorrect password. Try again.'
+            : 'Could not verify your password. Sign in again.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
         );
       }
     } on VendorAccountDeletionException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              userFacingError(
+                e,
+                fallback: 'Could not close shop account. Please try again.',
+              ),
+            ),
+          ),
+        );
       }
     }
   }
 }
 
-class _StoreOpenSwitchTile extends ConsumerWidget {
+class _AccountDeletionInput {
+  const _AccountDeletionInput({
+    required this.password,
+    required this.reason,
+  });
+
+  final String password;
+  final String reason;
+}
+
+class _AccountDeletionDialog extends StatefulWidget {
+  const _AccountDeletionDialog({required this.shopName});
+
+  final String shopName;
+
+  @override
+  State<_AccountDeletionDialog> createState() => _AccountDeletionDialogState();
+}
+
+class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
+  final TextEditingController _reasonController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.pop(
+      context,
+      _AccountDeletionInput(
+        password: _passwordController.text,
+        reason: _reasonController.text,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Close shop account'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'This permanently closes ${widget.shopName} for new orders and '
+              'removes your MND Shop sign-in immediately.',
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Completed orders, payouts, tax, and legal records may be kept '
+              'where required. This cannot be undone from the app.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Confirm password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reasonController,
+              maxLines: 3,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: 'Reason (optional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          child: const Text('Close account'),
+        ),
+      ],
+    );
+  }
+}
+
+class _StoreOpenSwitchTile extends ConsumerStatefulWidget {
   const _StoreOpenSwitchTile({required this.canToggle});
 
   final bool canToggle;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_StoreOpenSwitchTile> createState() =>
+      _StoreOpenSwitchTileState();
+}
+
+class _StoreOpenSwitchTileState extends ConsumerState<_StoreOpenSwitchTile> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final String storeId = ref.read(vendorEffectiveStoreIdProvider).trim();
+      if (storeId.isEmpty) {
+        return;
+      }
+      ref
+          .read(vendorOrdersRepositoryProvider)
+          .syncVendorOpenStatusFromSchedule(storeId);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool canToggle = widget.canToggle;
     final String storeId = ref.watch(vendorEffectiveStoreIdProvider).trim();
     final AsyncValue<bool> activeAsync = ref.watch(vendorStoreActiveProvider);
     final bool isOpen = activeAsync.valueOrNull ?? true;
     final bool busy = activeAsync.isLoading;
+    final Map<String, dynamic>? doc =
+        ref.watch(vendorAccountDocDataProvider).valueOrNull;
+    final DateTime? openOverrideUntil = () {
+      final Object? raw = doc?['openOverrideUntil'];
+      if (raw is Timestamp) {
+        return raw.toDate();
+      }
+      return null;
+    }();
+    final String subtitle = localizeVendorOpenSubtitle(
+      vendorOpenStatusSubtitle(
+        isOpen: isOpen && canToggle,
+        now: DateTime.now(),
+        openingHours: doc?['openingHours'],
+        openOverrideUntil: openOverrideUntil,
+        canToggle: canToggle,
+      ),
+      languageCode: Localizations.localeOf(context).languageCode,
+    );
 
     return VendorSettingsSwitchTile(
       icon: Icons.storefront_rounded,
       label: _vTxt(context, en: 'Open for orders', si: 'ඇණවුම් සඳහා විවෘතයි'),
-      subtitle: canToggle
-          ? _vTxt(
-              context,
-              en: 'Customers can place orders while open',
-              si: 'විවෘත අවස්ථාවේ ගනුදෙනුකරුවන්ට ඇණවුම් කළ හැක',
-            )
-          : _vTxt(
-              context,
-              en: 'Available after admin approves your shop',
-              si: 'Admin අනුමත කළ පසු මෙය සක්‍රීය වේ',
-            ),
+      subtitle: subtitle,
       value: isOpen && canToggle,
       onChanged: !canToggle || busy || storeId.isEmpty
           ? null

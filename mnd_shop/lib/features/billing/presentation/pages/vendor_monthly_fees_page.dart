@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/billing/domain/vendor_monthly_invoice.dart';
 import 'package:mnd_shop/features/billing/presentation/providers/vendor_monthly_invoices_providers.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
@@ -100,7 +101,7 @@ class VendorMonthlyFeesPage extends ConsumerWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    '${_vTxt(context, en: 'Could not load fees.', si: 'ගාස්තු පූරණය කළ නොහැක.')}\n$e',
+                    '${_vTxt(context, en: 'Could not load fees.', si: 'ගාස්තු පූරණය කළ නොහැක.')}\n${userFacingError(e, fallback: 'Please check your connection and try again.')}',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: cs.error,

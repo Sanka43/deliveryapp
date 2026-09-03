@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/auth/presentation/providers/shop_registration_category_provider.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 import 'package:mnd_shop/features/profile/data/vendor_profile_repository.dart';
@@ -90,7 +91,11 @@ class _VendorShopCategoryPageState extends ConsumerState<VendorShopCategoryPage>
       appBar: AppBar(title: const Text('Category & type')),
       body: categoriesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (Object e, _) => Center(child: Text('Could not load categories.\n$e')),
+        error: (Object e, _) => Center(
+          child: Text(
+            'Could not load categories.\n${userFacingError(e, fallback: 'Please check your connection and try again.')}',
+          ),
+        ),
         data: (_) {
           return AbsorbPointer(
             absorbing: _saving || readOnly,

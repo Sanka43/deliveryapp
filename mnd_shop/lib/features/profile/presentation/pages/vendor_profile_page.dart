@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 import 'package:mnd_shop/features/notifications/presentation/pages/vendor_notifications_page.dart';
 import 'package:mnd_shop/features/profile/data/vendor_profile_repository.dart';
@@ -79,9 +80,16 @@ class _VendorProfilePageState extends ConsumerState<VendorProfilePage> {
     if (!mounted) return;
     setState(() => _saving = false);
     if (err != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Save failed: $err')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            userFacingError(
+              err,
+              fallback: 'Could not save. Please try again.',
+            ),
+          ),
+        ),
+      );
       return;
     }
     ScaffoldMessenger.of(
@@ -141,7 +149,7 @@ class _VendorProfilePageState extends ConsumerState<VendorProfilePage> {
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Text(
-              'Could not load profile.\n\n$e',
+              'Could not load profile.\n\n${userFacingError(e, fallback: 'Please check your connection and try again.')}',
               textAlign: TextAlign.center,
             ),
           ),

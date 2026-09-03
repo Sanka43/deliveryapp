@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/firebase_collections.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/auth/data/shop_gallery_storage.dart';
+import 'package:mnd_shop/features/products/domain/vendor_grocery_catalog.dart';
 
 final Provider<VendorProfileRepository> vendorProfileRepositoryProvider =
     Provider<VendorProfileRepository>((Ref ref) {
@@ -94,9 +96,9 @@ class VendorProfileRepository {
       );
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? e.code;
+      return userFacingError(e, fallback: 'Could not save profile.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not save profile.');
     }
   }
 
@@ -126,9 +128,9 @@ class VendorProfileRepository {
       );
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? e.code;
+      return userFacingError(e, fallback: 'Could not update gallery.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not update gallery.');
     }
   }
 
@@ -153,9 +155,15 @@ class VendorProfileRepository {
       );
       return (error: null, url: url);
     } on FirebaseException catch (e) {
-      return (error: e.message ?? e.code, url: null);
+      return (
+        error: userFacingError(e, fallback: 'Could not upload photo.'),
+        url: null,
+      );
     } catch (e) {
-      return (error: e.toString(), url: null);
+      return (
+        error: userFacingError(e, fallback: 'Could not upload photo.'),
+        url: null,
+      );
     }
   }
 
@@ -182,9 +190,9 @@ class VendorProfileRepository {
       );
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? e.code;
+      return userFacingError(e, fallback: 'Could not update location.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not update location.');
     }
   }
 
@@ -196,7 +204,7 @@ class VendorProfileRepository {
     if (doc == null) {
       return 'Sign in first.';
     }
-    final String c = category.trim();
+    final String c = normalizeVendorCategoryLabel(category.trim());
     final String t = tag.trim();
     if (c.isEmpty || t.isEmpty) {
       return 'Category and shop type are required.';
@@ -206,15 +214,19 @@ class VendorProfileRepository {
         <String, dynamic>{
           'category': c,
           'tag': t,
+          'catalogKind': vendorCatalogKindFromFields(
+            categoryLabel: c,
+            tag: t,
+          ),
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? e.code;
+      return userFacingError(e, fallback: 'Could not update category.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not update category.');
     }
   }
 
@@ -254,9 +266,9 @@ class VendorProfileRepository {
       await doc.set(patch, SetOptions(merge: true));
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? e.code;
+      return userFacingError(e, fallback: 'Could not save settings.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not save settings.');
     }
   }
 }

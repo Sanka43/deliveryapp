@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/locale_provider.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/app_language_option.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 
 class VendorLanguagePage extends ConsumerWidget {
   const VendorLanguagePage({super.key});
@@ -15,7 +16,11 @@ class VendorLanguagePage extends ConsumerWidget {
       appBar: AppBar(title: const Text('Language')),
       body: asyncLocale.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (Object e, _) => Center(child: Text('Could not load language.\n$e')),
+        error: (Object e, _) => Center(
+          child: Text(
+            'Could not load language.\n${userFacingError(e, fallback: 'Please try again.')}',
+          ),
+        ),
         data: (Locale? selected) {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
@@ -47,7 +52,14 @@ class VendorLanguagePage extends ConsumerWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Could not save: $e')),
+                          SnackBar(
+                            content: Text(
+                              userFacingError(
+                                e,
+                                fallback: 'Could not save. Please try again.',
+                              ),
+                            ),
+                          ),
                         );
                       }
                     }

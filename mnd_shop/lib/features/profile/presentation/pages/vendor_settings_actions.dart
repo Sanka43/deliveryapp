@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/constants/support_constants.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -50,7 +51,14 @@ abstract final class VendorSettingsActions {
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'Could not send reset email.')),
+          SnackBar(
+            content: Text(
+              userFacingError(
+                e,
+                fallback: 'Could not send reset email.',
+              ),
+            ),
+          ),
         );
       }
     }
