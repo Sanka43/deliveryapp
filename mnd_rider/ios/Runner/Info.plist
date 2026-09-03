@@ -67,6 +67,8 @@
 	<string>Allow access to your photos to upload your profile and driving license during registration.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Registration photos are read from your photo library when you choose them.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow camera access to capture your profile photo and registration documents.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
