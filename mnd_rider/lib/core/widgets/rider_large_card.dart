@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mnd_rider/core/constants/app_spacing.dart';
 
-/// Primary content card — large radius, subtle border.
+/// Primary content card — hairline border, no soft shadow.
 class RiderLargeCard extends StatelessWidget {
   const RiderLargeCard({
     super.key,
@@ -26,15 +26,8 @@ class RiderLargeCard extends StatelessWidget {
         color: color ?? cs.surface,
         borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
         border: Border.all(
-          color: borderColor ?? cs.outlineVariant.withValues(alpha: 0.45),
+          color: borderColor ?? cs.outlineVariant,
         ),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: cs.shadow.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Padding(padding: padding, child: child),
     );

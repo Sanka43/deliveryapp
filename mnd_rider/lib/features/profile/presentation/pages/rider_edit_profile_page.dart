@@ -1,22 +1,18 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mnd_rider/core/constants/app_spacing.dart';
+import 'package:mnd_rider/core/widgets/rider_snackbar.dart';
 import 'package:mnd_rider/features/auth/domain/rider_vehicle_type.dart';
 import 'package:mnd_rider/features/auth/presentation/widgets/rider_photo_picker_tile.dart';
-import 'package:mnd_rider/features/profile/data/rider_avatar_storage.dart';
 import 'package:mnd_rider/features/profile/domain/rider_profile.dart';
 import 'package:mnd_rider/features/profile/domain/rider_profile_edit_form.dart';
 import 'package:mnd_rider/features/profile/presentation/providers/rider_profile_edit_provider.dart';
 
 class RiderEditProfilePage extends ConsumerStatefulWidget {
-  const RiderEditProfilePage({
-    super.key,
-    required this.initialProfile,
-  });
+  const RiderEditProfilePage({super.key, required this.initialProfile});
 
   final RiderProfile initialProfile;
 
@@ -34,8 +30,6 @@ class _RiderEditProfilePageState extends ConsumerState<RiderEditProfilePage> {
   late final TextEditingController _vehicleNumber;
   RiderVehicleType _vehicleType = RiderVehicleType.bike;
   Uint8List? _profileBytes;
-  Uint8List? _licenseBytes;
-  bool _uploadingPhoto = false;
 
   @override
   void initState() {
@@ -59,17 +53,6 @@ class _RiderEditProfilePageState extends ConsumerState<RiderEditProfilePage> {
     super.dispose();
   }
 
-  ImageProvider? _avatarImage() {
-    if (_profileBytes != null) {
-      return MemoryImage(_profileBytes!);
-    }
-    final String? url = widget.initialProfile.profilePhotoUrl;
-    if (url != null && url.isNotEmpty) {
-      return NetworkImage(url);
-    }
-    return null;
-  }
-
   RiderProfileEditForm _buildForm() {
     return RiderProfileEditForm(
       fullName: _name.text,
@@ -79,7 +62,6 @@ class _RiderEditProfilePageState extends ConsumerState<RiderEditProfilePage> {
       vehicleType: _vehicleType,
       vehicleNumber: _vehicleNumber.text,
       newProfilePhotoBytes: _profileBytes,
-      newLicensePhotoBytes: _licenseBytes,
     );
   }
 
@@ -89,45 +71,29 @@ class _RiderEditProfilePageState extends ConsumerState<RiderEditProfilePage> {
 
   Future<void> _save() async {
     ref.read(riderProfileEditProvider(_seed).notifier).updateForm(_buildForm());
-    final bool ok =
-        await ref.read(riderProfileEditProvider(_seed).notifier).submit();
+    final bool ok = await ref
+        .read(riderProfileEditProvider(_seed).notifier)
+        .submit();
     if (!mounted) {
       return;
     }
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated')),
-      );
+      showRiderSnackBar(context, 'Profile updated');
       context.pop();
       return;
     }
     final String? err = ref.read(riderProfileEditProvider(_seed)).errorMessage;
     if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      showRiderSnackBar(context, err);
     }
     setState(() {});
   }
 
-  Future<void> _quickUploadProfilePhoto() async {
-    setState(() => _uploadingPhoto = true);
-    final String? err =
-        await ref.read(riderAvatarStorageProvider).pickAndUploadProfile();
-    if (mounted) {
-      setState(() => _uploadingPhoto = false);
-      if (err != null && err.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
-      } else if (err == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo updated')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final RiderProfileEditState editState =
-        ref.watch(riderProfileEditProvider(_seed));
+    final RiderProfileEditState editState = ref.watch(
+      riderProfileEditProvider(_seed),
+    );
     final ThemeData theme = Theme.of(context);
 
     return Scaffold(
@@ -154,70 +120,34 @@ class _RiderEditProfilePageState extends ConsumerState<RiderEditProfilePage> {
           32 + MediaQuery.paddingOf(context).bottom,
         ),
         children: <Widget>[
-          Center(
-            child: Stack(
-              children: <Widget>[
-                CircleAvatar(
-                  radius: 48,
-                  backgroundImage: _avatarImage(),
-                  child: _avatarImage() == null
-                      ? const Icon(Icons.person, size: 48)
-                      : null,
-                ),
-                if (_uploadingPhoto)
-                  const Positioned.fill(
-                    child: ColoredBox(
-                      color: Color(0x66000000),
-                      child: Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
-                    ),
-                  ),
-              ],
+          if (_profileBytes == null)
+            Center(
+              child: CircleAvatar(
+                radius: 44,
+                backgroundImage:
+                    (widget.initialProfile.profilePhotoUrl?.isNotEmpty ?? false)
+                    ? NetworkImage(widget.initialProfile.profilePhotoUrl!)
+                    : null,
+                child:
+                    (widget.initialProfile.profilePhotoUrl?.isNotEmpty ?? false)
+                    ? null
+                    : const Icon(Icons.person, size: 44),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: TextButton.icon(
-              onPressed: _uploadingPhoto ? null : _quickUploadProfilePhoto,
-              icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-              label: const Text('Upload now'),
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           RiderPhotoPickerTile(
-            label: 'New profile photo (optional)',
-            hint: 'Tap to pick from gallery',
+            label: 'Profile photo',
+            hint: 'Tap to change from gallery or camera',
             bytes: _profileBytes,
             icon: Icons.person_outline,
             onPicked: (Uint8List data) => setState(() => _profileBytes = data),
           ),
-          const SizedBox(height: 16),
-          RiderPhotoPickerTile(
-            label: 'Driving license photo',
-            hint: 'Update license image',
-            bytes: _licenseBytes,
-            icon: Icons.badge_outlined,
-            onPicked: (Uint8List data) => setState(() => _licenseBytes = data),
-          ),
-          if (widget.initialProfile.licensePhotoUrl != null &&
-              _licenseBytes == null) ...<Widget>[
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                widget.initialProfile.licensePhotoUrl!,
-                height: 120,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-          ],
           const SizedBox(height: 20),
           Text(
             'Personal details',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -232,25 +162,36 @@ class _RiderEditProfilePageState extends ConsumerState<RiderEditProfilePage> {
           Row(
             children: <Widget>[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Text('+94', style: TextStyle(fontWeight: FontWeight.w700)),
+                child: const Text(
+                  '+94',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: TextFormField(
                   controller: _phone,
+                  readOnly: true,
+                  enableInteractiveSelection: false,
                   keyboardType: TextInputType.phone,
-                  inputFormatters: <TextInputFormatter>[
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
                   decoration: InputDecoration(
-                    labelText: 'Mobile',
+                    labelText: 'Mobile (verified)',
                     hintText: '771234567',
+                    suffixIcon: Icon(
+                      Icons.lock_outline_rounded,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    helperText: 'Phone can only change with a new OTP sign-in.',
+                    helperMaxLines: 2,
                     errorText: _fieldError('phone'),
                   ),
                 ),
@@ -277,7 +218,9 @@ class _RiderEditProfilePageState extends ConsumerState<RiderEditProfilePage> {
           const SizedBox(height: 24),
           Text(
             'Vehicle details',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 8),
           Wrap(

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/features/delivery_requests/presentation/widgets/rider_order_request_overlay_host.dart';
 import 'package:mnd_rider/features/notifications/presentation/widgets/rider_push_notification_listener.dart';
-import 'package:mnd_rider/features/shell/presentation/widgets/rider_location_tracking_lifecycle.dart';
+import 'package:mnd_rider/features/shell/presentation/widgets/rider_compliance_expiry_overlay.dart';
 
-/// Wraps authenticated routes: location tracking, job offers, FCM.
+/// Wraps authenticated home routes: job offers and FCM. GPS tracking lives
+/// on [MndRiderApp] so /trip and /ride still publish location.
 class RiderAppShell extends StatelessWidget {
   const RiderAppShell({super.key, required this.child});
 
@@ -13,7 +13,7 @@ class RiderAppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RiderPushNotificationListener(
-      child: RiderLocationTrackingLifecycle(
+      child: RiderComplianceExpiryOverlay(
         child: RiderOrderRequestOverlayHost(
           child: child,
         ),

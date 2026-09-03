@@ -56,6 +56,11 @@ class RiderRegistrationFormNotifier extends StateNotifier<RiderRegistrationForm>
   RiderRegistrationFormNotifier() : super(const RiderRegistrationForm());
 
   void update(RiderRegistrationForm form) => state = form;
+
+  /// Clears in-memory form data after a successful submit.
+  void clearSensitive() {
+    state = const RiderRegistrationForm();
+  }
 }
 
 final StateNotifierProvider<RiderRegistrationController, RiderRegistrationSubmitState>
@@ -74,17 +79,41 @@ class RiderRegistrationController extends StateNotifier<RiderRegistrationSubmitS
     return RiderAuthRepository.mapAuthError(e);
   }
 
-  Future<bool> submit() async {
+  /// Validates the held form and surfaces field errors without writing Auth/Firestore.
+  bool validateOnly() {
     final RiderRegistrationForm form = _ref.read(riderRegistrationFormProvider);
     final RiderRegistrationValidationResult result = _validator.validate(form);
     if (!result.isValid) {
       state = state.copyWith(fieldErrors: result.fieldErrors, clearError: true);
       return false;
     }
+    state = state.copyWith(fieldErrors: <String, String>{}, clearError: true);
+    return true;
+  }
+
+  /// Validates a single wizard step (0–2) and surfaces only those field errors.
+  bool validateStepOnly(int step) {
+    final RiderRegistrationForm form = _ref.read(riderRegistrationFormProvider);
+    final RiderRegistrationValidationResult result =
+        _validator.validateStep(form, step);
+    if (!result.isValid) {
+      state = state.copyWith(fieldErrors: result.fieldErrors, clearError: true);
+      return false;
+    }
+    state = state.copyWith(fieldErrors: <String, String>{}, clearError: true);
+    return true;
+  }
+
+  Future<bool> submit() async {
+    if (!validateOnly()) {
+      return false;
+    }
 
     state = state.copyWith(isLoading: true, clearError: true, fieldErrors: <String, String>{});
     try {
+      final RiderRegistrationForm form = _ref.read(riderRegistrationFormProvider);
       await _ref.read(riderAuthRepositoryProvider).registerRider(form);
+      _ref.read(riderRegistrationFormProvider.notifier).clearSensitive();
       state = state.copyWith(isLoading: false, clearError: true);
       return true;
     } catch (e) {

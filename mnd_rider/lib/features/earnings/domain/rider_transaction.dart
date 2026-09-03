@@ -59,6 +59,8 @@ class RiderTransaction {
     switch (raw?.toLowerCase()) {
       case 'delivery_earning':
         return RiderTransactionType.deliveryEarning;
+      case 'ride_earning':
+        return RiderTransactionType.deliveryEarning;
       case 'withdrawal':
         return RiderTransactionType.withdrawal;
       case 'adjustment':

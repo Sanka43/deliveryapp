@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_rider/features/auth/presentation/providers/rider_approval_provider.dart';
 import 'package:mnd_rider/features/earnings/presentation/providers/rider_earnings_from_orders_provider.dart';
 import 'package:mnd_rider/features/orders/data/rider_orders_repository.dart';
 import 'package:mnd_rider/features/orders/domain/rider_order_detail.dart';
@@ -30,9 +31,12 @@ class RiderHomeStats {
 final Provider<RiderHomeStats> riderHomeStatsProvider = Provider<RiderHomeStats>((Ref ref) {
   final earnings = ref.watch(riderEarningsSummaryProvider);
   final List<RiderAssignedOrder> assigned =
-      ref.watch(assignedRiderOrdersProvider).valueOrNull ?? const <RiderAssignedOrder>[];
-  final List<RiderOrderDetail> open =
-      ref.watch(openRiderJobsProvider).valueOrNull ?? const <RiderOrderDetail>[];
+      ref.watch(assignedRiderOrdersProvider).valueOrNull ??
+          const <RiderAssignedOrder>[];
+  final List<RiderOrderDetail> open = ref.watch(riderIsApprovedToDriveProvider)
+      ? (ref.watch(openRiderJobsProvider).valueOrNull ??
+          const <RiderOrderDetail>[])
+      : const <RiderOrderDetail>[];
 
   int active = 0;
   for (final RiderAssignedOrder o in assigned) {

@@ -1,5 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Tracks the single currently-offered item and this-session dismissals for
+/// [RiderOrderRequestOverlayHost] — shared between delivery-order offers
+/// and passenger-ride offers (both just use plain string ids here; order
+/// ids and trip ids never collide since they live in separate collections).
 class OrderRequestSessionState {
   const OrderRequestSessionState({
     this.dismissedOrderIds = const <String>{},

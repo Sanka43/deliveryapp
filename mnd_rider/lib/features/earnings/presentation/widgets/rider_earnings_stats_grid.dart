@@ -80,11 +80,12 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
     final Color highlight = accent ?? AppColors.primaryBlue;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: highlight.withValues(alpha: 0.12)),
       ),
@@ -106,7 +107,7 @@ class _StatTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: highlight,
               ),
             ),

@@ -72,7 +72,7 @@ class RiderAuthScaffold extends StatelessWidget {
                     Text(
                       title,
                       style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 8),

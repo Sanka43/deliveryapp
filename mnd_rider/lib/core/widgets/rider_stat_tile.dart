@@ -45,7 +45,7 @@ class RiderStatTile extends StatelessWidget {
             Text(
               value,
               style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: highlight,
               ),
             ),

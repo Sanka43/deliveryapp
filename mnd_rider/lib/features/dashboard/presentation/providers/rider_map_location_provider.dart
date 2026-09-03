@@ -4,8 +4,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_rider/features/delivery_requests/data/rider_delivery_requests_repository.dart';
 import 'package:mnd_rider/features/orders/presentation/providers/rider_active_order_provider.dart';
 
+/// Coordinates + heading (degrees, 0-360, null if unknown) for the home map marker.
+typedef RiderMapPosition = ({LatLng latLng, double? heading});
+
 /// Best available rider coordinates for the home map (Firestore + device GPS).
-final StreamProvider<LatLng?> riderMapLocationProvider = StreamProvider<LatLng?>((Ref ref) async* {
+final StreamProvider<RiderMapPosition?> riderMapLocationProvider =
+    StreamProvider<RiderMapPosition?>((Ref ref) async* {
   final bool tracking = ref.watch(riderLocationTrackingEnabledProvider);
 
   if (tracking) {
@@ -20,7 +24,10 @@ final StreamProvider<LatLng?> riderMapLocationProvider = StreamProvider<LatLng?>
             accuracy: LocationAccuracy.high,
           ),
         );
-        yield LatLng(pos.latitude, pos.longitude);
+        yield (
+          latLng: LatLng(pos.latitude, pos.longitude),
+          heading: pos.heading,
+        );
       } catch (_) {}
     }
   }
@@ -29,7 +36,10 @@ final StreamProvider<LatLng?> riderMapLocationProvider = StreamProvider<LatLng?>
       ref.watch(riderDeliveryRequestsRepositoryProvider).watchRiderPosition();
   await for (final RiderPosition? pos in positionStream) {
     if (pos != null) {
-      yield LatLng(pos.latitude, pos.longitude);
+      yield (
+        latLng: LatLng(pos.latitude, pos.longitude),
+        heading: pos.heading,
+      );
     }
   }
 });

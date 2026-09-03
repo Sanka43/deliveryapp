@@ -109,6 +109,8 @@ class RiderTripEtaInput {
 RiderTripPhase riderTripPhaseFromOrder(RiderOrderDetail order) {
   switch (order.status) {
     case 'picked_up':
+      // Reopening mid-handoff (e.g. the on_the_way write never completed) —
+      // resume on the customer leg; delivered is still reachable from here.
       return RiderTripPhase.navigateToCustomer;
     case 'on_the_way':
       return RiderTripPhase.navigateToCustomer;

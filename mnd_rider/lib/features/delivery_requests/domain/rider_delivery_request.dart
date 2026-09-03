@@ -38,6 +38,8 @@ class RiderDeliveryRequest {
     required this.distanceToPickupKm,
     required this.routeKm,
     required this.itemsSummary,
+    this.feeAfterTrip = false,
+    this.productsPaid = false,
     this.trackingNumber,
     this.customerId,
     this.vendorId,
@@ -57,6 +59,9 @@ class RiderDeliveryRequest {
   final double distanceToPickupKm;
   final double routeKm;
   final String itemsSummary;
+  /// Vendor-manual actual-trip fee; earnings unknown until deliver.
+  final bool feeAfterTrip;
+  final bool productsPaid;
   final String? trackingNumber;
   final String? customerId;
   final String? vendorId;
@@ -67,6 +72,13 @@ class RiderDeliveryRequest {
   final DateTime? offeredAt;
 
   double get estimatedPayout => estimatedEarningsLkr.toDouble();
+
+  String get earningsLabel {
+    if (feeAfterTrip) {
+      return 'Fee after trip';
+    }
+    return 'Estimated earnings';
+  }
 
   String get referenceForDisplay {
     final String? t = trackingNumber?.trim();
@@ -96,6 +108,8 @@ class RiderDeliveryRequest {
       customerId: customerId,
       totalLkr: 0,
       deliveryFeeLkr: estimatedEarningsLkr,
+      productsPaid: productsPaid,
+      deliveryFeeMode: feeAfterTrip ? 'actual_trip' : null,
       items: const <RiderOrderLineItem>[],
       deliveryAddress: RiderDeliveryAddress(
         line1: customerAddress,
@@ -123,6 +137,47 @@ class RiderDeliveryRequest {
       distanceToPickupKm: distanceToPickupKm,
       routeKm: routeKm,
       itemsSummary: itemsSummary,
+      feeAfterTrip: feeAfterTrip,
+      productsPaid: productsPaid,
+      trackingNumber: trackingNumber,
+      customerId: customerId,
+      vendorId: vendorId,
+      pickupLatitude: pickupLatitude,
+      pickupLongitude: pickupLongitude,
+      dropoffLatitude: dropoffLatitude,
+      dropoffLongitude: dropoffLongitude,
+      offeredAt: offeredAt,
+    );
+  }
+
+  /// Recomputes [distanceToPickupKm] from a live rider position. Pure/local
+  /// (uses the pickup coordinates already on this object) — does not touch
+  /// Firestore, so callers can refresh distance on every GPS tick without
+  /// re-querying open jobs.
+  RiderDeliveryRequest withRiderPosition({
+    required double? riderLat,
+    required double? riderLng,
+  }) {
+    final double distance = GeoDistance.formatKm(
+      GeoDistance.kmBetween(
+        fromLat: riderLat,
+        fromLng: riderLng,
+        toLat: pickupLatitude,
+        toLng: pickupLongitude,
+      ),
+    );
+    return RiderDeliveryRequest(
+      orderId: orderId,
+      vendorName: vendorName,
+      deliveryType: deliveryType,
+      pickupAddress: pickupAddress,
+      customerAddress: customerAddress,
+      estimatedEarningsLkr: estimatedEarningsLkr,
+      distanceToPickupKm: distance,
+      routeKm: routeKm,
+      itemsSummary: itemsSummary,
+      feeAfterTrip: feeAfterTrip,
+      productsPaid: productsPaid,
       trackingNumber: trackingNumber,
       customerId: customerId,
       vendorId: vendorId,
@@ -171,16 +226,21 @@ class RiderDeliveryRequest {
             ? vendorPickupAddress!.trim()
             : order.storeName;
 
+    final bool feeAfterTrip = order.deliveryFeePending;
+
     return RiderDeliveryRequest(
       orderId: order.id,
       vendorName: order.storeName,
       deliveryType: RiderDeliveryType.standard,
       pickupAddress: pickup,
       customerAddress: order.dropoffAddressSingleLine,
-      estimatedEarningsLkr: order.deliveryFeeLkr > 0 ? order.deliveryFeeLkr : 0,
+      estimatedEarningsLkr:
+          feeAfterTrip ? 0 : (order.deliveryFeeLkr > 0 ? order.deliveryFeeLkr : 0),
       distanceToPickupKm: distanceToPickup,
       routeKm: route,
       itemsSummary: order.itemsSummary,
+      feeAfterTrip: feeAfterTrip,
+      productsPaid: order.productsPaid,
       trackingNumber: order.trackingNumber,
       customerId: order.customerId,
       vendorId: order.vendorId,

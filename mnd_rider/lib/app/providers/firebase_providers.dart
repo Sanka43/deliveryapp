@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -19,6 +20,12 @@ final Provider<FirebaseStorage> firebaseStorageProvider =
 
 final Provider<FirebaseMessaging> firebaseMessagingProvider =
     Provider<FirebaseMessaging>((Ref ref) => FirebaseMessaging.instance);
+
+/// Callable functions are deployed in asia-south1 (see functions/src).
+final Provider<FirebaseFunctions> firebaseFunctionsProvider =
+    Provider<FirebaseFunctions>(
+  (Ref ref) => FirebaseFunctions.instanceFor(region: 'asia-south1'),
+);
 
 final Provider<FirebaseAuthService> firebaseAuthServiceProvider =
     Provider<FirebaseAuthService>(

@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/app/providers/theme_mode_provider.dart';
 import 'package:mnd_rider/core/constants/app_spacing.dart';
+import 'package:mnd_rider/core/widgets/rider_error_state.dart';
+import 'package:mnd_rider/core/widgets/rider_snackbar.dart';
+import 'package:mnd_rider/core/utils/user_facing_error.dart';
 import 'package:mnd_rider/features/auth/presentation/providers/rider_approval_provider.dart';
 import 'package:mnd_rider/features/dashboard/presentation/providers/rider_dashboard_provider.dart';
+import 'package:mnd_rider/features/profile/data/rider_profile_repository.dart';
 import 'package:mnd_rider/features/profile/domain/rider_notification_settings.dart';
+import 'package:mnd_rider/features/profile/domain/rider_profile.dart';
 import 'package:mnd_rider/features/profile/presentation/providers/rider_notification_settings_provider.dart';
 import 'package:mnd_rider/features/profile/presentation/widgets/rider_settings_tile.dart';
 
@@ -15,6 +20,8 @@ class RiderSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bool isOnline = ref.watch(riderDashboardProvider).isOnline;
     final bool canGoOnline = ref.watch(riderIsApprovedToDriveProvider);
+    final RiderProfile? profile =
+        ref.watch(riderProfileStreamProvider).valueOrNull;
     final AsyncValue<RiderNotificationSettings> notifications =
         ref.watch(riderNotificationSettingsProvider);
     final ThemeMode themeMode =
@@ -45,14 +52,31 @@ class RiderSettingsPage extends ConsumerWidget {
                           .read(riderDashboardProvider.notifier)
                           .setOnline(v);
                       if (context.mounted && err != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(err)),
-                        );
+                        showRiderSnackBar(context, err);
                       }
                     }
                   : null,
             ),
           ),
+          if (profile != null)
+            RiderSettingsTile(
+              icon: Icons.directions_car_outlined,
+              title: 'Accept passenger rides',
+              subtitle: profile.acceptsPassengerRides
+                  ? 'You\'ll see passenger ride offers'
+                  : 'Delivery jobs only',
+              trailing: Switch.adaptive(
+                value: profile.acceptsPassengerRides,
+                onChanged: (bool v) async {
+                  final String? err = await ref
+                      .read(riderProfileRepositoryProvider)
+                      .setAcceptsPassengerRides(v);
+                  if (context.mounted && err != null) {
+                    showRiderSnackBar(context, err);
+                  }
+                },
+              ),
+            ),
           const RiderSettingsSectionHeader(title: 'Notifications'),
           notifications.when(
             loading: () => const Center(
@@ -61,7 +85,10 @@ class RiderSettingsPage extends ConsumerWidget {
                 child: CircularProgressIndicator(),
               ),
             ),
-            error: (Object e, _) => Text('Could not load: $e'),
+            error: (Object e, _) => RiderErrorState(
+              message: userFacingError(e),
+              onRetry: () => ref.invalidate(riderNotificationSettingsProvider),
+            ),
             data: (RiderNotificationSettings n) => Column(
               children: <Widget>[
                 RiderSettingsTile(

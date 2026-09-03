@@ -28,6 +28,39 @@ class FirebaseStorageService {
     );
   }
 
+  Future<String> uploadRiderVehiclePhoto({
+    required String riderId,
+    required Uint8List bytes,
+    String side = 'front',
+  }) async {
+    final String fileName =
+        side == 'front' ? 'vehicle.jpg' : 'vehicle_$side.jpg';
+    return _uploadImage(
+      path: 'riders/$riderId/$fileName',
+      bytes: bytes,
+    );
+  }
+
+  Future<String> uploadRiderInsurancePhoto({
+    required String riderId,
+    required Uint8List bytes,
+  }) async {
+    return _uploadImage(
+      path: 'riders/$riderId/insurance.jpg',
+      bytes: bytes,
+    );
+  }
+
+  Future<String> uploadRiderRevenueLicensePhoto({
+    required String riderId,
+    required Uint8List bytes,
+  }) async {
+    return _uploadImage(
+      path: 'riders/$riderId/revenue_license.jpg',
+      bytes: bytes,
+    );
+  }
+
   Future<String> _uploadImage({
     required String path,
     required Uint8List bytes,

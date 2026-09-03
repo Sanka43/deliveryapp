@@ -56,7 +56,9 @@ class RiderCashEntry {
   /// Component split of [owedLkr] — service charge (order entries only).
   final int serviceChargeLkr;
 
-  /// Component split of [owedLkr] — platform's ride commission (ride entries only).
+  /// Component split of [owedLkr] — platform's commission: the flat ride
+  /// commission for ride entries, or the flat delivery commission for order
+  /// entries.
   final int rideCommissionLkr;
 
   final String title;

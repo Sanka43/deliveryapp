@@ -8,10 +8,18 @@ import 'package:mnd_rider/features/presence/data/rider_presence_repository.dart'
 
 /// Signs out: stops GPS, goes offline, clears session state, FCM, Firebase Auth.
 Future<void> riderSignOutAndClear(WidgetRef ref) async {
-  await ref.read(riderLocationServiceProvider).setTrackingEnabled(false);
-  ref.read(riderDashboardProvider.notifier).setOnline(false);
-  await ref.read(riderPresenceRepositoryProvider).setOnline(false);
+  try {
+    await ref.read(riderLocationServiceProvider).setTrackingEnabled(false);
+  } catch (_) {}
+  try {
+    await ref.read(riderDashboardProvider.notifier).setOnline(false);
+  } catch (_) {}
+  try {
+    await ref.read(riderPresenceRepositoryProvider).setOnline(false);
+  } catch (_) {}
   ref.read(orderRequestSessionProvider.notifier).resetSession();
-  await ref.read(firebaseMessagingServiceProvider).unsubscribeOnSignOut();
+  try {
+    await ref.read(firebaseMessagingServiceProvider).unsubscribeOnSignOut();
+  } catch (_) {}
   await ref.read(riderAuthRepositoryProvider).signOut();
 }

@@ -102,13 +102,14 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
       serviceCharge += e.serviceChargeLkr;
       commission += e.rideCommissionLkr;
     }
+    // Service charge is folded into the shop product cost line — both are
+    // money that ends up with the shop/platform, not a separate rider concern.
+    final int shopAmount = productCash + serviceCharge;
     final List<RiderCashBreakdownLine> owedBreakdown = <RiderCashBreakdownLine>[
-      if (productCash > 0)
-        RiderCashBreakdownLine(label: 'Shop product cost', amountLkr: productCash),
-      if (serviceCharge > 0)
-        RiderCashBreakdownLine(label: 'Service charge', amountLkr: serviceCharge),
+      if (shopAmount > 0)
+        RiderCashBreakdownLine(label: 'Shop product cost', amountLkr: shopAmount),
       if (commission > 0)
-        RiderCashBreakdownLine(label: 'Ride commission', amountLkr: commission),
+        RiderCashBreakdownLine(label: 'Rider commission', amountLkr: commission),
     ];
 
     // Nothing collected and nothing pending — don't take up space.
@@ -268,8 +269,9 @@ class _SourceSplit extends StatelessWidget {
   }
 }
 
-/// The three-way owed breakdown, plus the rider's own kept earning shown
-/// with equal prominence — not just a caption underneath.
+/// The owed breakdown (shop product cost + service charge folded into one
+/// line, rider commission on its own), plus the rider's own kept earning
+/// shown with equal prominence — not just a caption underneath.
 class _OwedBreakdown extends StatelessWidget {
   const _OwedBreakdown({
     required this.productCashLkr,
@@ -313,11 +315,13 @@ class _OwedBreakdown extends StatelessWidget {
       );
     }
 
+    // Service charge is folded into the shop product cost line — both are
+    // money that ends up with the shop/platform, not a separate rider concern.
+    final int shopAmount = productCashLkr + serviceChargeLkr;
     return Column(
       children: <Widget>[
-        if (productCashLkr > 0) row('Shop product cost', LkrFormat.money(productCashLkr)),
-        if (serviceChargeLkr > 0) row('Service charge', LkrFormat.money(serviceChargeLkr)),
-        if (rideCommissionLkr > 0) row('Ride commission', LkrFormat.money(rideCommissionLkr)),
+        if (shopAmount > 0) row('Shop product cost', LkrFormat.money(shopAmount)),
+        if (rideCommissionLkr > 0) row('Rider commission', LkrFormat.money(rideCommissionLkr)),
         const Divider(height: 12),
         row('Owed to admin', LkrFormat.money(owed), strong: true),
         const SizedBox(height: 8),

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:mnd_rider/core/constants/app_colors.dart';
 import 'package:mnd_rider/core/constants/app_spacing.dart';
 import 'package:mnd_rider/core/utils/lkr_format.dart';
+import 'package:mnd_rider/core/widgets/rider_drive_sheet.dart';
+import 'package:mnd_rider/core/widgets/rider_primary_cta.dart';
 import 'package:mnd_rider/features/delivery_requests/domain/rider_delivery_request.dart';
 
-/// Bottom-sheet style offer card with countdown.
+/// Offer sheet — fare first, Accept-dominant, glanceable while riding.
 class RiderOrderRequestCard extends StatelessWidget {
   const RiderOrderRequestCard({
     super.key,
@@ -23,17 +25,6 @@ class RiderOrderRequestCard extends StatelessWidget {
   final VoidCallback onReject;
   final bool accepting;
 
-  IconData _deliveryIcon(RiderDeliveryType type) {
-    switch (type) {
-      case RiderDeliveryType.cashOnDelivery:
-        return Icons.payments_outlined;
-      case RiderDeliveryType.express:
-        return Icons.bolt_rounded;
-      case RiderDeliveryType.standard:
-        return Icons.local_shipping_outlined;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -41,289 +32,223 @@ class RiderOrderRequestCard extends StatelessWidget {
     final double progress = totalSeconds <= 0
         ? 0
         : (secondsRemaining / totalSeconds).clamp(0.0, 1.0);
+    final bool urgent = secondsRemaining <= 10;
 
-    return Material(
-      elevation: 24,
-      shadowColor: Colors.black.withValues(alpha: 0.25),
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      color: cs.surface,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return RiderDriveSheet(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
             children: <Widget>[
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.outlineVariant,
-                    borderRadius: BorderRadius.circular(99),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  'NEW OFFER',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryBlue.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(
-                      'NEW REQUEST',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: AppColors.primaryBlue,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${secondsRemaining}s',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: secondsRemaining <= 10 ? cs.error : cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(99),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 4,
-                  backgroundColor: cs.surfaceContainerHighest,
-                  color: secondsRemaining <= 10 ? cs.error : AppColors.primaryBlue,
-                ),
-              ),
-              const SizedBox(height: 18),
+              const Spacer(),
               Text(
-                request.vendorName,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
+                '${secondsRemaining}s',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: urgent ? AppColors.warningAmber : cs.onSurface,
                 ),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: <Widget>[
-                  Icon(_deliveryIcon(request.deliveryType), size: 18, color: cs.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Text(
-                    request.deliveryType.label,
-                    style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    request.referenceForDisplay,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _EarningsRow(amount: LkrFormat.money(request.estimatedEarningsLkr)),
-              const SizedBox(height: 18),
-              _LocationRow(
-                icon: Icons.store_mall_directory_outlined,
-                label: 'Pickup',
-                address: request.pickupAddress,
-                distanceLabel: request.distanceToPickupLabel,
-                accent: AppColors.primaryBlue,
-              ),
-              const SizedBox(height: 14),
-              _LocationRow(
-                icon: Icons.location_on_outlined,
-                label: 'Customer',
-                address: request.customerAddress,
-                distanceLabel: request.routeKmLabel,
-                accent: AppColors.onlineGreen,
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: <Widget>[
-                  _MetaChip(icon: Icons.shopping_bag_outlined, text: request.itemsSummary),
-                ],
-              ),
-              const SizedBox(height: 22),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: accepting ? null : onReject,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: cs.error,
-                        side: BorderSide(color: cs.error.withValues(alpha: 0.7)),
-                        minimumSize: const Size.fromHeight(52),
-                      ),
-                      child: const Text('Reject'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      onPressed: accepting ? null : onAccept,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.onlineGreen,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(52),
-                      ),
-                      child: accepting
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Accept order'),
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EarningsRow extends StatelessWidget {
-  const _EarningsRow({required this.amount});
-
-  final String amount;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: <Color>[
-            AppColors.primaryBlue.withValues(alpha: 0.14),
-            AppColors.primaryBlue.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(AppSpacing.statRadius),
-        border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.2)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: <Widget>[
-            const Icon(Icons.payments_outlined, color: AppColors.primaryBlue),
-            const SizedBox(width: 12),
-            Text(
-              'Estimated earnings',
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 5,
+              backgroundColor: cs.surfaceContainerLow,
+              color: urgent ? AppColors.warningAmber : AppColors.primaryBlue,
             ),
-            const Spacer(),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            request.feeAfterTrip
+                ? 'Fee after trip'
+                : LkrFormat.money(request.estimatedEarningsLkr),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.displaySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: cs.onSurface,
+              letterSpacing: 0,
+              height: 1,
+              fontSize: request.feeAfterTrip ? 28 : null,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            request.feeAfterTrip
+                ? (request.productsPaid
+                    ? 'Collect delivery only · paid products'
+                    : 'Collect products + delivery')
+                : 'Estimated earnings',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(Icons.near_me_rounded,
+                  size: 16, color: cs.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text(
+                request.distanceToPickupLabel,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  '·',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+              Icon(Icons.route_rounded,
+                  size: 16, color: cs.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text(
+                request.routeKmLabel,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _LegLine(
+            color: AppColors.pickupGreen,
+            label: 'Pickup',
+            address: request.vendorName.isNotEmpty
+                ? '${request.vendorName} · ${request.pickupAddress}'
+                : request.pickupAddress,
+          ),
+          const SizedBox(height: 10),
+          _LegLine(
+            color: AppColors.dropoffRed,
+            label: 'Dropoff',
+            address: request.customerAddress,
+          ),
+          if (request.itemsSummary.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
             Text(
-              amount,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: AppColors.primaryBlue,
+              request.itemsSummary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
               ),
             ),
           ],
-        ),
+          const SizedBox(height: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Expanded(
+                child: RiderDangerCta(
+                  label: 'Reject',
+                  height: AppSpacing.ctaHeight,
+                  onPressed: accepting ? null : onReject,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: RiderPrimaryCta(
+                  label: 'Accept',
+                  icon: Icons.check_rounded,
+                  busy: accepting,
+                  height: AppSpacing.ctaHeightLg,
+                  onPressed: accepting ? null : onAccept,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-class _LocationRow extends StatelessWidget {
-  const _LocationRow({
-    required this.icon,
+class _LegLine extends StatelessWidget {
+  const _LegLine({
+    required this.color,
     required this.label,
     required this.address,
-    required this.distanceLabel,
-    required this.accent,
   });
 
-  final IconData icon;
+  final Color color;
   final String label;
   final String address;
-  final String distanceLabel;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Icon(icon, color: accent, size: 22),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Text(
-                    label,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: accent,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    distanceLabel,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+              Text(
+                label.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(address, style: theme.textTheme.bodyMedium),
+              const SizedBox(height: 2),
+              Text(
+                address,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
             ],
           ),
         ),
       ],
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 16, color: cs.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Text(text, style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
-      ),
     );
   }
 }

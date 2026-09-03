@@ -91,8 +91,8 @@ class RiderProfile {
   /// cash-on-delivery collections. Server-maintained (functions/riderCash.ts).
   final int cashInHandLkr;
 
-  /// The slice of [cashInHandLkr] that must reach admin: shop product cash
-  /// plus the platform's ride commission.
+  /// The slice of [cashInHandLkr] that must reach admin: shop product cash,
+  /// service charge, plus the platform's ride/delivery commission.
   final int cashOwedToAdminLkr;
 
   /// Locked in a handover that is waiting for admin confirmation.

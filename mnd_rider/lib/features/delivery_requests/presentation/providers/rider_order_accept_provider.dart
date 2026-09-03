@@ -7,15 +7,21 @@ import 'package:mnd_rider/features/orders/data/rider_orders_repository.dart';
 import 'package:mnd_rider/features/orders/domain/rider_order_detail.dart';
 
 class RiderOrderAcceptResult {
-  const RiderOrderAcceptResult._({this.error, this.order});
+  const RiderOrderAcceptResult._({this.error, this.order, this.orderId});
 
   final String? error;
   final RiderOrderDetail? order;
+  final String? orderId;
 
-  bool get isSuccess => error == null && order != null;
+  bool get isSuccess => error == null;
+
+  String? get tripOrderId => order?.id ?? orderId;
 
   factory RiderOrderAcceptResult.success(RiderOrderDetail order) =>
-      RiderOrderAcceptResult._(order: order);
+      RiderOrderAcceptResult._(order: order, orderId: order.id);
+
+  factory RiderOrderAcceptResult.claimedWithoutDetail(String orderId) =>
+      RiderOrderAcceptResult._(orderId: orderId);
 
   factory RiderOrderAcceptResult.failure(String message) =>
       RiderOrderAcceptResult._(error: message);
@@ -40,10 +46,16 @@ final Provider<Future<RiderOrderAcceptResult> Function(RiderDeliveryRequest)>
           riderName: riderName,
         );
 
-    final RiderOrderDetail? order =
+    RiderOrderDetail? order =
         await ref.read(riderOrdersRepositoryProvider).fetchOrderDetail(request.orderId);
     if (order == null) {
-      return RiderOrderAcceptResult.failure('Order not found after accept.');
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      order = await ref
+          .read(riderOrdersRepositoryProvider)
+          .fetchOrderDetail(request.orderId);
+    }
+    if (order == null) {
+      return RiderOrderAcceptResult.claimedWithoutDetail(request.orderId);
     }
     return RiderOrderAcceptResult.success(order);
   };

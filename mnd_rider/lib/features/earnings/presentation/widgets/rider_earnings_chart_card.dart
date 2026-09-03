@@ -26,6 +26,7 @@ class RiderEarningsChartCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
     final double rawMax = points.isEmpty
         ? 0
         : points
@@ -42,11 +43,7 @@ class RiderEarningsChartCard extends StatelessWidget {
               toY: points[i].earningsLkr,
               width: 14,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-              gradient: const LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: <Color>[Color(0xFF1D4ED8), AppColors.primaryBlue],
-              ),
+              color: AppColors.primaryBlue,
             ),
           ],
         ),
@@ -54,24 +51,24 @@ class RiderEarningsChartCard extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceMuted),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Earnings trend (7 days)',
+              'Last 7 days',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             SizedBox(
-              height: 200,
+              height: 160,
               child: BarChart(
                 BarChartData(
                   maxY: chartMaxY,
@@ -80,7 +77,7 @@ class RiderEarningsChartCard extends StatelessWidget {
                     drawVerticalLine: false,
                     horizontalInterval: gridInterval,
                     getDrawingHorizontalLine: (double _) => FlLine(
-                      color: AppColors.surfaceMuted,
+                      color: cs.surfaceContainerLow,
                       strokeWidth: 1,
                     ),
                   ),

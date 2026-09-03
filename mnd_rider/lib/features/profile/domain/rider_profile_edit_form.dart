@@ -12,7 +12,6 @@ class RiderProfileEditForm {
     this.vehicleType = RiderVehicleType.bike,
     this.vehicleNumber = '',
     this.newProfilePhotoBytes,
-    this.newLicensePhotoBytes,
   });
 
   final String fullName;
@@ -22,7 +21,6 @@ class RiderProfileEditForm {
   final RiderVehicleType vehicleType;
   final String vehicleNumber;
   final Uint8List? newProfilePhotoBytes;
-  final Uint8List? newLicensePhotoBytes;
 
   factory RiderProfileEditForm.fromProfile(RiderProfile profile) {
     String local = profile.phone.replaceAll(RegExp(r'[^0-9]'), '');
@@ -51,9 +49,7 @@ class RiderProfileEditForm {
     RiderVehicleType? vehicleType,
     String? vehicleNumber,
     Uint8List? newProfilePhotoBytes,
-    Uint8List? newLicensePhotoBytes,
     bool clearProfilePhoto = false,
-    bool clearLicensePhoto = false,
   }) {
     return RiderProfileEditForm(
       fullName: fullName ?? this.fullName,
@@ -65,9 +61,6 @@ class RiderProfileEditForm {
       newProfilePhotoBytes: clearProfilePhoto
           ? null
           : (newProfilePhotoBytes ?? this.newProfilePhotoBytes),
-      newLicensePhotoBytes: clearLicensePhoto
-          ? null
-          : (newLicensePhotoBytes ?? this.newLicensePhotoBytes),
     );
   }
 }

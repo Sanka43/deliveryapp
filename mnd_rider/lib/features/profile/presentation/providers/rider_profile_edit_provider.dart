@@ -41,9 +41,11 @@ final StateNotifierProviderFamily<RiderProfileEditController,
 
 class RiderProfileEditController extends StateNotifier<RiderProfileEditState> {
   RiderProfileEditController(this._ref, RiderProfileEditForm initial)
-      : super(RiderProfileEditState(form: initial));
+      : _seed = initial,
+        super(RiderProfileEditState(form: initial));
 
   final Ref _ref;
+  final RiderProfileEditForm _seed;
 
   void updateForm(RiderProfileEditForm form) {
     state = state.copyWith(form: form, fieldErrors: <String, String>{});
@@ -63,9 +65,14 @@ class RiderProfileEditController extends StateNotifier<RiderProfileEditState> {
       fieldErrors: <String, String>{},
     );
 
-    final String? err = await _ref
-        .read(riderProfileRepositoryProvider)
-        .updateProfile(form: state.form);
+    final bool complianceChanged = state.form.vehicleType != _seed.vehicleType ||
+        state.form.vehicleNumber.trim().toUpperCase() !=
+            _seed.vehicleNumber.trim().toUpperCase();
+
+    final String? err = await _ref.read(riderProfileRepositoryProvider).updateProfile(
+          form: state.form,
+          complianceChanged: complianceChanged,
+        );
 
     if (err != null) {
       state = state.copyWith(isLoading: false, errorMessage: err);

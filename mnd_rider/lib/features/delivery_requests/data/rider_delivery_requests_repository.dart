@@ -31,10 +31,12 @@ class RiderDeliveryRequestsRepository {
       _firestore.collection(FirebaseCollections.orders);
 
   /// Firestore: `openForRiders == true` && `status == ready` (indexed).
-  Stream<List<RiderDeliveryRequest>> watchOpenDeliveryRequests({
-    required double? riderLatitude,
-    required double? riderLongitude,
-  }) {
+  ///
+  /// Not keyed by rider position — the query itself never depended on it,
+  /// only per-item distance display did. Keeping this stream independent of
+  /// GPS updates means a single long-lived listener; distance-to-pickup is
+  /// attached client-side afterward (see [RiderDeliveryRequest.withRiderPosition]).
+  Stream<List<RiderDeliveryRequest>> watchOpenDeliveryRequests() {
     final User? user = _auth.currentUser;
     if (user == null) {
       return Stream<List<RiderDeliveryRequest>>.value(const <RiderDeliveryRequest>[]);
@@ -46,20 +48,12 @@ class RiderDeliveryRequestsRepository {
         .orderBy('createdAt', descending: true)
         .limit(25)
         .snapshots()
-        .asyncMap(
-          (QuerySnapshot<Map<String, dynamic>> snap) => _enrichSnapshot(
-            snap,
-            riderLat: riderLatitude,
-            riderLng: riderLongitude,
-          ),
-        );
+        .asyncMap(_enrichSnapshot);
   }
 
   Future<List<RiderDeliveryRequest>> _enrichSnapshot(
-    QuerySnapshot<Map<String, dynamic>> snap, {
-    required double? riderLat,
-    required double? riderLng,
-  }) async {
+    QuerySnapshot<Map<String, dynamic>> snap,
+  ) async {
     final List<RiderDeliveryRequest> out = <RiderDeliveryRequest>[];
 
     for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
@@ -88,10 +82,12 @@ class RiderDeliveryRequestsRepository {
         }
       }
 
+      // Distance is attached downstream from a live position, not here —
+      // this stream must stay independent of the rider's GPS updates.
       final RiderDeliveryRequest base = RiderDeliveryRequest.fromEnriched(
         order: order,
-        riderLat: riderLat,
-        riderLng: riderLng,
+        riderLat: null,
+        riderLng: null,
         vendorPickupAddress: vendorAddress,
         vendorPickupLat: vendorLat,
         vendorPickupLng: vendorLng,
@@ -130,24 +126,36 @@ class RiderDeliveryRequestsRepository {
           return null;
         }
         final Map<String, dynamic> d = snap.data()!;
+        final double? heading = RiderOrderDetail.readDouble(d['heading']);
         final dynamic loc = d['currentLocation'] ?? d['location'];
         if (loc is GeoPoint) {
-          return RiderPosition(latitude: loc.latitude, longitude: loc.longitude);
+          return RiderPosition(
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            heading: heading,
+          );
         }
         final double? lat = RiderOrderDetail.readDouble(d['latitude']);
         final double? lng = RiderOrderDetail.readDouble(d['longitude']);
         if (lat == null || lng == null) {
           return null;
         }
-        return RiderPosition(latitude: lat, longitude: lng);
+        return RiderPosition(latitude: lat, longitude: lng, heading: heading);
       },
     );
   }
 }
 
 class RiderPosition {
-  const RiderPosition({required this.latitude, required this.longitude});
+  const RiderPosition({
+    required this.latitude,
+    required this.longitude,
+    this.heading,
+  });
 
   final double latitude;
   final double longitude;
+
+  /// Compass heading in degrees (0-360), when the device/last GPS fix reported one.
+  final double? heading;
 }

@@ -7,11 +7,6 @@ import 'package:mnd_rider/app/providers/firebase_providers.dart';
 import 'package:mnd_rider/core/services/firebase/firebase_storage_service.dart';
 import 'package:mnd_rider/features/profile/data/rider_profile_repository.dart';
 
-enum RiderPhotoUploadTarget {
-  profile,
-  license,
-}
-
 final Provider<RiderAvatarStorage> riderAvatarStorageProvider =
     Provider<RiderAvatarStorage>((Ref ref) {
   return RiderAvatarStorage(
@@ -51,31 +46,17 @@ class RiderAvatarStorage {
     }
   }
 
-  Future<String?> uploadAndSave({
-    required RiderPhotoUploadTarget target,
-    required Uint8List bytes,
-  }) async {
+  Future<String?> uploadAndSaveProfile(Uint8List bytes) async {
     final User? user = _auth.currentUser;
     if (user == null) {
       return 'Not signed in';
     }
     try {
-      final String url = switch (target) {
-        RiderPhotoUploadTarget.profile => await _storage.uploadRiderProfilePhoto(
-            riderId: user.uid,
-            bytes: bytes,
-          ),
-        RiderPhotoUploadTarget.license => await _storage.uploadRiderLicensePhoto(
-            riderId: user.uid,
-            bytes: bytes,
-          ),
-      };
-      return switch (target) {
-        RiderPhotoUploadTarget.profile =>
-          _profileRepo.updateProfilePhotoUrl(url),
-        RiderPhotoUploadTarget.license =>
-          _profileRepo.updateLicensePhotoUrl(url),
-      };
+      final String url = await _storage.uploadRiderProfilePhoto(
+        riderId: user.uid,
+        bytes: bytes,
+      );
+      return _profileRepo.updateProfilePhotoUrl(url);
     } catch (e) {
       return e.toString();
     }
@@ -89,9 +70,6 @@ class RiderAvatarStorage {
     if (picked.bytes == null) {
       return null;
     }
-    return uploadAndSave(
-      target: RiderPhotoUploadTarget.profile,
-      bytes: picked.bytes!,
-    );
+    return uploadAndSaveProfile(picked.bytes!);
   }
 }

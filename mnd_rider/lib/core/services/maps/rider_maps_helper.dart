@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Map utilities for trip navigation and live tracking.
@@ -27,6 +26,8 @@ class RiderMapsHelper {
     required LatLng position,
     required String title,
     BitmapDescriptor? icon,
+    double rotation = 0,
+    bool flat = false,
   }) {
     return <Marker>{
       Marker(
@@ -34,11 +35,14 @@ class RiderMapsHelper {
         position: position,
         infoWindow: InfoWindow(title: title),
         icon: icon ?? BitmapDescriptor.defaultMarker,
+        rotation: rotation,
+        flat: flat,
       ),
     };
   }
 
-  /// Smooth-ish straight-line polyline between two points.
+  /// Straight-line fallback between two points, used only while a road
+  /// route (see `RiderDirectionsService`) hasn't loaded yet or is unavailable.
   static List<LatLng> polylinePoints(LatLng from, LatLng to, {int segments = 24}) {
     if (segments < 2) {
       return <LatLng>[from, to];
@@ -50,27 +54,6 @@ class RiderMapsHelper {
         from.longitude + (to.longitude - from.longitude) * t,
       );
     });
-  }
-
-  static Set<Polyline> routePolyline({
-    required String id,
-    required LatLng from,
-    required LatLng to,
-    required Color color,
-    int width = 4,
-    bool dashed = false,
-  }) {
-    return <Polyline>{
-      Polyline(
-        polylineId: PolylineId(id),
-        color: color,
-        width: width,
-        patterns: dashed
-            ? <PatternItem>[PatternItem.dash(20), PatternItem.gap(12)]
-            : <PatternItem>[],
-        points: polylinePoints(from, to),
-      ),
-    };
   }
 
   static LatLngBounds? boundsForPoints(Iterable<LatLng> points) {

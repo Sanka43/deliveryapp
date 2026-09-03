@@ -1,4 +1,6 @@
-/// One completed (or cancelled) delivery row for history.
+/// One completed (or cancelled) delivery / ride row for history.
+enum RiderHistoryKind { delivery, ride }
+
 class RiderDeliveryHistoryItem {
   const RiderDeliveryHistoryItem({
     required this.orderId,
@@ -9,6 +11,8 @@ class RiderDeliveryHistoryItem {
     required this.payout,
     required this.completed,
     this.trackingNumber,
+    this.completedAt,
+    this.kind = RiderHistoryKind.delivery,
   });
 
   final String orderId;
@@ -19,12 +23,14 @@ class RiderDeliveryHistoryItem {
   final double payout;
   final bool completed;
   final String? trackingNumber;
+  final DateTime? completedAt;
+  final RiderHistoryKind kind;
 
   String get referenceForDisplay {
     final String? t = trackingNumber?.trim();
     if (t != null && t.isNotEmpty) {
       return t;
     }
-    return '—';
+    return kind == RiderHistoryKind.ride ? 'Ride' : '—';
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mnd_rider/core/services/maps/rider_map_styles.dart';
 import 'package:mnd_rider/core/services/maps/rider_maps_helper.dart';
 
 /// Embedded Google Map for active trip step.
@@ -17,6 +18,7 @@ class RiderTripMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool dark = Theme.of(context).brightness == Brightness.dark;
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
@@ -24,6 +26,7 @@ class RiderTripMap extends StatelessWidget {
         width: double.infinity,
         child: GoogleMap(
           initialCameraPosition: RiderMapsHelper.cameraFor(target),
+          style: dark ? RiderMapStyles.dark : null,
           markers: RiderMapsHelper.singleMarker(
             id: 'trip_target',
             position: target,

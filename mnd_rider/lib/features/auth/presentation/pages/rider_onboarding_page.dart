@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_rider/core/constants/app_colors.dart';
+import 'package:mnd_rider/core/constants/app_spacing.dart';
 import 'package:mnd_rider/core/constants/route_paths.dart';
 import 'package:mnd_rider/features/auth/presentation/providers/rider_onboarding_provider.dart';
-import 'package:mnd_rider/features/auth/presentation/widgets/rider_auth_gradient_scaffold.dart';
 
 class RiderOnboardingPage extends ConsumerStatefulWidget {
   const RiderOnboardingPage({super.key});
@@ -13,30 +15,54 @@ class RiderOnboardingPage extends ConsumerStatefulWidget {
   ConsumerState<RiderOnboardingPage> createState() => _RiderOnboardingPageState();
 }
 
-class _RiderOnboardingPageState extends ConsumerState<RiderOnboardingPage> {
+class _RiderOnboardingPageState extends ConsumerState<RiderOnboardingPage>
+    with SingleTickerProviderStateMixin {
   final PageController _pageController = PageController();
+  late final AnimationController _copyController;
+  late final Animation<double> _copyFade;
+  late final Animation<Offset> _copySlide;
   int _index = 0;
 
   static const List<_OnboardingSlide> _slides = <_OnboardingSlide>[
     _OnboardingSlide(
-      icon: Icons.delivery_dining_rounded,
+      imageAsset: 'assets/images/onboarding/deliver.jpg',
       title: 'Deliver with MND',
-      body: 'Accept nearby jobs, navigate pickups and dropoffs, and earn on every trip.',
+      body:
+          'Accept nearby jobs, navigate pickups and dropoffs, and earn on every trip.',
     ),
     _OnboardingSlide(
-      icon: Icons.payments_rounded,
+      imageAsset: 'assets/images/onboarding/earnings.jpg',
       title: 'Track your earnings',
       body: 'See daily, weekly, and monthly payouts in one clean dashboard.',
     ),
     _OnboardingSlide(
-      icon: Icons.verified_user_rounded,
+      imageAsset: 'assets/images/onboarding/verified.jpg',
       title: 'Stay verified',
-      body: 'Upload your license and vehicle details once — then go online in seconds.',
+      body:
+          'Upload your license and vehicle details once — then go online in seconds.',
     ),
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _copyController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+    );
+    _copyFade = CurvedAnimation(parent: _copyController, curve: Curves.easeOut);
+    _copySlide = Tween<Offset>(
+      begin: const Offset(0, 0.05),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _copyController, curve: Curves.easeOutCubic),
+    );
+    _copyController.forward();
+  }
+
+  @override
   void dispose() {
+    _copyController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -54,103 +80,183 @@ class _RiderOnboardingPageState extends ConsumerState<RiderOnboardingPage> {
       return;
     }
     _pageController.nextPage(
-      duration: const Duration(milliseconds: 360),
+      duration: const Duration(milliseconds: 420),
       curve: Curves.easeOutCubic,
     );
   }
 
+  void _onPageChanged(int i) {
+    setState(() => _index = i);
+    _copyController.forward(from: 0);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return RiderAuthGradientScaffold(
-      child: Column(
-        children: <Widget>[
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _finish,
-              child: const Text('Skip', style: TextStyle(color: Colors.white70)),
-            ),
-          ),
-          Expanded(
-            child: PageView.builder(
+    final bool isLast = _index == _slides.length - 1;
+    final _OnboardingSlide slide = _slides[_index];
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: AppColors.darkCanvas,
+        body: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            PageView.builder(
               controller: _pageController,
               itemCount: _slides.length,
-              onPageChanged: (int i) => setState(() => _index = i),
+              onPageChanged: _onPageChanged,
               itemBuilder: (BuildContext context, int i) {
-                final _OnboardingSlide slide = _slides[i];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(28),
-                        ),
-                        child: Icon(slide.icon, size: 48, color: Colors.white),
-                      ),
-                      const SizedBox(height: 32),
-                      Text(
-                        slide.title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        slide.body,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          fontSize: 16,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
+                return Image.asset(
+                  _slides[i].imageAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder:
+                      (BuildContext context, Object error, StackTrace? stack) {
+                    return const ColoredBox(color: AppColors.heroNavyDeep);
+                  },
                 );
               },
             ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List<Widget>.generate(_slides.length, (int i) {
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 240),
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: _index == i ? 22 : 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: _index == i ? Colors.white : Colors.white38,
-                  borderRadius: BorderRadius.circular(99),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[
+                    Color(0x55000000),
+                    Color(0x14000000),
+                    Color(0x99000000),
+                    Color(0xF2000000),
+                  ],
+                  stops: <double>[0.0, 0.38, 0.64, 1.0],
                 ),
-              );
-            }),
-          ),
-          const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton(
-                onPressed: _next,
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.primaryBlue,
-                ),
-                child: Text(_index == _slides.length - 1 ? 'Get started' : 'Next'),
               ),
             ),
-          ),
-        ],
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _finish,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white.withValues(alpha: 0.78),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        child: Text(
+                          'Skip',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    FadeTransition(
+                      opacity: _copyFade,
+                      child: SlideTransition(
+                        position: _copySlide,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'MND RIDER',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: AppColors.primaryBlue,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                letterSpacing: 2.4,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              slide.title,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 32,
+                                height: 1.15,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              slide.body,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white.withValues(alpha: 0.78),
+                                fontWeight: FontWeight.w500,
+                                fontSize: 16,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List<Widget>.generate(_slides.length, (int i) {
+                        final bool active = _index == i;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutCubic,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: active ? 24 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: active
+                                ? AppColors.primaryBlue
+                                : Colors.white.withValues(alpha: 0.28),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: AppSpacing.ctaHeight,
+                      child: FilledButton(
+                        onPressed: _next,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.buttonRadius,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          isLast ? 'Get started' : 'Next',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -158,12 +264,12 @@ class _RiderOnboardingPageState extends ConsumerState<RiderOnboardingPage> {
 
 class _OnboardingSlide {
   const _OnboardingSlide({
-    required this.icon,
+    required this.imageAsset,
     required this.title,
     required this.body,
   });
 
-  final IconData icon;
+  final String imageAsset;
   final String title;
   final String body;
 }

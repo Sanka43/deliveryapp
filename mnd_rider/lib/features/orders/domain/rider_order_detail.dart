@@ -8,8 +8,18 @@ class RiderOrderDetail {
     required this.storeName,
     required this.vendorId,
     this.customerId,
+    this.isGuestCustomer = false,
     required this.totalLkr,
     required this.deliveryFeeLkr,
+    this.subtotalLkr = 0,
+    this.discountLkr = 0,
+    this.serviceChargeLkr = 0,
+    this.productsPaid = false,
+    this.paymentMethod = '',
+    this.paymentStatus = '',
+    this.deliveryFeeMode,
+    this.amountDueFromCustomerLkr,
+    this.traveledKm,
     required this.items,
     required this.deliveryAddress,
     this.trackingNumber,
@@ -28,8 +38,21 @@ class RiderOrderDetail {
   final String storeName;
   final String vendorId;
   final String? customerId;
+  /// Phone didn't match an MND account — delivery needs the SMS'd code.
+  final bool isGuestCustomer;
   final int totalLkr;
   final int deliveryFeeLkr;
+  final int subtotalLkr;
+  final int discountLkr;
+  final int serviceChargeLkr;
+  /// Customer already paid shop for products; rider collects delivery only.
+  final bool productsPaid;
+  final String paymentMethod;
+  final String paymentStatus;
+  /// `actual_trip` → fee finalized from path KM on deliver.
+  final String? deliveryFeeMode;
+  final int? amountDueFromCustomerLkr;
+  final double? traveledKm;
   final List<RiderOrderLineItem> items;
   final RiderDeliveryAddress deliveryAddress;
   final String? trackingNumber;
@@ -41,6 +64,33 @@ class RiderOrderDetail {
   final double? pickupLongitude;
   final String? pickupAddress;
   final String? deliveryNote;
+
+  bool get usesActualTripFee =>
+      (deliveryFeeMode ?? '').trim().toLowerCase() == 'actual_trip';
+
+  /// This order was originally Cash on Delivery but the customer paid
+  /// online afterwards — the rider must not collect cash for it.
+  bool get isPrepaidOnline =>
+      paymentMethod.trim().toLowerCase() == 'payhere' &&
+      paymentStatus.trim().toLowerCase() == 'paid';
+
+  bool get deliveryFeePending =>
+      usesActualTripFee && deliveryFeeLkr <= 0 && status != 'delivered';
+
+  /// Amount rider should collect after fee is known (or estimated).
+  int collectAmountLkr({int? estimatedDeliveryFeeLkr}) {
+    final int fee = estimatedDeliveryFeeLkr ?? deliveryFeeLkr;
+    if (amountDueFromCustomerLkr != null && deliveryFeeLkr > 0) {
+      return amountDueFromCustomerLkr!;
+    }
+    if (productsPaid) {
+      return fee + serviceChargeLkr;
+    }
+    return (subtotalLkr - discountLkr + fee + serviceChargeLkr).clamp(
+      0,
+      1 << 30,
+    );
+  }
 
   bool get isActiveDelivery {
     const Set<String> active = <String>{
@@ -116,8 +166,20 @@ class RiderOrderDetail {
       storeName: (data['storeName'] as String?)?.trim() ?? 'Store',
       vendorId: (data['vendorId'] as String?)?.trim() ?? '',
       customerId: (data['customerId'] as String?)?.trim(),
+      isGuestCustomer: data['isGuestCustomer'] == true,
       totalLkr: readInt(data['total']),
       deliveryFeeLkr: readInt(data['deliveryFee']),
+      subtotalLkr: readInt(data['subtotal']),
+      discountLkr: readInt(data['discount']),
+      serviceChargeLkr: readInt(data['serviceCharge']),
+      productsPaid: data['productsPaid'] == true,
+      paymentMethod: (data['paymentMethod'] as String?)?.trim() ?? '',
+      paymentStatus: (data['paymentStatus'] as String?)?.trim() ?? '',
+      deliveryFeeMode: (data['deliveryFeeMode'] as String?)?.trim(),
+      amountDueFromCustomerLkr: data['amountDueFromCustomer'] == null
+          ? null
+          : readInt(data['amountDueFromCustomer']),
+      traveledKm: readDouble(data['traveledKm']),
       items: items,
       deliveryAddress: RiderDeliveryAddress.fromMap(addr),
       trackingNumber: (tn == null || tn.isEmpty) ? null : tn,

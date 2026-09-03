@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/core/constants/app_colors.dart';
+import 'package:mnd_rider/core/widgets/rider_primary_cta.dart';
+import 'package:mnd_rider/core/widgets/rider_sheet_scaffold.dart';
+import 'package:mnd_rider/core/widgets/rider_snackbar.dart';
 import 'package:mnd_rider/features/earnings/data/rider_earnings_repository.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_wallet.dart';
 import 'package:mnd_rider/features/earnings/presentation/providers/rider_earnings_from_orders_provider.dart';
@@ -11,9 +14,7 @@ Future<void> showRiderWithdrawSheet(BuildContext context) {
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    shape: riderSheetShape,
     builder: (BuildContext ctx) => const _RiderWithdrawSheet(),
   );
 }
@@ -22,7 +23,8 @@ class _RiderWithdrawSheet extends ConsumerStatefulWidget {
   const _RiderWithdrawSheet();
 
   @override
-  ConsumerState<_RiderWithdrawSheet> createState() => _RiderWithdrawSheetState();
+  ConsumerState<_RiderWithdrawSheet> createState() =>
+      _RiderWithdrawSheetState();
 }
 
 class _RiderWithdrawSheetState extends ConsumerState<_RiderWithdrawSheet> {
@@ -44,7 +46,9 @@ class _RiderWithdrawSheetState extends ConsumerState<_RiderWithdrawSheet> {
       return;
     }
     setState(() => _busy = true);
-    final String? err = await ref.read(riderEarningsRepositoryProvider).requestWithdrawal(
+    final String? err = await ref
+        .read(riderEarningsRepositoryProvider)
+        .requestWithdrawal(
           amountLkr: double.parse(_amount.text.trim()),
           payoutMethod: _method,
           payoutAccount: _account.text.trim(),
@@ -54,52 +58,37 @@ class _RiderWithdrawSheetState extends ConsumerState<_RiderWithdrawSheet> {
     }
     setState(() => _busy = false);
     if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      showRiderSnackBar(context, err);
       return;
     }
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Withdrawal request submitted.')),
-    );
+    showRiderSnackBar(context, 'Withdrawal request submitted.');
   }
 
   @override
   Widget build(BuildContext context) {
     final RiderWallet wallet =
         ref.watch(riderWalletProvider).valueOrNull ?? const RiderWallet.empty();
-    final double bottom = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + bottom),
+    return RiderSheetScaffold(
       child: Form(
         key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceMuted,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
             Text(
               'Request withdrawal',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
               'Available: Rs. ${wallet.balanceLkr.round()} · Min Rs. ${RiderEarningsRepository.minWithdrawalLkr.round()}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 20),
             SegmentedButton<String>(
@@ -115,7 +104,9 @@ class _RiderWithdrawSheetState extends ConsumerState<_RiderWithdrawSheet> {
             const SizedBox(height: 14),
             TextFormField(
               controller: _amount,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               inputFormatters: <TextInputFormatter>[
                 FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
               ],
@@ -141,7 +132,9 @@ class _RiderWithdrawSheetState extends ConsumerState<_RiderWithdrawSheet> {
             TextFormField(
               controller: _account,
               decoration: InputDecoration(
-                labelText: _method == 'bank' ? 'Account number' : 'Mobile number',
+                labelText: _method == 'bank'
+                    ? 'Account number'
+                    : 'Mobile number',
               ),
               validator: (String? v) {
                 if (v == null || v.trim().length < 4) {
@@ -151,15 +144,11 @@ class _RiderWithdrawSheetState extends ConsumerState<_RiderWithdrawSheet> {
               },
             ),
             const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _busy ? null : _submit,
-              child: _busy
-                  ? const SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Submit request'),
+            RiderPrimaryCta(
+              label: 'Submit request',
+              color: AppColors.primaryBlue,
+              busy: _busy,
+              onPressed: _submit,
             ),
           ],
         ),
