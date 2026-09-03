@@ -68,6 +68,12 @@
 	<string>$(GOOGLE_MAPS_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to center the delivery map and suggest your address.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>We use the camera so you can take a profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We use your photo library so you can choose a profile photo.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We may save photos you capture for your profile.</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

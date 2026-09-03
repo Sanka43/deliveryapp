@@ -1,4 +1,4 @@
-package com.example.mnd_delivery_app
+﻿package com.mnd.mnd_customer
 
 import io.flutter.embedding.android.FlutterActivity
 

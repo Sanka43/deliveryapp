@@ -2,6 +2,9 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Required by payhere_mobilesdk_flutter's native Android SDK.
+        mavenLocal()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

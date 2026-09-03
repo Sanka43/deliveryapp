@@ -1,15 +1,24 @@
-# Firebase Console → Project settings → Your Android app → Add fingerprint
-# Package: com.example.mnd_delivery_app
-# (Re-run signingReport if you change PC or debug keystore.)
+# Firebase Console → Project settings → Your apps → Android
+# Package: com.mnd.mnd_customer
+#
+# Paste BOTH debug + upload fingerprints into that Firebase Android app.
+# After saving, download a fresh google-services.json and replace
+# android/app/google-services.json (oauth_client entries appear after SHA is saved).
 
-SHA-1 (with colons — paste into Firebase "SHA certificate fingerprints"):
+# --- Debug keystore (local debug builds / physical device debug) ---
+SHA-1:
 E9:29:A2:FA:36:1F:2C:62:B9:83:42:E9:E1:A6:0D:6E:52:CB:08:E0
 
-SHA-256 (with colons):
+SHA-256:
 E2:E0:AD:82:62:7C:67:85:45:57:37:A3:2C:6B:54:C1:4F:76:C4:96:66:3F:E1:73:17:D5:61:75:3C:2C:B3:AA
 
-SHA-1 (no colons, lowercase — sometimes needed for Google Cloud / OAuth):
-e929a2fa361f2c62b98342e9e1a60d6e52cb08e0
+# --- Upload keystore (release / Play upload AAB) ---
+# Alias: upload
+SHA-1:
+C9:34:BB:55:15:84:71:49:13:45:47:9B:8F:A8:61:AE:55:04:48:6D
 
-SHA-256 (no colons, lowercase):
-e2e0ad82627c6785455737a32c6b54c14f76c496663fe17317d561753c2cb3aa
+SHA-256:
+EE:81:5A:4E:C6:F8:FD:F9:85:60:DF:59:94:98:ED:5E:70:FE:77:59:1E:2A:86:B9:E3:F3:3B:C3:7D:EE:1A:30
+
+# After first Play upload, also add Play App Signing SHA-1/256 from:
+# Play Console → Setup → App signing → App signing key certificate

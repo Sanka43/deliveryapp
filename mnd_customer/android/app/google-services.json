@@ -7,17 +7,25 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:140652528868:android:8b4a93223bc4a26ab458f1",
+        "mobilesdk_app_id": "1:140652528868:android:07f7b34d51208b78b458f1",
         "android_client_info": {
-          "package_name": "com.example.mnd_delivery_app"
+          "package_name": "com.mnd.mnd_customer"
         }
       },
       "oauth_client": [
         {
-          "client_id": "140652528868-ejb6m15gnljqj13ohsedtu7ssr8vtrdm.apps.googleusercontent.com",
+          "client_id": "140652528868-e3as0ei063uusq52p4luv8448824hakh.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.mnd_delivery_app",
+            "package_name": "com.mnd.mnd_customer",
+            "certificate_hash": "c934bb55158471491345479b8fa861ae5504486d"
+          }
+        },
+        {
+          "client_id": "140652528868-v98lrce8o6hei5r4aiu0ch6ejkb4hdhi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mnd.mnd_customer",
             "certificate_hash": "e929a2fa361f2c62b98342e9e1a60d6e52cb08e0"
           }
         },
@@ -39,10 +47,46 @@
               "client_type": 3
             },
             {
-              "client_id": "140652528868-k0k0tbgekqo3v90usmptrqha39k1si19.apps.googleusercontent.com",
+              "client_id": "140652528868-fe1j21duqml6kj5npjq7e39sueaj2hus.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.mndDeliveryApp"
+                "bundle_id": "com.mnd.mndShop"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:140652528868:android:bf295389ca227583b458f1",
+        "android_client_info": {
+          "package_name": "com.mnd.mnd_shop"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "140652528868-q9aoqmt1cnic519dabo3mrdp9483ub5m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9jKCRCr7PKqskhk7SNBI12rogIhcHlp4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "140652528868-q9aoqmt1cnic519dabo3mrdp9483ub5m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "140652528868-fe1j21duqml6kj5npjq7e39sueaj2hus.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mnd.mndShop"
               }
             }
           ]
