@@ -14,6 +14,32 @@ class CartCoupon {
 
 enum CouponDiscountType { flat, percent }
 
+/// How the customer will receive the order.
+enum FulfillmentMode {
+  delivery,
+  selfPickup,
+}
+
+extension FulfillmentModeX on FulfillmentMode {
+  String get firestoreValue {
+    switch (this) {
+      case FulfillmentMode.delivery:
+        return 'delivery';
+      case FulfillmentMode.selfPickup:
+        return 'selfPickup';
+    }
+  }
+
+  bool get isSelfPickup => this == FulfillmentMode.selfPickup;
+
+  static FulfillmentMode fromFirestore(String? raw) {
+    if ((raw ?? '').trim() == 'selfPickup') {
+      return FulfillmentMode.selfPickup;
+    }
+    return FulfillmentMode.delivery;
+  }
+}
+
 class CartExtra {
   const CartExtra({
     required this.name,
@@ -86,6 +112,7 @@ class CartState {
     String? specialInstructions,
     this.dropoffLatitude,
     this.dropoffLongitude,
+    this.fulfillmentMode = FulfillmentMode.delivery,
   })  : _deliveryNote = deliveryNote,
         _specialInstructions = specialInstructions;
 
@@ -98,8 +125,12 @@ class CartState {
   final double? dropoffLatitude;
   final double? dropoffLongitude;
 
+  final FulfillmentMode fulfillmentMode;
+
   String get deliveryNote => _deliveryNote ?? '';
   String get specialInstructions => _specialInstructions ?? '';
+
+  bool get isSelfPickup => fulfillmentMode.isSelfPickup;
 
   int get itemCount => items.fold<int>(0, (sum, item) => sum + item.quantity);
 
@@ -126,6 +157,7 @@ class CartState {
     String? specialInstructions,
     double? dropoffLatitude,
     double? dropoffLongitude,
+    FulfillmentMode? fulfillmentMode,
     bool clearDropoff = false,
     bool clearCoupon = false,
   }) {
@@ -136,6 +168,7 @@ class CartState {
       specialInstructions: specialInstructions ?? this.specialInstructions,
       dropoffLatitude: clearDropoff ? null : (dropoffLatitude ?? this.dropoffLatitude),
       dropoffLongitude: clearDropoff ? null : (dropoffLongitude ?? this.dropoffLongitude),
+      fulfillmentMode: fulfillmentMode ?? this.fulfillmentMode,
     );
   }
 }
@@ -201,6 +234,20 @@ class CartNotifier extends StateNotifier<CartState> {
 
   void clear() {
     state = const CartState();
+  }
+
+  void setFulfillmentMode(FulfillmentMode mode) {
+    if (mode == state.fulfillmentMode) {
+      return;
+    }
+    if (mode == FulfillmentMode.selfPickup) {
+      state = state.copyWith(
+        fulfillmentMode: mode,
+        clearDropoff: true,
+      );
+    } else {
+      state = state.copyWith(fulfillmentMode: mode);
+    }
   }
 
   /// Adds [items] when the cart is empty or already for [storeId]. Returns false if another store occupies the cart.

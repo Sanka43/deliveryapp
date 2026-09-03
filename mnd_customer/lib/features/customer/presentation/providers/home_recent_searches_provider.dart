@@ -1,4 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
+import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const String _kRecentSearchesKey = 'home_recent_searches';
@@ -92,3 +96,78 @@ class ProductFavoritesNotifier extends StateNotifier<Set<String>> {
 
   bool isFavorite(String productKey) => state.contains(productKey);
 }
+
+/// Targeted favorite resolution — avoids downloading the full products catalog.
+final FutureProvider<List<SearchProduct>> favoriteProductsProvider =
+    FutureProvider<List<SearchProduct>>((Ref ref) async {
+  final Set<String> keys = ref.watch(productFavoritesProvider);
+  if (keys.isEmpty) {
+    return const <SearchProduct>[];
+  }
+
+  final FirebaseFirestore firestore = ref.watch(firestoreProvider);
+  final List<String> orderedKeys = keys
+      .map((String k) => k.trim())
+      .where((String k) => k.isNotEmpty)
+      .toList(growable: false);
+  final Map<String, SearchProduct> byToken = <String, SearchProduct>{};
+
+  Future<void> ingest(QuerySnapshot<Map<String, dynamic>> snap) async {
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
+      final Map<String, dynamic> data = doc.data();
+      if (data['active'] == false) {
+        continue;
+      }
+      final SearchProduct product = SearchProduct.fromFirestore(doc.id, data);
+      byToken[product.lookupKey] = product;
+      byToken[product.name] = product;
+      byToken[product.documentId] = product;
+      byToken[product.documentId.toLowerCase()] = product;
+    }
+  }
+
+  final List<String> lookupTokens = orderedKeys
+      .map((String k) => k.toLowerCase())
+      .toSet()
+      .toList(growable: false);
+  for (int i = 0; i < lookupTokens.length; i += 30) {
+    final List<String> chunk = lookupTokens.sublist(
+      i,
+      i + 30 > lookupTokens.length ? lookupTokens.length : i + 30,
+    );
+    await ingest(
+      await firestore
+          .collection(FirebaseCollections.products)
+          .where('lookupKey', whereIn: chunk)
+          .get(),
+    );
+  }
+
+  for (final String key in orderedKeys) {
+    if (byToken.containsKey(key) || byToken.containsKey(key.toLowerCase())) {
+      continue;
+    }
+    final DocumentSnapshot<Map<String, dynamic>> doc = await firestore
+        .collection(FirebaseCollections.products)
+        .doc(key)
+        .get();
+    final Map<String, dynamic>? data = doc.data();
+    if (!doc.exists || data == null || data['active'] == false) {
+      continue;
+    }
+    final SearchProduct product = SearchProduct.fromFirestore(doc.id, data);
+    byToken[key] = product;
+    byToken[product.lookupKey] = product;
+  }
+
+  final List<SearchProduct> out = <SearchProduct>[];
+  final Set<String> seen = <String>{};
+  for (final String key in orderedKeys) {
+    final SearchProduct? product =
+        byToken[key] ?? byToken[key.toLowerCase()];
+    if (product != null && seen.add(product.documentId)) {
+      out.add(product);
+    }
+  }
+  return out;
+});

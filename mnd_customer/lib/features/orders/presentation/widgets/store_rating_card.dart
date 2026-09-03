@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/orders/data/customer_orders_repository.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_detail.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
@@ -11,6 +12,11 @@ class StoreRatingCard extends ConsumerStatefulWidget {
   const StoreRatingCard({super.key, required this.detail});
 
   final CustomerOrderDetail detail;
+
+  static bool isRateable(CustomerOrderDetail detail) {
+    final String status = detail.statusRaw.toLowerCase().trim();
+    return status == 'delivered' || status == 'completed';
+  }
 
   @override
   ConsumerState<StoreRatingCard> createState() => _StoreRatingCardState();
@@ -42,24 +48,18 @@ class _StoreRatingCardState extends ConsumerState<StoreRatingCard> {
       return;
     }
     setState(() => _submitting = false);
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     if (result.ok) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Thanks for rating this store!')),
-      );
+      showMndSnackBar(context, 'Thanks for rating this store!', variant: MndSnackBarVariant.success);
     } else {
-      messenger.showSnackBar(
-        SnackBar(content: Text(result.message ?? 'Could not submit rating.')),
-      );
+      showMndSnackBar(context, result.message ?? 'Could not submit rating.', variant: MndSnackBarVariant.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final CustomerOrderDetail detail = widget.detail;
-    final bool delivered =
-        detail.statusRaw.toLowerCase().trim() == 'delivered';
-    if (!delivered) {
+    final bool rateable = StoreRatingCard.isRateable(detail);
+    if (!rateable) {
       return const SizedBox.shrink();
     }
 

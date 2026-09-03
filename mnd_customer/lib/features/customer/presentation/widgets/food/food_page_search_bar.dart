@@ -13,11 +13,11 @@ class FoodPageSearchBar extends ConsumerWidget {
     return MndPressable(
       onTap: () => navigateToSearchWithQuery(ref, context, 'Food'),
       child: Container(
-        height: 54,
+        height: 48,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         decoration: BoxDecoration(
           color: AppColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
           boxShadow: AppColors.searchBarShadow,
         ),
         child: Row(
@@ -40,15 +40,15 @@ class FoodPageSearchBar extends ConsumerWidget {
             ),
             Material(
               color: AppColors.brandPrimary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               child: InkWell(
                 onTap: () => openCustomerSearch(context),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 child: const Padding(
-                  padding: EdgeInsets.all(8),
+                  padding: EdgeInsets.all(7),
                   child: Icon(
                     Icons.tune_rounded,
-                    size: 20,
+                    size: 18,
                     color: AppColors.brandPrimary,
                   ),
                 ),

@@ -1,8 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
-import 'package:mnd_delivery_app/features/orders/domain/order_tracking_number.dart';
 
 class OrderPlacementResult {
   const OrderPlacementResult._({this.orderId, this.trackingNumber, this.errorMessage});
@@ -22,24 +21,106 @@ class OrderPlacementResult {
   bool get isSuccess => orderId != null;
 }
 
-/// Places a COD order in a single Firestore [transaction]: verifies the vendor
-/// is active, then writes `orders/{orderId}`.
+class OrderPayHereCheckout {
+  const OrderPayHereCheckout({
+    required this.orderId,
+    required this.trackingNumber,
+    required this.checkoutPageUrl,
+    required this.sandbox,
+    required this.fields,
+  });
+
+  final String orderId;
+  final String trackingNumber;
+  final String checkoutPageUrl;
+
+  /// Whether to hit PayHere's sandbox gateway (from `PAYHERE_MODE`).
+  final bool sandbox;
+
+  /// Raw PayHere checkout parameters (merchant_id, order_id, amount, etc.),
+  /// passed straight into the native SDK's payment object.
+  final Map<String, dynamic> fields;
+
+  factory OrderPayHereCheckout.fromCallable(Map<String, dynamic> data) {
+    final Map<dynamic, dynamic>? rawFields = data['fields'] as Map<dynamic, dynamic>?;
+    return OrderPayHereCheckout(
+      orderId: (data['orderId'] as String?)?.trim() ?? '',
+      trackingNumber: (data['trackingNumber'] as String?)?.trim() ?? '',
+      checkoutPageUrl: (data['checkoutPageUrl'] as String?)?.trim() ?? '',
+      sandbox: data['sandbox'] as bool? ?? true,
+      fields: rawFields == null
+          ? const <String, dynamic>{}
+          : Map<String, dynamic>.from(rawFields),
+    );
+  }
+}
+
+/// Places a COD order via [placeCashOnDeliveryOrder] Cloud Function so prices,
+/// delivery fee, and coupons are recomputed server-side.
 class OrderPlacementRepository {
   OrderPlacementRepository({
-    required FirebaseFirestore firestore,
     required FirebaseAuth auth,
-  })  : _firestore = firestore,
-        _auth = auth;
+    FirebaseFunctions? functions,
+  })  : _auth = auth,
+        _functions = functions ??
+            FirebaseFunctions.instanceFor(region: 'asia-south1');
 
-  final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  final FirebaseFunctions _functions;
+
+  Map<String, dynamic>? _buildOrderPayload({
+    required CartState cart,
+    required String addressLine1,
+    required String addressLine2,
+    required String city,
+    required String phone,
+    String? couponCode,
+  }) {
+    final String vendorId = cart.items.first.storeId;
+    if (vendorId.isEmpty) {
+      return null;
+    }
+    return <String, dynamic>{
+      'vendorId': vendorId,
+      'items': cart.items
+          .map(
+            (CartItem item) => <String, dynamic>{
+              'productKey': item.productKey,
+              'quantity': item.quantity,
+              'selectedSize': item.selectedSize,
+              'extras': item.extras
+                  .map(
+                    (CartExtra e) => <String, dynamic>{
+                      'name': e.name,
+                      'priceDelta': e.priceDelta,
+                    },
+                  )
+                  .toList(growable: false),
+            },
+          )
+          .toList(growable: false),
+      'deliveryAddress': <String, dynamic>{
+        'line1': addressLine1.trim(),
+        'line2': addressLine2.trim(),
+        'city': city.trim(),
+        'phone': phone.trim(),
+      },
+      'deliveryNote': cart.deliveryNote.trim(),
+      'specialInstructions': cart.specialInstructions.trim(),
+      'fulfillmentMode': cart.fulfillmentMode.firestoreValue,
+      if (couponCode != null && couponCode.trim().isNotEmpty)
+        'couponCode': couponCode.trim(),
+      if (!cart.isSelfPickup &&
+          cart.dropoffLatitude != null &&
+          cart.dropoffLongitude != null) ...<String, dynamic>{
+        'dropoffLatitude': cart.dropoffLatitude,
+        'dropoffLongitude': cart.dropoffLongitude,
+      },
+    };
+  }
 
   Future<OrderPlacementResult> placeCashOnDeliveryOrder({
     required CartState cart,
-    required int subtotal,
-    required int discount,
-    required int deliveryFee,
-    required int total,
     required String addressLine1,
     required String addressLine2,
     required String city,
@@ -53,130 +134,109 @@ class OrderPlacementRepository {
     if (cart.isEmpty) {
       return OrderPlacementResult.failure('Your cart is empty.');
     }
-    if (total < 0) {
-      return OrderPlacementResult.failure('Invalid order total.');
-    }
 
-    final String vendorId = cart.items.first.storeId;
-    if (vendorId.isEmpty) {
+    final Map<String, dynamic>? payload = _buildOrderPayload(
+      cart: cart,
+      addressLine1: addressLine1,
+      addressLine2: addressLine2,
+      city: city,
+      phone: phone,
+      couponCode: couponCode,
+    );
+    if (payload == null) {
       return OrderPlacementResult.failure('Missing store for this cart.');
     }
 
     try {
-      final DateTime placedClock = DateTime.now();
-      String? builtTracking;
-      final String orderId = await _firestore.runTransaction<String>((Transaction transaction) async {
-        final DocumentReference<Map<String, dynamic>> vendorRef =
-            _firestore.collection(FirebaseCollections.vendors).doc(vendorId);
-        final DocumentSnapshot<Map<String, dynamic>> vendorSnap = await transaction.get(vendorRef);
-        if (!vendorSnap.exists) {
-          throw StateError('This store is no longer available.');
-        }
-        final Map<String, dynamic>? v = vendorSnap.data();
-        final dynamic active = v?['active'];
-        if (active != true) {
-          throw StateError('This store is not accepting orders right now.');
-        }
+      final HttpsCallableResult<dynamic> result = await _functions
+          .httpsCallable('placeCashOnDeliveryOrder')
+          .call(payload);
 
-        final DocumentReference<Map<String, dynamic>> seqRef = _firestore
-            .collection(FirebaseCollections.system)
-            .doc(FirebaseCollections.orderSequenceDocId);
-        final DocumentSnapshot<Map<String, dynamic>> seqSnap = await transaction.get(seqRef);
-        int currentSeq = 0;
-        if (seqSnap.exists && seqSnap.data() != null) {
-          final dynamic rawVal = seqSnap.data()!['value'];
-          if (rawVal is int) {
-            currentSeq = rawVal;
-          } else if (rawVal is num) {
-            currentSeq = rawVal.toInt();
-          }
-        }
-        final int nextSeq = currentSeq + 1;
-        transaction.set(seqRef, <String, dynamic>{'value': nextSeq});
-        final String trackingNumber =
-            OrderTrackingNumber.build(placedAt: placedClock, sequence: nextSeq);
-        builtTracking = trackingNumber;
-
-        final DocumentReference<Map<String, dynamic>> orderRef =
-            _firestore.collection(FirebaseCollections.orders).doc();
-
-        final Map<String, dynamic> payload = <String, dynamic>{
-          'trackingNumber': trackingNumber,
-          'customerId': user.uid,
-          // Same id as vendors/{id} doc and vendors.*.vendorStoreId — dual field names for clarity in Console.
-          'vendorId': vendorId,
-          'vendorStoreId': vendorId,
-          'storeName': cart.items.first.storeName,
-          'status': 'placed',
-          'paymentMethod': 'cashOnDelivery',
-          'items': cart.items.map(_cartItemToMap).toList(growable: false),
-          'subtotal': subtotal,
-          'discount': discount,
-          'deliveryFee': deliveryFee,
-          'total': total,
-          'deliveryAddress': <String, dynamic>{
-            'line1': addressLine1.trim(),
-            'line2': addressLine2.trim(),
-            'city': city.trim(),
-            'phone': phone.trim(),
-          },
-          'deliveryNote': cart.deliveryNote.trim(),
-          'specialInstructions': cart.specialInstructions.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
-        };
-
-        if (cart.dropoffLatitude != null && cart.dropoffLongitude != null) {
-          payload['dropoffLatitude'] = cart.dropoffLatitude;
-          payload['dropoffLongitude'] = cart.dropoffLongitude;
-        }
-
-        final String? code = couponCode?.trim();
-        if (code != null && code.isNotEmpty) {
-          payload['couponCode'] = code;
-        }
-
-        transaction.set(orderRef, payload);
-        return orderRef.id;
-      });
-
-      return OrderPlacementResult.success(orderId, trackingNumber: builtTracking);
-    } on FirebaseException catch (e) {
-      if (e.code == 'permission-denied') {
-        return OrderPlacementResult.failure(
-          'Could not place order (permission denied). '
-          'Sign in with a customer account, ensure Firestore customers/{uid} has role "customer", '
-          'and deploy the latest firestore.rules from this project.',
-        );
+      final Map<String, dynamic> data =
+          Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);
+      final String orderId = (data['orderId'] as String?)?.trim() ?? '';
+      final String? tracking =
+          (data['trackingNumber'] as String?)?.trim();
+      if (orderId.isEmpty) {
+        return OrderPlacementResult.failure('Order was not created.');
       }
-      return OrderPlacementResult.failure(e.message ?? 'Could not place order.');
-    } on StateError catch (e) {
-      return OrderPlacementResult.failure(e.message);
+      return OrderPlacementResult.success(
+        orderId,
+        trackingNumber: (tracking == null || tracking.isEmpty) ? null : tracking,
+      );
     } catch (e) {
-      return OrderPlacementResult.failure(e.toString());
+      return OrderPlacementResult.failure(
+        userFacingError(e, fallback: 'Could not place order.'),
+      );
     }
   }
 
-  static Map<String, dynamic> _cartItemToMap(CartItem item) {
-    return <String, dynamic>{
-      'productKey': item.productKey,
-      'productName': item.productName,
-      'storeId': item.storeId,
-      'storeName': item.storeName,
-      'imageUrl': item.imageUrl,
-      'selectedSize': item.selectedSize,
-      'quantity': item.quantity,
-      'basePrice': item.basePrice,
-      'sizePriceDelta': item.sizePriceDelta,
-      'extras': item.extras
-          .map(
-            (CartExtra e) => <String, dynamic>{
-              'name': e.name,
-              'priceDelta': e.priceDelta,
-            },
-          )
-          .toList(growable: false),
-      'unitPrice': item.unitPrice,
-      'lineTotal': item.totalPrice,
-    };
+  /// Creates a `draft_payment` order and returns PayHere checkout fields.
+  /// The order only becomes real once PayHere confirms payment server-side.
+  Future<OrderPayHereCheckout> createPayHereCheckoutForOrder({
+    required CartState cart,
+    required String addressLine1,
+    required String addressLine2,
+    required String city,
+    required String phone,
+    String? couponCode,
+    String firstName = 'Customer',
+    String lastName = 'MND',
+    String email = '',
+  }) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      throw StateError('Sign in to place an order.');
+    }
+    if (cart.isEmpty) {
+      throw StateError('Your cart is empty.');
+    }
+    final Map<String, dynamic>? payload = _buildOrderPayload(
+      cart: cart,
+      addressLine1: addressLine1,
+      addressLine2: addressLine2,
+      city: city,
+      phone: phone,
+      couponCode: couponCode,
+    );
+    if (payload == null) {
+      throw StateError('Missing store for this cart.');
+    }
+    payload['firstName'] = firstName;
+    payload['lastName'] = lastName;
+    payload['email'] = email;
+
+    final HttpsCallableResult<dynamic> result = await _functions
+        .httpsCallable('createPayHereCheckoutForOrder')
+        .call(payload);
+    final Map<String, dynamic> data =
+        Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);
+    return OrderPayHereCheckout.fromCallable(data);
+  }
+
+  /// Lets a customer pay online for an order they already placed as Cash on
+  /// Delivery. Reuses the order's existing total/id — the order is only
+  /// marked paid once PayHere confirms payment server-side.
+  Future<OrderPayHereCheckout> createPayHereCheckoutForExistingOrder({
+    required String orderId,
+    String firstName = 'Customer',
+    String lastName = 'MND',
+    String email = '',
+  }) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      throw StateError('Sign in to pay for this order.');
+    }
+    final HttpsCallableResult<dynamic> result = await _functions
+        .httpsCallable('createPayHereCheckoutForExistingOrder')
+        .call(<String, dynamic>{
+      'orderId': orderId,
+      'firstName': firstName,
+      'lastName': lastName,
+      'email': email,
+    });
+    final Map<String, dynamic> data =
+        Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);
+    return OrderPayHereCheckout.fromCallable(data);
   }
 }

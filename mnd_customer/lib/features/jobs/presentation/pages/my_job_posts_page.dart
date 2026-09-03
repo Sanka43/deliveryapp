@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
-import 'package:mnd_delivery_app/core/widgets/home/home_page_background.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_listing.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/job_constants.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_providers.dart';
@@ -28,63 +29,63 @@ class _MyJobPostsPageState extends ConsumerState<MyJobPostsPage> {
   Widget build(BuildContext context) {
     final AsyncValue<List<JobListing>> posts =
         ref.watch(myPostedJobsStreamProvider);
+    final double bottomPad =
+        MediaQuery.paddingOf(context).bottom + AppSpacing.xl;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: const Text('My job posts'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push(AppRoutes.customerPostJob),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Post job'),
-      ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          const HomePageBackground(),
-          RefreshIndicator(
-            onRefresh: _refresh,
-            color: AppColors.brandPrimary,
-            child: JobsAsyncBody<List<JobListing>>(
-              async: posts,
-              onRetry: _refresh,
-              errorMessage: 'Could not load your job posts',
-              data: (List<JobListing> jobs) {
-                if (jobs.isEmpty) {
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: <Widget>[
-                      SizedBox(
-                        height: MediaQuery.sizeOf(context).height * 0.45,
-                        child: JobsEmptyState(
-                          message:
-                              'You have not posted any jobs yet.\nTap Post job to create one.',
-                          actionLabel: 'Post a job',
-                          onAction: () => context.push(AppRoutes.customerPostJob),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                return ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.md,
-                    0,
-                    AppSpacing.md,
-                    88,
-                  ),
-                  itemCount: jobs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (_, int i) => _MyJobPostTile(job: jobs[i]),
-                );
-              },
-            ),
+      backgroundColor: Colors.white,
+      appBar: mndPageAppBar(
+        title: 'My job posts',
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.post_add_outlined),
+            tooltip: 'Post a job',
+            onPressed: () => context.push(AppRoutes.customerPostJob),
           ),
         ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        color: AppColors.brandPrimary,
+        child: JobsAsyncBody<List<JobListing>>(
+          async: posts,
+          onRetry: _refresh,
+          errorMessage: 'Could not load your job posts',
+          data: (List<JobListing> jobs) {
+            if (jobs.isEmpty) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: <Widget>[
+                  SizedBox(
+                    height: MediaQuery.sizeOf(context).height * 0.45,
+                    child: JobsEmptyState(
+                      message:
+                          'You have not posted any jobs yet.\nTap Post a job to create one.',
+                      actionLabel: 'Post a job',
+                      onAction: () =>
+                          context.push(AppRoutes.customerPostJob),
+                    ),
+                  ),
+                ],
+              );
+            }
+            return ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                bottomPad,
+              ),
+              itemCount: jobs.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: AppSpacing.sm),
+              itemBuilder: (_, int i) => _MyJobPostTile(job: jobs[i]),
+            );
+          },
+        ),
       ),
     );
   }
@@ -105,21 +106,18 @@ class _MyJobPostTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final AsyncValue<int> countAsync =
         ref.watch(jobApplicationCountProvider(job.id));
-    final AsyncValue<int> bookedAsync = ref.watch(jobBookedCountProvider(job.id));
+    final AsyncValue<int> bookedAsync =
+        ref.watch(jobBookedCountProvider(job.id));
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
-        side: BorderSide(color: AppColors.homeMutedFill),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
+    return MndPremiumCard(
+      borderRadius: AppColors.cardRadiusMd,
+      child: MndPressable(
         onTap: () => _onTap(context),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(
             children: <Widget>[
               Expanded(
@@ -128,16 +126,15 @@ class _MyJobPostTile extends ConsumerWidget {
                   children: <Widget>[
                     Text(
                       job.title,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                      style: textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _statusLabel(job),
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12,
+                      style: textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
                       ),
                     ),
@@ -146,8 +143,7 @@ class _MyJobPostTile extends ConsumerWidget {
                       Text(
                         '${job.availableLaborCount} worker${job.availableLaborCount == 1 ? '' : 's'} · '
                         '${bookedAsync.valueOrNull ?? 0} booked',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
+                        style: textTheme.labelSmall?.copyWith(
                           color: AppColors.brandPrimary,
                           fontWeight: FontWeight.w600,
                         ),
@@ -166,7 +162,10 @@ class _MyJobPostTile extends ConsumerWidget {
                 error: (_, __) => const SizedBox.shrink(),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary.withValues(alpha: 0.8),
+              ),
             ],
           ),
         ),
@@ -195,18 +194,18 @@ class _ApplicantBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: count > 0
             ? AppColors.brandPrimary.withValues(alpha: 0.12)
             : AppColors.homeMutedFill,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppColors.buttonRadius),
       ),
       child: Text(
         count == 0 ? 'No apps' : '$count applicant${count == 1 ? '' : 's'}',
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 11.5,
+        style: textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w700,
           color: count > 0 ? AppColors.brandPrimary : AppColors.textSecondary,
         ),

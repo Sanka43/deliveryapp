@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/money_format.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
 
 /// Bottom summary strip: item count + subtotal + "View cart" (reference-style UI).
@@ -39,7 +40,7 @@ class FloatingCartSummaryBar extends ConsumerWidget {
     return Material(
       elevation: 8,
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
       child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
@@ -47,7 +48,7 @@ class FloatingCartSummaryBar extends ConsumerWidget {
         ),
         decoration: BoxDecoration(
           color: _barBackground,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
         ),
         child: Row(
           children: <Widget>[
@@ -65,7 +66,7 @@ class FloatingCartSummaryBar extends ConsumerWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _formatLkrDisplay(payable),
+                    MoneyFormat.lkr(payable),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
@@ -81,7 +82,7 @@ class FloatingCartSummaryBar extends ConsumerWidget {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppColors.buttonRadius),
                 ),
                 elevation: 2,
                 shadowColor: AppColors.brandPrimary.withValues(alpha: 0.45),
@@ -106,16 +107,3 @@ class FloatingCartSummaryBar extends ConsumerWidget {
   }
 }
 
-String _formatLkrDisplay(int amount) {
-  final String digits = (amount < 0 ? 0 : amount).toString();
-  final String rev = digits.split('').reversed.join();
-  final StringBuffer buf = StringBuffer();
-  for (int i = 0; i < rev.length; i++) {
-    if (i > 0 && i % 3 == 0) {
-      buf.write(',');
-    }
-    buf.write(rev[i]);
-  }
-  final String grouped = buf.toString().split('').reversed.join();
-  return 'LKR $grouped.00';
-}

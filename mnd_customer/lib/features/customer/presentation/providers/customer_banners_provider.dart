@@ -14,6 +14,9 @@ class CustomerBanner {
     required this.order,
     this.imageUrl,
     this.endsAt,
+    this.targetRoute,
+    this.targetStoreId,
+    this.targetQuery,
   });
 
   final String title;
@@ -24,6 +27,10 @@ class CustomerBanner {
   final int order;
   final String? imageUrl;
   final DateTime? endsAt;
+  /// Optional deep link path (e.g. `/customer/food`) or named key `food`/`grocery`/`rides`/`jobs`.
+  final String? targetRoute;
+  final String? targetStoreId;
+  final String? targetQuery;
 
   factory CustomerBanner.fromMap(Map<String, dynamic> map) {
     DateTime? endsAt;
@@ -51,6 +58,19 @@ class CustomerBanner {
           ? map['imageUrl'] as String
           : null,
       endsAt: endsAt,
+      targetRoute: (map['targetRoute'] as String?)?.trim().isNotEmpty == true
+          ? (map['targetRoute'] as String).trim()
+          : ((map['link'] as String?)?.trim().isNotEmpty == true
+              ? (map['link'] as String).trim()
+              : null),
+      targetStoreId: (map['targetStoreId'] as String?)?.trim().isNotEmpty == true
+          ? (map['targetStoreId'] as String).trim()
+          : ((map['storeId'] as String?)?.trim().isNotEmpty == true
+              ? (map['storeId'] as String).trim()
+              : null),
+      targetQuery: (map['targetQuery'] as String?)?.trim().isNotEmpty == true
+          ? (map['targetQuery'] as String).trim()
+          : null,
     );
   }
 

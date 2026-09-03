@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/job_constants.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_providers.dart';
 
@@ -11,17 +11,13 @@ class JobsCategoryChips extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final JobsFilterState filter = ref.watch(jobsFilterProvider);
     final String? selected = filter.category;
 
-    return Container(
+    return MndPremiumCard(
+      borderRadius: AppColors.cardRadiusLg,
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-        boxShadow: AppColors.cardShadow,
-      ),
       child: SizedBox(
         height: 36,
         child: ListView.separated(
@@ -35,9 +31,8 @@ class JobsCategoryChips extends ConsumerWidget {
             return FilterChip(
               label: Text(
                 label,
-                style: GoogleFonts.plusJakartaSans(
+                style: textTheme.labelSmall?.copyWith(
                   fontWeight: FontWeight.w600,
-                  fontSize: 12.5,
                   color: isSelected ? Colors.white : AppColors.textPrimary,
                 ),
               ),
@@ -50,11 +45,7 @@ class JobsCategoryChips extends ConsumerWidget {
               },
               backgroundColor: AppColors.homeMutedFill,
               selectedColor: AppColors.brandPrimary,
-              side: BorderSide(
-                color: isSelected
-                    ? AppColors.brandPrimary
-                    : Colors.black.withValues(alpha: 0.06),
-              ),
+              side: BorderSide.none,
               padding: const EdgeInsets.symmetric(horizontal: 4),
               visualDensity: VisualDensity.compact,
             );

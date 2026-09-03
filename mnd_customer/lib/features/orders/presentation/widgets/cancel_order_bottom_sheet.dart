@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_detail.dart';
 import 'package:mnd_delivery_app/features/orders/domain/order_cancellation.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
@@ -58,11 +59,8 @@ class _CancelOrderSheetState extends ConsumerState<_CancelOrderSheet> {
 
   Future<void> _submit() async {
     final String otherText = _otherDetailController.text.trim();
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(widget.pageContext);
     if (_selectedReasonId == 'other' && otherText.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Please describe your reason.')),
-      );
+      showMndSnackBar(widget.pageContext, 'Please describe your reason.', variant: MndSnackBarVariant.warning);
       return;
     }
 
@@ -82,15 +80,11 @@ class _CancelOrderSheetState extends ConsumerState<_CancelOrderSheet> {
       if (widget.sheetContext.mounted) {
         Navigator.of(widget.sheetContext).pop();
       }
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Your order has been cancelled.')),
-      );
+      showMndSnackBar(widget.pageContext, 'Your order has been cancelled.', variant: MndSnackBarVariant.success);
       return;
     }
 
-    messenger.showSnackBar(
-      SnackBar(content: Text(result.errorMessage ?? 'Could not cancel order.')),
-    );
+    showMndSnackBar(widget.pageContext, result.errorMessage ?? 'Could not cancel order.', variant: MndSnackBarVariant.error);
   }
 
   @override

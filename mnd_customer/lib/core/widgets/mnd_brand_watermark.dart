@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/theme/app_text_styles.dart';
 
 /// Light watermark when network images fail or are missing.
 /// Display "MND" title + "Master N Delivery" subtitle, width-aligned.
@@ -8,13 +8,18 @@ class MndBrandWatermark extends StatelessWidget {
   const MndBrandWatermark({
     super.key,
     this.mndFontSize = 40,
-    this.subtitleFontSize = 12,
+    @Deprecated('Subtitle always uses theme labelSmall')
+    this.subtitleFontSize,
     this.mndOpacity = 0.26,
     this.subtitleOpacity = 0.2,
   });
 
+  /// Scalable Bebas Neue size for the "MND" watermark.
   final double mndFontSize;
-  final double subtitleFontSize;
+
+  /// Ignored — kept for call-site compatibility.
+  @Deprecated('Subtitle always uses theme labelSmall')
+  final double? subtitleFontSize;
   final double mndOpacity;
   final double subtitleOpacity;
 
@@ -23,7 +28,7 @@ class MndBrandWatermark extends StatelessWidget {
     final TextDirection dir = Directionality.of(context);
     final Color accent = AppColors.brandPrimary;
 
-    final TextStyle mndStyle = GoogleFonts.bebasNeue(
+    final TextStyle mndStyle = AppTextStyles.brandMark(
       fontSize: mndFontSize,
       color: accent.withValues(alpha: mndOpacity),
       letterSpacing: 2.4,
@@ -36,44 +41,26 @@ class MndBrandWatermark extends StatelessWidget {
       maxLines: 1,
     )..layout();
 
-    final double mndWidth = mndPainter.size.width;
-    final double gap = (mndFontSize * 0.08).clamp(3.0, 6.0);
-
-    final TextStyle subStyle = GoogleFonts.plusJakartaSans(
-      fontSize: subtitleFontSize,
-      fontWeight: FontWeight.w600,
+    final TextStyle subtitleStyle =
+        (Theme.of(context).textTheme.labelSmall ?? const TextStyle()).copyWith(
       color: accent.withValues(alpha: subtitleOpacity),
-      letterSpacing: 0.35,
-      height: 1.2,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.2,
+      height: 1.1,
     );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
-        Text('MND', style: mndStyle),
-        SizedBox(height: gap),
-        Container(
-          width: mndWidth * 0.5,
-          height: 1.5,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(1),
-            color: accent.withValues(alpha: mndOpacity * 0.55),
-          ),
-        ),
-        SizedBox(height: gap * 0.65),
+        Text('MND', style: mndStyle, textAlign: TextAlign.center),
         SizedBox(
-          width: mndWidth,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.center,
-            child: Text(
-              'Master N Delivery',
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: subStyle,
-            ),
+          width: mndPainter.width,
+          child: Text(
+            'Master N Delivery',
+            style: subtitleStyle,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

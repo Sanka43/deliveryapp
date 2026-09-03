@@ -55,15 +55,13 @@ class OrderCancellationPolicy {
   static bool customerMayCancel(String statusRaw) {
     final String s = statusRaw.toLowerCase().trim();
     if (s.isEmpty) {
-      return true;
+      return false;
     }
-    const Set<String> blocked = <String>{
-      'cancelled',
-      'delivered',
-      'out_for_delivery',
-      'on_the_way',
+    const Set<String> allowed = <String>{
+      'placed',
+      'confirmed',
     };
-    return !blocked.contains(s);
+    return allowed.contains(s);
   }
 }
 

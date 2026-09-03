@@ -1,17 +1,21 @@
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/services/maps/live_vehicle_markers.dart';
+import 'package:mnd_delivery_app/core/utils/map_platform_support.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_detail.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/rider_live_location.dart';
 import 'package:mnd_delivery_app/features/orders/domain/order_timeline.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/order_detail_provider.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/rider_live_location_provider.dart';
+import 'package:mnd_delivery_app/features/orders/presentation/utils/orders_load_error.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/rider_eta_countdown.dart';
+import 'package:mnd_delivery_app/features/rides/data/ride_directions_service.dart';
+import 'package:mnd_delivery_app/features/rides/domain/ride_constants.dart';
+import 'package:mnd_delivery_app/features/rides/presentation/providers/ride_route_provider.dart';
 
 const LatLng _kDefaultCenter = LatLng(6.9271, 79.8612);
 
@@ -30,18 +34,35 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
   /// When true, map camera follows [RiderLiveLocation] stream updates.
   bool _followRider = true;
 
+  /// Each rider GPS update keys a *new* `liveRouteProvider` instance, so its
+  /// `AsyncValue` starts back at loading with no data mid-refetch — without
+  /// this, the route would visibly snap to a direct line on every position
+  /// update. Holding the last successfully-fetched route and only ever
+  /// swapping it for a newer *successful* fetch keeps the line on an
+  /// always-real road path. The dropoff here is fixed for the whole
+  /// delivery, so (unlike the rides multi-leg tracker) there's no target
+  /// change to invalidate this on.
+  RideDrivingRoute? _lastGoodRoute;
+
   @override
   void dispose() {
     _map?.dispose();
     super.dispose();
   }
 
-  bool get _mapSupported {
-    if (kIsWeb) {
-      return false;
+  bool get _mapSupported => isGoogleMapsSupported();
+
+  RideVehicleType? _iconLoadedFor;
+
+  void _ensureVehicleIcon(RideVehicleType? type) {
+    if (type == null || type == _iconLoadedFor) {
+      return;
     }
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
+    LiveVehicleMarkers.load(type).then((_) {
+      if (mounted) {
+        setState(() => _iconLoadedFor = type);
+      }
+    });
   }
 
   Set<Marker> _buildMarkers({
@@ -51,14 +72,17 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
   }) {
     final Set<Marker> out = <Marker>{};
     if (rider != null) {
+      final RideVehicleType? vehicle =
+          RideVehicleType.fromFirestore(rider.vehicleType);
       out.add(
         Marker(
           markerId: const MarkerId('rider'),
           position: LatLng(rider.latitude, rider.longitude),
           rotation: rider.heading ?? 0,
           flat: (rider.heading != null),
+          anchor: const Offset(0.5, 0.5),
           infoWindow: const InfoWindow(title: 'Rider'),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          icon: LiveVehicleMarkers.iconFor(vehicle),
         ),
       );
     }
@@ -83,15 +107,25 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
     if (rider == null || dropLat == null || dropLng == null) {
       return <Polyline>{};
     }
+    final LatLng origin = LatLng(rider.latitude, rider.longitude);
+    final LatLng destination = LatLng(dropLat, dropLng);
+    final AsyncValue<RideDrivingRoute?> route = ref.watch(
+      liveRouteProvider(LiveRouteKey(origin: origin, destination: destination)),
+    );
+    final RideDrivingRoute? fetched = route.asData?.value;
+    if (fetched != null) {
+      _lastGoodRoute = fetched;
+    }
+    final List<LatLng> roadPoints = roadRoutePoints(_lastGoodRoute);
+    if (roadPoints.length < 2) {
+      return <Polyline>{};
+    }
     return <Polyline>{
       Polyline(
         polylineId: const PolylineId('rider_to_dropoff'),
         color: AppColors.primaryBlue.withValues(alpha: 0.85),
         width: 4,
-        points: <LatLng>[
-          LatLng(rider.latitude, rider.longitude),
-          LatLng(dropLat, dropLng),
-        ],
+        points: roadPoints,
       ),
     };
   }
@@ -139,6 +173,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
     final AsyncValue<RiderLiveLocation?> riderState =
         ref.watch(riderLiveLocationStreamProvider(riderKey));
     final RiderLiveLocation? rider = riderState.asData?.value;
+    _ensureVehicleIcon(RideVehicleType.fromFirestore(rider?.vehicleType));
 
     ref.listen<AsyncValue<RiderLiveLocation?>>(
       riderLiveLocationStreamProvider(riderKey),
@@ -187,7 +222,13 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: Text('Could not load order.\n${orderState.error}'),
+            child: Text(
+              ordersLoadErrorMessage(
+                orderState.error!,
+                fallback: 'Could not load order.',
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       );
@@ -207,7 +248,10 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
     final double? dropLat = detail.dropoffLatitude;
     final double? dropLng = detail.dropoffLongitude;
     final bool assigned = riderKey.isNotEmpty;
-    final bool activeMap = OrderTimelineLogic.isActiveForLiveRiderMap(detail.statusRaw);
+    final bool activeMap = OrderTimelineLogic.isActiveForLiveRiderMap(
+      detail.statusRaw,
+      isSelfPickup: detail.isSelfPickup,
+    );
 
     final Widget mapOrFallback = _mapSupported
         ? GoogleMap(
@@ -240,16 +284,35 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
             },
           )
         : Container(
-            color: Colors.black12,
+            color: AppColors.homeMutedFill,
             alignment: Alignment.center,
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Text(
-                kIsWeb
-                    ? 'Live map is available in the Android and iOS apps.'
-                    : 'Map is not supported on this platform.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    Icons.map_outlined,
+                    size: 48,
+                    color: AppColors.brandPrimary.withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'Map is not supported on this platform.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'You can still follow order status from Order details.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
               ),
             ),
           );
@@ -309,7 +372,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                   Text(
                     'Tracking ${detail.referenceForDisplay}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.black87,
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w600,
                           fontFamily: 'monospace',
                         ),
@@ -337,9 +400,10 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                     const LinearProgressIndicator(minHeight: 3)
                   else if (rider == null)
                     Text(
-                      'Waiting for rider location updates…',
+                      'Rider location is not available right now. '
+                      'They may be offline, or location sharing may be limited — pull back and try again shortly.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.black87,
+                            color: AppColors.textPrimary,
                           ),
                     )
                   else
@@ -355,7 +419,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                       child: Text(
                         'Delivery pin not set for this order — only the rider shows on the map.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.black54,
+                              color: AppColors.textSecondary,
                             ),
                       ),
                     ),
@@ -366,13 +430,14 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
         ],
       ),
       floatingActionButton: _mapSupported && assigned && rider != null
-          ? FloatingActionButton.small(
+          ? FloatingActionButton.extended(
               onPressed: () => _fitToMarkers(
                 rider: rider,
                 dropLat: dropLat,
                 dropLng: dropLng,
               ),
-              child: const Icon(Icons.fit_screen),
+              icon: const Icon(Icons.fit_screen),
+              label: const Text('Fit map'),
             )
           : null,
     );

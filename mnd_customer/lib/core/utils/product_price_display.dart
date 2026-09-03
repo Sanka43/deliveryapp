@@ -2,25 +2,25 @@
 class ProductPriceDisplay {
   ProductPriceDisplay._();
 
-  /// Numeric amount only, always two decimals (e.g. `800.00`).
+  /// Numeric amount only, whole rupees, no decimals (e.g. `800`).
   static String formatAmount(int amountLkr) {
-    return amountLkr.toDouble().toStringAsFixed(2);
+    return amountLkr.toString();
   }
 
-  /// Parses digits from a raw price fragment and formats as `800.00`.
+  /// Parses digits from a raw price fragment and formats as `800`.
   static String formatAmountFromRaw(String raw) {
     final String trimmed = raw.trim();
     if (trimmed.isEmpty) {
-      return '0.00';
+      return '0';
     }
     final String normalized = trimmed.replaceAll(',', '');
     final double? value = double.tryParse(
       normalized.replaceAll(RegExp(r'[^\d.]'), ''),
     );
     if (value == null) {
-      return '0.00';
+      return '0';
     }
-    return value.toStringAsFixed(2);
+    return value.round().toString();
   }
 
   static String format(int amount, {bool from = false}) {
@@ -44,7 +44,7 @@ class ProductPriceDisplay {
         .trim();
 
     if (stripped.isEmpty) {
-      return const ProductPriceParts(amount: '0.00');
+      return const ProductPriceParts(amount: '0');
     }
 
     final RegExp fromPattern = RegExp(

@@ -1,11 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/app/router/app_router.dart';
 import 'package:mnd_delivery_app/core/services/fcm_message_router.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/core/services/fcm_token_repository.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/notification_settings_provider.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_summary.dart';
@@ -37,10 +39,18 @@ class _CustomerAppLifecycleState extends ConsumerState<CustomerAppLifecycle> {
     }
     _initializedMessagingHandlers = true;
 
+    // Web push is opt-in via Notification Settings; skip boot-time FCM wiring.
+    if (kIsWeb) {
+      return;
+    }
+
     if (Firebase.apps.isEmpty) {
       return;
     }
 
+    // Do NOT request notification permission on splash/login — the system
+    // dialog covers the auth UI and looks like the login page never opened.
+    // Permission is requested after the user reaches the customer shell.
     await ref.read(notificationSettingsRepositoryProvider).loadAndSyncTopics();
 
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
@@ -65,15 +75,12 @@ class _CustomerAppLifecycleState extends ConsumerState<CustomerAppLifecycle> {
     if (context == null || !context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${FcmMessageRouter.humanTitle(message)}\n${FcmMessageRouter.humanBody(message)}'),
-        action: SnackBarAction(
-          label: 'View',
-          onPressed: () => FcmMessageRouter.navigateForMessage(message),
-        ),
-        duration: const Duration(seconds: 5),
-      ),
+    showMndSnackBar(
+      context,
+      '${FcmMessageRouter.humanTitle(message)}\n${FcmMessageRouter.humanBody(message)}',
+      actionLabel: 'View',
+      onAction: () => FcmMessageRouter.navigateForMessage(message),
+      duration: const Duration(seconds: 5),
     );
   }
 
@@ -109,12 +116,7 @@ class _CustomerAppLifecycleState extends ConsumerState<CustomerAppLifecycle> {
       if (prior == null || prior == order.statusRaw) {
         continue;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${order.storeName}: ${order.displayStatus}'),
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      showMndSnackBar(context, '${order.storeName}: ${order.displayStatus}', duration: const Duration(seconds: 4));
     }
   }
 

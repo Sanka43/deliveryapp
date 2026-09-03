@@ -148,8 +148,11 @@ class CustomerOrderDetail {
     required this.subtotal,
     required this.discount,
     required this.deliveryFee,
+    this.serviceCharge = 0,
     required this.total,
     required this.paymentMethod,
+    this.paymentStatus = '',
+    this.paidAt,
     required this.deliveryAddress,
     required this.deliveryNote,
     required this.specialInstructions,
@@ -166,6 +169,9 @@ class CustomerOrderDetail {
     this.trackingNumber,
     this.storeRated = false,
     this.storeRatingStars,
+    this.riderRated = false,
+    this.riderRatingStars,
+    this.fulfillmentMode = 'delivery',
   });
 
   final String id;
@@ -175,8 +181,11 @@ class CustomerOrderDetail {
   final int subtotal;
   final int discount;
   final int deliveryFee;
+  final int serviceCharge;
   final int total;
   final String paymentMethod;
+  final String paymentStatus;
+  final DateTime? paidAt;
   final OrderDeliveryAddress deliveryAddress;
   final String deliveryNote;
   final String specialInstructions;
@@ -201,6 +210,21 @@ class CustomerOrderDetail {
 
   /// Stars the customer gave (1–5), when [storeRated] is true.
   final int? storeRatingStars;
+
+  /// True after the customer submitted a rider rating for this order.
+  final bool riderRated;
+
+  /// Stars the customer gave the rider (1–5), when [riderRated] is true.
+  final int? riderRatingStars;
+
+  /// `delivery` or `selfPickup` from Firestore.
+  final String fulfillmentMode;
+
+  bool get isSelfPickup => fulfillmentMode.trim() == 'selfPickup';
+
+  bool get isOnlinePayment => paymentMethod.toLowerCase().trim() == 'payhere';
+
+  bool get isPaid => paymentStatus.toLowerCase().trim() == 'paid';
 
   /// User-visible order reference (never the Firestore document id).
   String get referenceForDisplay {
@@ -242,6 +266,7 @@ class CustomerOrderDetail {
     final Map<String, dynamic>? addrMap = data['deliveryAddress'] as Map<String, dynamic>?;
     final Timestamp? ts = data['createdAt'] as Timestamp?;
     final Timestamp? cancelledTs = data['cancelledAt'] as Timestamp?;
+    final Timestamp? paidTs = data['paidAt'] as Timestamp?;
 
     final dynamic lat = data['dropoffLatitude'];
     final dynamic lng = data['dropoffLongitude'];
@@ -254,8 +279,11 @@ class CustomerOrderDetail {
       subtotal: _readIntField(data['subtotal']),
       discount: _readIntField(data['discount']),
       deliveryFee: _readIntField(data['deliveryFee']),
+      serviceCharge: _readIntField(data['serviceCharge']),
       total: _readIntField(data['total']),
       paymentMethod: (data['paymentMethod'] as String?)?.trim() ?? '',
+      paymentStatus: (data['paymentStatus'] as String?)?.trim() ?? '',
+      paidAt: paidTs?.toDate(),
       deliveryAddress: OrderDeliveryAddress.fromMap(addrMap),
       deliveryNote: (data['deliveryNote'] as String?)?.trim() ?? '',
       specialInstructions: (data['specialInstructions'] as String?)?.trim() ?? '',
@@ -272,6 +300,12 @@ class CustomerOrderDetail {
       trackingNumber: _readOptionalId(data['trackingNumber']),
       storeRated: data['storeRated'] == true,
       storeRatingStars: _readOptionalStars(data['storeRatingStars']),
+      riderRated: data['riderRated'] == true,
+      riderRatingStars: _readOptionalStars(data['riderRatingStars']),
+      fulfillmentMode:
+          (data['fulfillmentMode'] as String?)?.trim().isNotEmpty == true
+              ? (data['fulfillmentMode'] as String).trim()
+              : 'delivery',
     );
   }
 

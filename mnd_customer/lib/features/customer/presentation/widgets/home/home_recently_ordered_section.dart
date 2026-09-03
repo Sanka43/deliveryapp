@@ -1,13 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/widgets/home/home_section_entrance.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
-import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_section_header.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_summary.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
@@ -25,8 +28,10 @@ class HomeRecentlyOrderedSection extends ConsumerWidget {
 
     final AsyncValue<List<CustomerOrderSummary>> ordersAsync =
         ref.watch(customerOrdersStreamProvider);
+    // Bounded home feed — avoid pulling the full vendors catalog on home.
     final List<SearchStore> stores =
-        ref.watch(storesStreamProvider).asData?.value ?? const <SearchStore>[];
+        ref.watch(homeNearbyStoresStreamProvider).asData?.value ??
+            const <SearchStore>[];
 
     return ordersAsync.maybeWhen(
       data: (List<CustomerOrderSummary> orders) {
@@ -47,20 +52,29 @@ class HomeRecentlyOrderedSection extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              MndSectionHeader(
+                title: 'Recently Ordered',
+                actionLabel: 'See all',
+                onActionTap: () => context.go(AppRoutes.customerOrders),
+              ),
+              const SizedBox(height: AppSpacing.sm),
               SizedBox(
-                height: 150,
+                height: 188,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: recent.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: AppSpacing.sm),
                   itemBuilder: (BuildContext context, int index) {
                     final CustomerOrderSummary order = recent[index];
-                    final SearchStore? store = _matchStore(stores, order.storeName);
+                    final SearchStore? store =
+                        _matchStore(stores, order.storeName);
 
                     return _RecentOrderCard(
                       order: order,
                       store: store,
-                      onReorder: () => reorderFromOrderId(context, ref, order.id),
+                      onReorder: () =>
+                          reorderFromOrderId(context, ref, order.id),
                       onOpenStore: store != null
                           ? () => openStoreDetails(context, store)
                           : null,
@@ -102,69 +116,71 @@ class _RecentOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double? rating =
+        store != null && store!.rating > 0 ? store!.rating : null;
+
     return MndPressable(
-      onTap: onOpenStore,
-      child: Container(
-        width: 220,
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
-          boxShadow: AppColors.shadowElevated,
-        ),
-        child: Row(
+      onTap: onOpenStore ?? onReorder,
+      child: SizedBox(
+        width: 140,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(10),
               child: SizedBox(
-                width: 56,
-                height: 56,
-                child: store != null
+                width: 140,
+                height: 120,
+                child: store != null && store!.imageUrl.isNotEmpty
                     ? MndNetworkImage(
                         imageUrl: store!.imageUrl,
-                        width: 56,
-                        height: 56,
+                        width: 140,
+                        height: 120,
                         fit: BoxFit.cover,
                       )
-                    : _placeholder(order.storeName),
+                    : _placeholder(context, order.storeName),
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Text(
-                    order.storeName,
+            const SizedBox(height: 8),
+            Text(
+              order.storeName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'LKR ${order.subtotalLkr}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
                         ),
                   ),
-                  const SizedBox(height: 4),
+                ),
+                if (rating != null) ...<Widget>[
+                  const Icon(
+                    Icons.star_rounded,
+                    size: 14,
+                    color: Color(0xFFFBBF24),
+                  ),
+                  const SizedBox(width: 2),
                   Text(
-                    'LKR ${order.totalLkr}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    rating.toStringAsFixed(1),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
                           color: AppColors.textSecondary,
                         ),
                   ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 32,
-                    child: FilledButton(
-                      onPressed: onReorder,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text('Reorder'),
-                    ),
-                  ),
                 ],
-              ),
+              ],
             ),
           ],
         ),
@@ -172,7 +188,7 @@ class _RecentOrderCard extends StatelessWidget {
     );
   }
 
-  Widget _placeholder(String name) {
+  Widget _placeholder(BuildContext context, String name) {
     final String initial =
         name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'M';
     return ColoredBox(
@@ -180,10 +196,9 @@ class _RecentOrderCard extends StatelessWidget {
       child: Center(
         child: Text(
           initial,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            color: AppColors.brandPrimary,
-          ),
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: AppColors.brandPrimary,
+              ),
         ),
       ),
     );

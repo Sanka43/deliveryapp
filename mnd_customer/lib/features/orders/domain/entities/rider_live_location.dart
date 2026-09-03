@@ -10,12 +10,16 @@ class RiderLiveLocation {
     required this.longitude,
     this.heading,
     this.updatedAt,
+    this.vehicleType,
   });
 
   final double latitude;
   final double longitude;
   final double? heading;
   final DateTime? updatedAt;
+
+  /// `bike` / `wheel` / `car` — mirrors [RideVehicleType.firestoreValue].
+  final String? vehicleType;
 
   static double? _readDouble(dynamic value) {
     if (value is num) {
@@ -52,6 +56,7 @@ class RiderLiveLocation {
       longitude: lng,
       heading: _readDouble(data['heading']),
       updatedAt: ts?.toDate(),
+      vehicleType: (data['vehicleType'] as String?)?.trim(),
     );
   }
 }

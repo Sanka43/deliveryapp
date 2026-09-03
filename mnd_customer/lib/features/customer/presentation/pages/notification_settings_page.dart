@@ -1,9 +1,11 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/customer/domain/entities/notification_settings.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/notification_settings_provider.dart';
 
@@ -19,8 +21,13 @@ class NotificationSettingsPage extends ConsumerWidget {
       await ref.read(notificationSettingsProvider.notifier).setOrderUpdates(value);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update order notifications: $e')),
+        showMndSnackBar(
+          context,
+          userFacingError(
+            e,
+            fallback: 'Could not update order notifications. Please try again.',
+          ),
+          variant: MndSnackBarVariant.error,
         );
       }
     }
@@ -35,8 +42,13 @@ class NotificationSettingsPage extends ConsumerWidget {
       await ref.read(notificationSettingsProvider.notifier).setPromotions(value);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update promotions: $e')),
+        showMndSnackBar(
+          context,
+          userFacingError(
+            e,
+            fallback: 'Could not update promotions. Please try again.',
+          ),
+          variant: MndSnackBarVariant.error,
         );
       }
     }
@@ -48,13 +60,8 @@ class NotificationSettingsPage extends ConsumerWidget {
         ref.watch(notificationSettingsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
-      ),
+      backgroundColor: AppColors.backgroundCanvas,
+      appBar: mndPageAppBar(title: 'Notifications'),
       body: async.when(
         data: (AppNotificationSettings s) {
           return RefreshIndicator(
@@ -84,9 +91,9 @@ class NotificationSettingsPage extends ConsumerWidget {
                       SwitchListTile.adaptive(
                         secondary: Icon(Icons.local_shipping_outlined, color: AppColors.primaryBlue),
                         title: const Text('Order updates'),
-                        subtitle: const Text(
+                        subtitle: Text(
                           'Status changes, rider assigned, out for delivery.',
-                          style: TextStyle(fontSize: 12),
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                         value: s.orderUpdates,
                         onChanged: (bool v) => _setOrderUpdates(context, ref, v),
@@ -95,9 +102,9 @@ class NotificationSettingsPage extends ConsumerWidget {
                       SwitchListTile.adaptive(
                         secondary: Icon(Icons.local_offer_outlined, color: AppColors.primaryBlue),
                         title: const Text('Offers & promotions'),
-                        subtitle: const Text(
+                        subtitle: Text(
                           'Discounts and featured deals from shops.',
-                          style: TextStyle(fontSize: 12),
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                         value: s.promotions,
                         onChanged: (bool v) => _setPromotions(context, ref, v),
@@ -117,7 +124,10 @@ class NotificationSettingsPage extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 Text(
-                  'Could not load settings.\n$e',
+                  userFacingError(
+                    e,
+                    fallback: 'Could not load settings. Please try again.',
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -203,7 +213,7 @@ class _SystemPermissionCardState extends State<_SystemPermissionCard> {
                   children: <Widget>[
                     Icon(
                       granted ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
-                      color: granted ? Colors.green.shade700 : theme.colorScheme.error,
+                      color: granted ? AppColors.success : theme.colorScheme.error,
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(

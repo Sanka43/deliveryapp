@@ -1,5 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
+import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
+import 'package:mnd_delivery_app/features/auth/presentation/providers/user_role_provider.dart';
 import 'package:mnd_delivery_app/features/jobs/data/jobs_repository.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_application.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_listing.dart';
@@ -12,28 +16,79 @@ final Provider<JobsRepository> jobsRepositoryProvider =
   );
 });
 
-final StreamProvider<List<JobListing>> activeJobsStreamProvider =
-    StreamProvider<List<JobListing>>((Ref ref) {
-  return ref.watch(jobsRepositoryProvider).watchActiveJobs();
+bool _isAdminRole(Ref ref) {
+  final AsyncValue<String?> role = ref.watch(userRoleProvider);
+  return role.maybeWhen(
+    data: (String? r) => r?.trim().toLowerCase() == 'admin',
+    orElse: () => false,
+  );
+}
+
+/// Remaining job-post credits on `customers/{uid}.jobPostCredits` (0 if missing).
+///
+/// Watches auth so the stream rebinds after sign-in / sign-out.
+final StreamProvider<int> jobPostCreditsProvider = StreamProvider<int>((Ref ref) {
+  final User? user = resolveAuthUser(ref);
+  if (user == null) {
+    return Stream<int>.value(0);
+  }
+  return ref
+      .watch(firestoreProvider)
+      .collection(FirebaseCollections.customers)
+      .doc(user.uid)
+      .snapshots()
+      .map((DocumentSnapshot<Map<String, dynamic>> snap) {
+    final num? raw = snap.data()?['jobPostCredits'] as num?;
+    if (raw == null) {
+      return 0;
+    }
+    return raw.floor().clamp(0, 999999);
+  });
 });
 
+/// How many active jobs to fetch — bumped by 80 each time the user taps
+/// "Load more" on the jobs home page, so listings beyond the old hard cap
+/// of 80 are reachable instead of permanently invisible.
+final StateProvider<int> activeJobsLimitProvider = StateProvider<int>((Ref ref) => 80);
+
+final StreamProvider<List<JobListing>> activeJobsStreamProvider =
+    StreamProvider<List<JobListing>>((Ref ref) {
+  final int limit = ref.watch(activeJobsLimitProvider);
+  return ref.watch(jobsRepositoryProvider).watchActiveJobs(limit: limit);
+});
+
+/// Admin-only pending jobs. Empty when the caller is not an admin.
 final pendingJobsAdminProvider = StreamProvider<List<JobListing>>((Ref ref) {
+  if (!_isAdminRole(ref)) {
+    return Stream<List<JobListing>>.value(const <JobListing>[]);
+  }
   return ref.watch(jobsRepositoryProvider).watchPendingJobs();
 });
 
 final jobsByStatusAdminProvider =
     StreamProvider.family<List<JobListing>, String>((Ref ref, String status) {
+  if (!_isAdminRole(ref)) {
+    return Stream<List<JobListing>>.value(const <JobListing>[]);
+  }
   return ref.watch(jobsRepositoryProvider).watchJobsByStatus(status);
 });
 
 final StreamProvider<Set<String>> savedJobIdsProvider =
     StreamProvider<Set<String>>((Ref ref) {
-  return ref.watch(jobsRepositoryProvider).watchSavedJobIds();
+  final User? user = resolveAuthUser(ref);
+  if (user == null) {
+    return Stream<Set<String>>.value(<String>{});
+  }
+  return ref.watch(jobsRepositoryProvider).watchSavedJobIds(userId: user.uid);
 });
 
 final StreamProvider<List<JobListing>> savedJobsStreamProvider =
     StreamProvider<List<JobListing>>((Ref ref) {
-  return ref.watch(jobsRepositoryProvider).watchSavedJobs();
+  final User? user = resolveAuthUser(ref);
+  if (user == null) {
+    return Stream<List<JobListing>>.value(const <JobListing>[]);
+  }
+  return ref.watch(jobsRepositoryProvider).watchSavedJobs(userId: user.uid);
 });
 
 final jobDetailStreamProvider = StreamProvider.family<JobListing?, String>(
@@ -43,12 +98,24 @@ final jobDetailStreamProvider = StreamProvider.family<JobListing?, String>(
 );
 
 final myPostedJobsStreamProvider = StreamProvider<List<JobListing>>((Ref ref) {
-  return ref.watch(jobsRepositoryProvider).watchMyPostedJobs();
+  final User? user = resolveAuthUser(ref);
+  if (user == null) {
+    return Stream<List<JobListing>>.value(const <JobListing>[]);
+  }
+  return ref
+      .watch(jobsRepositoryProvider)
+      .watchMyPostedJobs(userId: user.uid);
 });
 
 final myJobApplicationsStreamProvider =
     StreamProvider<List<JobApplication>>((Ref ref) {
-  return ref.watch(jobsRepositoryProvider).watchMyApplications();
+  final User? user = resolveAuthUser(ref);
+  if (user == null) {
+    return Stream<List<JobApplication>>.value(const <JobApplication>[]);
+  }
+  return ref
+      .watch(jobsRepositoryProvider)
+      .watchMyApplications(userId: user.uid);
 });
 
 final jobApplicationsStreamProvider =
@@ -102,8 +169,8 @@ final isJobBookedForMeProvider = Provider.family<bool, String>((Ref ref, String 
 });
 
 final isJobOwnerProvider = Provider.family<bool, JobListing>((Ref ref, JobListing job) {
-  final String? uid = ref.watch(firebaseAuthProvider).currentUser?.uid;
-  return uid != null && uid == job.userId;
+  final User? user = resolveAuthUser(ref);
+  return user != null && user.uid == job.userId;
 });
 
 /// Search, location label, and filter state for Jobs home.

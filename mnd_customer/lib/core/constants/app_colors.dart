@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// MND Customer — premium delivery blue palette.
+/// MND Customer — web-beta premium delivery palette.
 class AppColors {
   AppColors._();
 
@@ -14,16 +14,31 @@ class AppColors {
   static const Color primaryBlue = brandPrimary;
   static const Color secondaryBlue = brandPrimaryDark;
 
-  /// Home canvas — soft periwinkle blue tint.
-  static const Color backgroundCanvas = Color(0xFFF0F6FF);
-  static const Color homeBlueTop = Color(0xFFD4E5FF);
-  static const Color homeBlueMid = Color(0xFFE6F0FF);
-  static const Color homeBlueBottom = Color(0xFFF5F9FF);
+  /// Page canvas — clean off-white (web beta).
+  static const Color backgroundCanvas = Color(0xFFF5F7FB);
+  static const Color homeBlueTop = Color(0xFFE8F0FE);
+  static const Color homeBlueMid = Color(0xFFF5F7FB);
+  static const Color homeBlueBottom = Color(0xFFF5F7FB);
   static const Color surface = Color(0xFFFAFAFA);
   static const Color surfaceElevated = Color(0xFFFFFFFF);
   static const Color homeMutedFill = Color(0xFFF1F5F9);
   static const Color textPrimary = Color(0xFF0F172A);
   static const Color textSecondary = Color(0xFF64748B);
+
+  /// Auth / hero brand panel (web beta left pane).
+  static const Color authBrandBlue = Color(0xFF1557E0);
+  static const Color heroNavy = Color(0xFF0B2F8A);
+  static const Color heroNavyDeep = Color(0xFF071E5C);
+
+  /// Explore Services pastel cards.
+  static const Color serviceFood = Color(0xFFFFE4D6);
+  static const Color serviceGroceries = Color(0xFFD8F5E8);
+  static const Color serviceRides = Color(0xFFD6EBFF);
+  static const Color serviceJobs = Color(0xFFE8DFFB);
+
+  /// Section accent bars.
+  static const Color accentRecommended = Color(0xFF22C55E);
+  static const Color accentNearby = brandPrimary;
 
   static const Color lightBackground = surface;
   static const Color darkBackground = Color(0xFF0B1220);
@@ -38,9 +53,12 @@ class AppColors {
   /// Product card circular add button (reference UI).
   static const Color productAddLime = Color(0xFFD4F534);
 
-  static const double cardRadiusSm = 16;
-  static const double cardRadiusMd = 20;
-  static const double cardRadiusLg = 24;
+  static const double cardRadiusSm = 10;
+  static const double cardRadiusMd = 14;
+  static const double cardRadiusLg = 18;
+
+  /// Buttons, inputs, and compact chips share this radius.
+  static const double buttonRadius = 10;
 
   static const LinearGradient brandGradient = LinearGradient(
     colors: <Color>[brandPrimary, brandPrimaryLight],
@@ -59,16 +77,36 @@ class AppColors {
     stops: <double>[0.0, 0.5, 1.0],
   );
 
-  /// Home screen — soft blue wash (no gray cast).
+  /// Home screen — subtle cool wash matching web beta.
   static const LinearGradient homeCanvasGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: <Color>[
-      homeBlueTop,
-      homeBlueMid,
-      homeBlueBottom,
+      Color(0xFFFFFFFF),
+      backgroundCanvas,
+      backgroundCanvas,
     ],
-    stops: <double>[0.0, 0.45, 1.0],
+    stops: <double>[0.0, 0.35, 1.0],
+  );
+
+  static const LinearGradient heroNavyGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: <Color>[
+      heroNavy,
+      Color(0xFF0E3FA8),
+      heroNavyDeep,
+    ],
+  );
+
+  static const LinearGradient authBrandGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: <Color>[
+      Color(0xFF1A6BFF),
+      authBrandBlue,
+      Color(0xFF0B4FD6),
+    ],
   );
 
   static List<BoxShadow> get cardShadow => <BoxShadow>[

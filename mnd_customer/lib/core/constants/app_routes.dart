@@ -4,27 +4,44 @@ class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
   static const String login = '/login';
-  static const String otp = '/otp';
   static const String customer = '/customer';
   static const String customerSearch = '/customer/search';
+  static const String customerFavorites = '/customer/favorites';
+  static const String customerShops = '/customer/shops';
   static const String customerFood = '/customer/food';
+  static const String customerGrocery = '/customer/grocery';
   static const String customerJobs = '/customer/jobs';
   static const String customerJobDetail = '/customer/jobs';
   static const String customerPostJob = '/customer/jobs/post';
   static const String customerSavedJobs = '/customer/jobs/saved';
   static const String customerMyJobPosts = '/customer/jobs/my-posts';
   static const String customerMyJobApplications = '/customer/jobs/my-applications';
+  static const String customerRides = '/customer/rides';
+  static const String customerRidesVehicle = '/customer/rides/vehicle';
+  static const String customerRidesHistory = '/customer/rides/history';
+
+  static String customerRideTrip(String tripId) =>
+      '$customerRides/trips/$tripId';
+
+  static String customerRideTracking(String tripId) =>
+      '$customerRides/trips/$tripId/tracking';
+
   static const String customerStoreDetails = '/customer/store';
   static const String customerCart = '/customer/cart';
   static const String customerCheckout = '/customer/checkout';
+  static const String customerOrderConfirmation = '/customer/checkout/confirmation';
   static const String customerOrders = '/customer/orders';
   static const String customerSavedAddresses = '/customer/addresses';
+  static const String customerSettings = '/customer/settings';
   static const String customerProfile = '/customer/profile';
   static const String customerProfileJobs = '/customer/profile/jobs';
   static const String customerEditProfile = '/customer/profile/edit';
   static const String customerNotificationSettings =
       '/customer/settings/notifications';
+  static const String customerNotifications = '/customer/notifications';
   static const String customerLanguage = '/customer/settings/language';
+  static const String customerPrivacy = '/customer/settings/privacy';
+  static const String customerTerms = '/customer/settings/terms';
 
   /// GoRouter path pattern: [customerOrders]/:orderId/tracking
   static String customerOrderLiveTracking(String orderId) =>
@@ -35,6 +52,9 @@ class AppRoutes {
 
   /// Vendor accounts must use the MND Vendor app — customer build shows this gate.
   static const String wrongAppVendor = '/wrong-app/vendor';
+
+  /// Admin accounts are blocked on Play Store customer builds (unless INCLUDE_ADMIN).
+  static const String wrongAppAdmin = '/wrong-app/admin';
 
   static const String admin = '/admin';
 }

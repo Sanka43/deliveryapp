@@ -4,6 +4,7 @@ import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
 import 'package:mnd_delivery_app/core/utils/catalog_image_url.dart';
 import 'package:mnd_delivery_app/core/utils/product_price_display.dart';
+import 'package:mnd_delivery_app/features/store/domain/product_availability.dart';
 
 class SearchStore {
   const SearchStore({
@@ -17,6 +18,8 @@ class SearchStore {
     required this.deliveryFee,
     this.address = '',
     this.phone = '',
+    this.isOpen = true,
+    this.catalogKind = '',
   });
 
   final String id;
@@ -37,6 +40,12 @@ class SearchStore {
 
   /// Contact phone for store details (optional).
   final String phone;
+
+  /// Whether the shop is currently open for orders.
+  final bool isOpen;
+
+  /// Persisted catalog bucket from shop app (`grocery` / `food`).
+  final String catalogKind;
 
   factory SearchStore.fromFirestore(
     String id,
@@ -61,6 +70,8 @@ class SearchStore {
         : 'General';
     final String address = _pickStoreAddress(map);
     final String phone = _pickStorePhone(map);
+    final String catalogKind =
+        (map['catalogKind'] as String?)?.trim() ?? '';
     return SearchStore(
       id: id,
       name: (map['name'] as String?)?.trim().isNotEmpty == true
@@ -72,14 +83,48 @@ class SearchStore {
       eta: (map['eta'] as String?)?.trim().isNotEmpty == true
           ? map['eta'] as String
           : 'N/A',
-      imageUrl: image != null && image.isNotEmpty
-          ? image
-          : 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop',
+      imageUrl: image ?? '',
       deliveryFee: deliveryFee,
       address: address,
       phone: phone,
+      isOpen: vendorIsAcceptingOrders(map),
+      catalogKind: catalogKind,
     );
   }
+}
+
+/// Customer-visible storefronts: approved shops (open or closed), plus legacy
+/// docs without [approvalStatus] that are still `active`.
+bool isCustomerVisibleVendor(Map<String, dynamic> map) {
+  final String approval =
+      ((map['approvalStatus'] as String?) ?? '').trim().toLowerCase();
+  if (approval == 'pending' || approval == 'rejected') {
+    return false;
+  }
+  if (approval == 'approved') {
+    return true;
+  }
+  return map['active'] == true;
+}
+
+/// Whether a vendor Firestore doc is currently accepting orders.
+bool vendorIsAcceptingOrders(Map<String, dynamic> map) {
+  final dynamic active = map['active'];
+  if (active is bool) {
+    return active;
+  }
+  final dynamic raw = map['isOpen'] ?? map['open'] ?? map['is_open'];
+  if (raw is bool) {
+    return raw;
+  }
+  final String status = _trimmedString(map['status']).toLowerCase();
+  if (status == 'closed' || status == 'inactive' || status == 'offline') {
+    return false;
+  }
+  if (status == 'open' || status == 'active') {
+    return true;
+  }
+  return true;
 }
 
 String _trimmedString(dynamic value) {
@@ -90,20 +135,10 @@ String _trimmedString(dynamic value) {
 }
 
 String _pickStoreAddress(Map<String, dynamic> map) {
-  final String direct = _trimmedString(map['address']);
-  if (direct.isNotEmpty) {
-    return direct;
-  }
-  final String locationName = _trimmedString(map['locationName']);
-  if (locationName.isNotEmpty) {
-    return locationName;
-  }
-  final String street = _trimmedString(map['street']);
+  final String addressLine = _trimmedString(map['addressLine']);
   final String city = _trimmedString(map['city']);
-  final String line1 = _trimmedString(map['addressLine1']);
   final List<String> parts = <String>[
-    if (line1.isNotEmpty) line1,
-    if (street.isNotEmpty) street,
+    if (addressLine.isNotEmpty) addressLine,
     if (city.isNotEmpty) city,
   ];
   return parts.isEmpty ? '' : parts.join(', ');
@@ -145,7 +180,10 @@ class SearchProduct {
     required this.price,
     required this.imageUrl,
     required this.basePriceLkr,
+    this.productCategory = '',
     this.sizeOptions = const <SearchProductSizeOption>[],
+    this.manageStock = false,
+    this.stockQty = 0,
   });
 
   final String documentId;
@@ -157,8 +195,23 @@ class SearchProduct {
   final String imageUrl;
   final int basePriceLkr;
 
+  /// Grocery aisle label from Firestore `productCategory` (empty for food / legacy).
+  final String productCategory;
+
   /// Priced variants from Firestore `sizeOptions` (absolute LKR each). Empty for legacy products.
   final List<SearchProductSizeOption> sizeOptions;
+
+  /// Vendor opted into stock tracking (`manageStock` on the product doc).
+  final bool manageStock;
+
+  /// On-hand units when [manageStock] is true.
+  final int stockQty;
+
+  /// False only when stock tracking is on and qty is zero.
+  bool get isInStock => productAvailabilityFromMap(<String, dynamic>{
+        'manageStock': manageStock,
+        'stockQty': stockQty,
+      });
 
   static List<SearchProductSizeOption> _parseSizeOptions(dynamic raw) {
     if (raw is! List) {
@@ -224,6 +277,9 @@ class SearchProduct {
 
     final String? img = pickCatalogImageUrl(map);
 
+    final dynamic rawStock = map['stockQty'];
+    final int stockQty = rawStock is num ? rawStock.round().clamp(0, 9999999) : 0;
+
     return SearchProduct(
       documentId: documentId,
       storeId: storeId,
@@ -235,11 +291,12 @@ class SearchProduct {
           ? map['storeName'] as String
           : ((map['vendorName'] as String?) ?? 'Unknown Store'),
       price: parsedPrice,
-      imageUrl: img != null && img.isNotEmpty
-          ? img
-          : 'https://images.unsplash.com/photo-1563636619-e9143da7973b?q=80&w=600&auto=format&fit=crop',
+      imageUrl: img ?? '',
       basePriceLkr: baseLkr,
+      productCategory: ((map['productCategory'] as String?) ?? '').trim(),
       sizeOptions: sizeOpts,
+      manageStock: map['manageStock'] == true,
+      stockQty: stockQty,
     );
   }
 }
@@ -248,49 +305,125 @@ final StateProvider<String> customerSearchQueryProvider = StateProvider<String>(
   return '';
 });
 
+/// Home / Food / Grocery browse windows (keep small for web cold & scroll cost).
+const int kBrowseVendorQueryLimit = 80;
+const int kBrowseVendorDisplayLimit = 24;
+const int kBrowseProductQueryLimit = 64;
+
+/// Search / All Shops / catalog warm — capped so snapshots stay bounded.
+const int kSearchCatalogLimit = 200;
+
+List<SearchStore> _mapVisibleStores(
+  QuerySnapshot<Map<String, dynamic>> snapshot, {
+  int? displayLimit,
+}) {
+  final List<SearchStore> visible = snapshot.docs
+      .where(
+        (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+            isCustomerVisibleVendor(doc.data()),
+      )
+      .map(
+        (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+            SearchStore.fromFirestore(doc.id, doc.data()),
+      )
+      .toList(growable: false);
+  if (displayLimit == null || visible.length <= displayLimit) {
+    return visible;
+  }
+  return visible.take(displayLimit).toList(growable: false);
+}
+
+List<SearchProduct> _mapActiveProducts(
+  QuerySnapshot<Map<String, dynamic>> snapshot,
+) {
+  return snapshot.docs
+      .map(
+        (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+            SearchProduct.fromFirestore(doc.id, doc.data()),
+      )
+      .toList(growable: false);
+}
+
+/// Search / All Shops — capped vendor list (not unbounded).
 final StreamProvider<List<SearchStore>> storesStreamProvider =
+    StreamProvider<List<SearchStore>>((Ref ref) {
+  final firestore = ref.watch(firestoreProvider);
+  // Do not require `active == true` here: open-hours sync flips `active` for
+  // closed shops, but approved storefronts must still appear (as Closed).
+  return firestore
+      .collection(FirebaseCollections.vendors)
+      .limit(kSearchCatalogLimit)
+      .snapshots()
+      .map(_mapVisibleStores);
+});
+
+/// Bounded vendor list for home / food / grocery browse hubs.
+final StreamProvider<List<SearchStore>> homeNearbyStoresStreamProvider =
     StreamProvider<List<SearchStore>>((Ref ref) {
   final firestore = ref.watch(firestoreProvider);
   return firestore
       .collection(FirebaseCollections.vendors)
-      .where('active', isEqualTo: true)
+      .limit(kBrowseVendorQueryLimit)
       .snapshots()
       .map(
-    (snapshot) {
-      return snapshot.docs
-          .where((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-            final String? approval = doc.data()['approvalStatus'] as String?;
-            if (approval == 'pending' || approval == 'rejected') {
-              return false;
-            }
-            return true;
-          })
-          .map(
-            (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
-                SearchStore.fromFirestore(doc.id, doc.data()),
-          )
-          .toList(growable: false);
-    },
-  );
+        (QuerySnapshot<Map<String, dynamic>> snapshot) => _mapVisibleStores(
+          snapshot,
+          displayLimit: kBrowseVendorDisplayLimit,
+        ),
+      );
 });
 
+/// Alias — same browse window as home (shared listener when both watched).
+final StreamProvider<List<SearchStore>> browseStoresStreamProvider =
+    homeNearbyStoresStreamProvider;
+
+/// Search catalog — capped active products (not unbounded).
 final StreamProvider<List<SearchProduct>> productsStreamProvider =
     StreamProvider<List<SearchProduct>>((Ref ref) {
   final firestore = ref.watch(firestoreProvider);
   return firestore
       .collection(FirebaseCollections.products)
       .where('active', isEqualTo: true)
+      .limit(kSearchCatalogLimit)
       .snapshots()
-      .map(
-    (snapshot) {
-      return snapshot.docs
-          .map(
-            (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
-                SearchProduct.fromFirestore(doc.id, doc.data()),
-          )
-          .toList(growable: false);
-    },
-  );
+      .map(_mapActiveProducts);
+});
+
+/// Bounded product feed for home Recommended / food / grocery hubs.
+final StreamProvider<List<SearchProduct>> homeFeedProductsStreamProvider =
+    StreamProvider<List<SearchProduct>>((Ref ref) {
+  final firestore = ref.watch(firestoreProvider);
+  return firestore
+      .collection(FirebaseCollections.products)
+      .where('active', isEqualTo: true)
+      .limit(kBrowseProductQueryLimit)
+      .snapshots()
+      .map(_mapActiveProducts);
+});
+
+/// Alias — same browse window as home recommended feed.
+final StreamProvider<List<SearchProduct>> browseProductsStreamProvider =
+    homeFeedProductsStreamProvider;
+
+/// Single vendor doc — avoids pulling the catalog for store details / deep links.
+final StreamProviderFamily<SearchStore?, String> vendorDocStreamProvider =
+    StreamProvider.family<SearchStore?, String>((Ref ref, String storeId) {
+  final String id = storeId.trim();
+  if (id.isEmpty) {
+    return Stream<SearchStore?>.value(null);
+  }
+  final FirebaseFirestore firestore = ref.watch(firestoreProvider);
+  return firestore
+      .collection(FirebaseCollections.vendors)
+      .doc(id)
+      .snapshots()
+      .map((DocumentSnapshot<Map<String, dynamic>> snap) {
+    final Map<String, dynamic>? data = snap.data();
+    if (!snap.exists || data == null || !isCustomerVisibleVendor(data)) {
+      return null;
+    }
+    return SearchStore.fromFirestore(snap.id, data);
+  });
 });
 
 /// Active catalog for one vendor store (customer store details / menu).
@@ -319,6 +452,33 @@ final StreamProviderFamily<List<SearchProduct>, String> storeActiveProductsStrea
     );
     return list;
   });
+});
+
+/// Store menu: prefer dedicated store query; seed instantly from warm catalog.
+final ProviderFamily<AsyncValue<List<SearchProduct>>, String> storeMenuProductsProvider =
+    Provider.family<AsyncValue<List<SearchProduct>>, String>((Ref ref, String storeId) {
+  final String id = storeId.trim();
+  final AsyncValue<List<SearchProduct>> storeAsync =
+      ref.watch(storeActiveProductsStreamProvider(id));
+  if (storeAsync.hasValue) {
+    return storeAsync;
+  }
+  // Seed from browse feed only — never subscribe to the larger search catalog.
+  final List<SearchProduct>? warm =
+      ref.watch(browseProductsStreamProvider).valueOrNull;
+  if (warm != null) {
+    final List<SearchProduct> seeded = warm
+        .where((SearchProduct p) => p.storeId == id)
+        .toList()
+      ..sort(
+        (SearchProduct a, SearchProduct b) =>
+            a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
+    if (seeded.isNotEmpty) {
+      return AsyncValue<List<SearchProduct>>.data(seeded);
+    }
+  }
+  return storeAsync;
 });
 
 final Provider<List<SearchStore>> filteredStoresProvider = Provider<List<SearchStore>>((Ref ref) {

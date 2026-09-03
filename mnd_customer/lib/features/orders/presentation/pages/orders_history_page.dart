@@ -8,13 +8,18 @@ import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/utils/money_format.dart';
 import 'package:mnd_delivery_app/core/utils/order_status_style.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_gradient_badge.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_section_header.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_empty_state.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
+import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_summary.dart';
 import 'package:mnd_delivery_app/features/orders/domain/order_timeline.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
+import 'package:mnd_delivery_app/features/orders/presentation/utils/orders_load_error.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/widgets/floating_glass_nav_bar.dart';
 
 class OrdersHistoryPage extends ConsumerWidget {
   const OrdersHistoryPage({super.key});
@@ -35,9 +40,7 @@ class OrdersHistoryPage extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
-      appBar: AppBar(
-        title: const Text('My orders'),
-      ),
+      appBar: mndPageAppBar(title: 'My orders', implyLeading: false),
       body: auth.when(
         data: (User? user) {
           if (user == null) {
@@ -46,82 +49,135 @@ class OrdersHistoryPage extends ConsumerWidget {
               title: 'Sign in to see your orders',
               subtitle: 'Your order history is saved to your account.',
               actionLabel: 'Sign in',
-              onAction: () => context.push(AppRoutes.login),
+              onAction: () {
+                ref.read(guestBrowsingProvider.notifier).state = false;
+                ref.read(postAuthRedirectProvider.notifier).state =
+                    AppRoutes.customerOrders;
+                context.go(AppRoutes.login);
+              },
             );
           }
-          return orders.when(
-            data: (List<CustomerOrderSummary> list) {
-              final List<CustomerOrderSummary> active = list
-                  .where((CustomerOrderSummary o) => !o.isCompleted)
-                  .toList();
-              final List<CustomerOrderSummary> completed = list
-                  .where((CustomerOrderSummary o) => o.isCompleted)
-                  .toList();
-
-              if (list.isEmpty) {
-                return MndEmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'No orders yet',
-                  subtitle:
-                      'When you place an order, it will show up here.',
-                  actionLabel: 'Order food',
-                  onAction: () => context.go(AppRoutes.customerFood),
-                );
-              }
-
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md,
-                  AppSpacing.md,
-                  AppSpacing.md,
-                  AppSpacing.xl,
-                ),
-                children: <Widget>[
-                  MndSectionHeader(
-                    title: 'Active (${active.length})',
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  if (active.isEmpty)
-                    const _EmptyHint(text: 'No active orders right now.')
-                  else
-                    ...active.map(
-                      (CustomerOrderSummary o) => Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                        child: _OrderCard(
-                          order: o,
-                          formatDate: _formatDate,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: AppSpacing.lg),
-                  MndSectionHeader(
-                    title: 'Completed (${completed.length})',
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  if (completed.isEmpty)
-                    const _EmptyHint(text: 'No completed orders yet.')
-                  else
-                    ...completed.map(
-                      (CustomerOrderSummary o) => Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                        child: _OrderCard(
-                          order: o,
-                          formatDate: _formatDate,
-                        ),
-                      ),
-                    ),
-                ],
-              );
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(customerOrdersStreamProvider);
             },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (Object err, StackTrace _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Text(
-                  'Could not load orders.\n$err',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+            child: orders.when(
+              data: (List<CustomerOrderSummary> list) {
+                // draft_payment orders are created the moment an online
+                // checkout starts, before payment is confirmed — if the
+                // customer abandons payment, this draft never becomes a
+                // real order (no `placed` status, no cancel option), so it
+                // must never show up in their order history.
+                final List<CustomerOrderSummary> visible = list
+                    .where(
+                      (CustomerOrderSummary o) =>
+                          o.statusRaw.toLowerCase().trim() != 'draft_payment',
+                    )
+                    .toList();
+                final List<CustomerOrderSummary> active = visible
+                    .where((CustomerOrderSummary o) => !o.isCompleted)
+                    .toList();
+                final List<CustomerOrderSummary> completed = visible
+                    .where((CustomerOrderSummary o) => o.isCompleted)
+                    .toList();
+
+                if (visible.isEmpty) {
+                  return ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: <Widget>[
+                      SizedBox(
+                        height: MediaQuery.sizeOf(context).height * 0.5,
+                        child: MndEmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'No orders yet',
+                          subtitle:
+                              'When you place an order, it will show up here.',
+                          actionLabel: 'Order food',
+                          onAction: () => context.go(AppRoutes.customerFood),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.md,
+                    AppSpacing.md,
+                    floatingNavTotalHeight(context),
+                  ),
+                  children: <Widget>[
+                    MndSectionHeader(
+                      title: 'Active (${active.length})',
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    if (active.isEmpty)
+                      const _EmptyHint(text: 'No active orders right now.')
+                    else
+                      ...active.map(
+                        (CustomerOrderSummary o) => Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: _OrderCard(
+                            order: o,
+                            formatDate: _formatDate,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: AppSpacing.lg),
+                    MndSectionHeader(
+                      title: 'Completed (${completed.length})',
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    if (completed.isEmpty)
+                      const _EmptyHint(text: 'No completed orders yet.')
+                    else
+                      ...completed.map(
+                        (CustomerOrderSummary o) => Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: _OrderCard(
+                            order: o,
+                            formatDate: _formatDate,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (Object err, StackTrace _) => ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: <Widget>[
+                  SizedBox(
+                    height: MediaQuery.sizeOf(context).height * 0.5,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.lg),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Text(
+                              ordersLoadErrorMessage(
+                                err,
+                                fallback: 'Could not load orders.',
+                              ),
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            FilledButton(
+                              onPressed: () => ref.invalidate(
+                                customerOrdersStreamProvider,
+                              ),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           );
@@ -131,11 +187,48 @@ class OrdersHistoryPage extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: Text(
-              'Could not verify sign-in.\n$err',
+              userFacingError(
+                err,
+                fallback: 'Could not verify sign-in. Please try again.',
+              ),
               textAlign: TextAlign.center,
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CompactCardAction extends StatelessWidget {
+  const _CompactCardAction({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xs,
+          vertical: 2,
+        ),
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
       ),
     );
   }
@@ -173,7 +266,10 @@ class _OrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool canTrack =
         !order.isCompleted &&
-        OrderTimelineLogic.isActiveForLiveRiderMap(order.statusRaw);
+        OrderTimelineLogic.isActiveForLiveRiderMap(
+          order.statusRaw,
+          isSelfPickup: order.isSelfPickup,
+        );
 
     return MndPremiumCard(
       borderRadius: AppColors.cardRadiusSm,
@@ -200,56 +296,61 @@ class _OrderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            MoneyFormat.lkr(order.totalLkr, showDecimals: false),
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          if (formatDate(order.createdAt) != null) ...<Widget>[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              formatDate(order.createdAt)!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Tracking ${order.referenceForDisplay}',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: AppColors.textSecondary,
-                  letterSpacing: 0.2,
-                ),
-          ),
-          if (canTrack || order.canRateStore) ...<Widget>[
-            const SizedBox(height: AppSpacing.sm),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Wrap(
-                spacing: AppSpacing.sm,
-                children: <Widget>[
-                  if (order.canRateStore)
-                    TextButton.icon(
-                      onPressed: () => context.push(
-                        '${AppRoutes.customerOrders}/${order.id}',
-                      ),
-                      icon: const Icon(Icons.star_outline_rounded, size: 18),
-                      label: const Text('Rate'),
+          Row(
+            children: <Widget>[
+              Text(
+                MoneyFormat.lkr(order.subtotalLkr, showDecimals: false),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
-                  if (canTrack)
-                    TextButton.icon(
-                      onPressed: () => context.push(
-                        AppRoutes.customerOrderLiveTracking(order.id),
-                      ),
-                      icon: const Icon(Icons.map_outlined, size: 18),
-                      label: const Text('Track'),
-                    ),
-                ],
               ),
-            ),
-          ],
+              if (formatDate(order.createdAt) != null) ...<Widget>[
+                const Spacer(),
+                Text(
+                  formatDate(order.createdAt)!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Tracking ${order.referenceForDisplay}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.2,
+                      ),
+                ),
+              ),
+              if (canTrack || order.canRateStore)
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  children: <Widget>[
+                    if (order.canRateStore)
+                      _CompactCardAction(
+                        icon: Icons.star_outline_rounded,
+                        label: 'Rate',
+                        onPressed: () => context.push(
+                          '${AppRoutes.customerOrders}/${order.id}',
+                        ),
+                      ),
+                    if (canTrack)
+                      _CompactCardAction(
+                        icon: Icons.map_outlined,
+                        label: 'Track',
+                        onPressed: () => context.push(
+                          AppRoutes.customerOrderLiveTracking(order.id),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
         ],
       ),
     );

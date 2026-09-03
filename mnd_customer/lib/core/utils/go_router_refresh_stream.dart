@@ -3,18 +3,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
+  GoRouterRefreshStream([Stream<dynamic>? stream]) {
     notifyListeners();
-    _subscription = stream.asBroadcastStream().listen(
-          (_) => notifyListeners(),
-        );
+    if (stream != null) {
+      _subscription = stream.asBroadcastStream().listen(
+            (_) => notifyListeners(),
+          );
+    }
   }
 
-  late final StreamSubscription<dynamic> _subscription;
+  StreamSubscription<dynamic>? _subscription;
+
+  /// Triggers a GoRouter redirect re-evaluation without recreating the router.
+  void refresh() => notifyListeners();
 
   @override
   void dispose() {
-    _subscription.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 }

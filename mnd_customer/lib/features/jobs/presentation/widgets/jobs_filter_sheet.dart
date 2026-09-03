@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/job_constants.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_providers.dart';
 
@@ -7,13 +9,18 @@ void showJobsFilterSheet(BuildContext context, WidgetRef ref) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    backgroundColor: Colors.white,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
     builder: (BuildContext ctx) {
       return Padding(
         padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.paddingOf(ctx).bottom + 24,
+          left: AppSpacing.lg,
+          right: AppSpacing.lg,
+          top: AppSpacing.sm,
+          bottom: MediaQuery.paddingOf(ctx).bottom + AppSpacing.lg,
         ),
         child: _JobsFilterSheetBody(parentRef: ref),
       );
@@ -42,26 +49,44 @@ class _JobsFilterSheetBodyState extends ConsumerState<_JobsFilterSheetBody> {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
           'Filter jobs',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+          style: textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+            color: AppColors.textPrimary,
+          ),
         ),
-        const SizedBox(height: 16),
-        Text('Job type', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          'Job type',
+          style: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: JobConstants.jobTypes.map((String t) {
             final bool sel = local.jobType == t;
             return FilterChip(
               label: Text(t),
               selected: sel,
+              showCheckmark: false,
+              backgroundColor: AppColors.homeMutedFill,
+              selectedColor: AppColors.brandPrimary,
+              labelStyle: textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: sel ? Colors.white : AppColors.textPrimary,
+              ),
+              side: BorderSide.none,
               onSelected: (_) {
                 setState(() {
                   local = sel
@@ -72,18 +97,30 @@ class _JobsFilterSheetBodyState extends ConsumerState<_JobsFilterSheetBody> {
             );
           }).toList(),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.sm),
         SwitchListTile(
-          title: const Text('Remote only'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            'Remote only',
+            style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
           value: local.remoteOnly,
-          onChanged: (bool v) => setState(() => local = local.copyWith(remoteOnly: v)),
+          activeThumbColor: AppColors.brandPrimary,
+          onChanged: (bool v) =>
+              setState(() => local = local.copyWith(remoteOnly: v)),
         ),
         SwitchListTile(
-          title: const Text('Newest first'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            'Newest first',
+            style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
           value: local.sortNewest,
-          onChanged: (bool v) => setState(() => local = local.copyWith(sortNewest: v)),
+          activeThumbColor: AppColors.brandPrimary,
+          onChanged: (bool v) =>
+              setState(() => local = local.copyWith(sortNewest: v)),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.md),
         FilledButton(
           onPressed: () {
             widget.parentRef.read(jobsFilterProvider.notifier).state = local;

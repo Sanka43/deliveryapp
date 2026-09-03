@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/job_constants.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_providers.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/widgets/jobs_filter_sheet.dart';
 
-/// Search, hints, and location/filter controls on a white panel.
+/// Search, hints, and location/filter controls on a premium card.
 class JobsSearchHeader extends ConsumerStatefulWidget {
   const JobsSearchHeader({super.key});
 
@@ -36,16 +36,12 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final JobsFilterState filter = ref.watch(jobsFilterProvider);
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-        boxShadow: AppColors.cardShadow,
-      ),
+    return MndPremiumCard(
+      borderRadius: AppColors.cardRadiusLg,
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -55,13 +51,13 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
               ref.read(jobsFilterProvider.notifier).state =
                   filter.copyWith(query: v);
             },
-            style: GoogleFonts.plusJakartaSans(
+            style: textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
             ),
             decoration: InputDecoration(
               hintText: 'Search title, company, skill…',
-              hintStyle: GoogleFonts.plusJakartaSans(
+              hintStyle: textTheme.bodyMedium?.copyWith(
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w500,
               ),
@@ -81,16 +77,16 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
                   : null,
               filled: true,
               fillColor: AppColors.homeMutedFill,
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppColors.buttonRadius),
                 borderSide: BorderSide.none,
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
           SizedBox(
-            height: 34,
+            height: 32,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: JobConstants.searchHints.length,
@@ -100,13 +96,12 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
                 return ActionChip(
                   label: Text(
                     hint,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
+                    style: textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  backgroundColor: Colors.white,
-                  side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+                  backgroundColor: AppColors.homeMutedFill,
+                  side: BorderSide.none,
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   visualDensity: VisualDensity.compact,
                   onPressed: () {
@@ -128,15 +123,18 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
                   label: Text(
                     filter.locationLabel,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+                    style: textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textPrimary,
-                    backgroundColor: Colors.white,
-                    side: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+                    backgroundColor: AppColors.homeMutedFill,
+                    side: BorderSide.none,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(AppColors.buttonRadius),
                     ),
                   ),
                 ),
@@ -144,10 +142,10 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
               const SizedBox(width: AppSpacing.sm),
               Material(
                 color: AppColors.brandPrimary,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppColors.buttonRadius),
                 child: InkWell(
                   onTap: () => showJobsFilterSheet(context, ref),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppColors.buttonRadius),
                   child: const SizedBox(
                     width: 48,
                     height: 48,
@@ -163,6 +161,7 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
   }
 
   Future<void> _pickLocation(BuildContext context) async {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final List<String> options = <String>[
       'Near you',
       'Colombo',
@@ -174,6 +173,7 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
     final String? picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.white,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -185,7 +185,9 @@ class _JobsSearchHeaderState extends ConsumerState<JobsSearchHeader> {
                 (String o) => ListTile(
                   title: Text(
                     o,
-                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+                    style: textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   onTap: () => Navigator.pop(ctx, o),
                 ),

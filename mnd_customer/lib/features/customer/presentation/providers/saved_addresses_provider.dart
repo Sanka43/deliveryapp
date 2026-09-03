@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/features/customer/data/saved_address.dart';
 
 /// Live list of saved addresses for the signed-in user (empty if not signed in).
@@ -58,6 +59,8 @@ class SavedAddressesActions {
     required String city,
     required String phone,
     bool setAsDefault = false,
+    double? latitude,
+    double? longitude,
   }) async {
     final CollectionReference<Map<String, dynamic>>? col = _col;
     if (col == null) {
@@ -73,16 +76,16 @@ class SavedAddressesActions {
           city: city,
           phone: phone,
           isDefault: setAsDefault,
+          latitude: latitude,
+          longitude: longitude,
         ).toFirestore(includeCreatedAt: true),
       );
       if (setAsDefault) {
         await setDefaultAddress(doc.id);
       }
       return null;
-    } on FirebaseException catch (e) {
-      return e.message ?? 'Could not save address.';
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not save address.');
     }
   }
 
@@ -94,6 +97,8 @@ class SavedAddressesActions {
     required String city,
     required String phone,
     required bool isDefault,
+    double? latitude,
+    double? longitude,
   }) async {
     final CollectionReference<Map<String, dynamic>>? col = _col;
     if (col == null) {
@@ -109,16 +114,16 @@ class SavedAddressesActions {
               city: city,
               phone: phone,
               isDefault: isDefault,
+              latitude: latitude,
+              longitude: longitude,
             ).toFirestore(includeCreatedAt: false),
           );
       if (isDefault) {
         await setDefaultAddress(id);
       }
       return null;
-    } on FirebaseException catch (e) {
-      return e.message ?? 'Could not update address.';
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not update address.');
     }
   }
 
@@ -130,10 +135,8 @@ class SavedAddressesActions {
     try {
       await col.doc(id).delete();
       return null;
-    } on FirebaseException catch (e) {
-      return e.message ?? 'Could not delete address.';
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not delete address.');
     }
   }
 
@@ -152,10 +155,8 @@ class SavedAddressesActions {
       }
       await batch.commit();
       return null;
-    } on FirebaseException catch (e) {
-      return e.message ?? 'Could not set default.';
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not set default.');
     }
   }
 }

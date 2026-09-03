@@ -3,18 +3,20 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
+import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/core/widgets/sign_in_required_prompt.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
-import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_profile_provider.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_application.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_listing.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_providers.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/widgets/job_booked_badge.dart';
-import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
-import 'package:mnd_delivery_app/core/constants/app_routes.dart';
-import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_profile_provider.dart';
-import 'package:go_router/go_router.dart';
 
 void showJobQuickApplySheet(
   BuildContext context,
@@ -24,6 +26,11 @@ void showJobQuickApplySheet(
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    backgroundColor: Colors.white,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
     builder: (BuildContext ctx) => Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.viewInsetsOf(ctx).bottom,
@@ -81,26 +88,41 @@ class _QuickApplyFormState extends ConsumerState<_QuickApplyForm> {
     super.dispose();
   }
 
+  Widget _sheetPad({required Widget child}) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.sm,
+          AppSpacing.lg,
+          AppSpacing.lg,
+        ),
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final bool guest = ref.watch(guestBrowsingProvider);
     if (guest || ref.watch(firebaseAuthProvider).currentUser == null) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
+      return _sheetPad(
         child: SignInRequiredBanner(
           message: 'Sign in to apply for "${widget.job.title}".',
+          redirectTo: '${AppRoutes.customerJobs}/${widget.job.id}',
         ),
       );
     }
 
     if (!widget.job.isActive || widget.job.isExpired) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
+      return _sheetPad(
         child: Text(
           'This job is no longer accepting applications.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
+          style: textTheme.bodyMedium?.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
       );
     }
@@ -109,26 +131,26 @@ class _QuickApplyFormState extends ConsumerState<_QuickApplyForm> {
         ref.watch(myApplicationStatusForJobProvider(widget.job.id));
     final profile = ref.watch(customerProfileStreamProvider).valueOrNull;
     if (profile != null && !profile.isProfileComplete) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
+      return _sheetPad(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
-              'Complete your profile before applying.',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              'Complete your profile',
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Add: ${profile.missingProfileFields.join(', ')}.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
+              style: textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.md),
             FilledButton(
               onPressed: () {
                 Navigator.pop(context);
@@ -143,21 +165,22 @@ class _QuickApplyFormState extends ConsumerState<_QuickApplyForm> {
 
     if (status != null) {
       final bool booked = status == JobApplicationStatus.booked;
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
+      return _sheetPad(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             if (booked) const JobBookedBadge(),
-            const SizedBox(height: 12),
+            if (booked) const SizedBox(height: 12),
             Text(
               booked
                   ? 'You are booked for this job.'
                   : 'You already applied (${JobApplicationStatus.label(status)}).',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.md),
             FilledButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
@@ -167,8 +190,7 @@ class _QuickApplyFormState extends ConsumerState<_QuickApplyForm> {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+    return _sheetPad(
       child: Form(
         key: _formKey,
         child: Column(
@@ -177,51 +199,83 @@ class _QuickApplyFormState extends ConsumerState<_QuickApplyForm> {
           children: <Widget>[
             Text(
               'Quick apply',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                color: AppColors.textPrimary,
+              ),
             ),
+            const SizedBox(height: 4),
             Text(
               widget.job.title,
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Your name *'),
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Your name *',
+                prefixIcon: Icon(Icons.person_outline_rounded),
+              ),
               validator: (String? v) =>
                   (v == null || v.trim().length < 2) ? 'Enter your name' : null,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _phone,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Phone number *'),
-              validator: (String? v) =>
-                  (v == null || v.trim().length < 8) ? 'Enter a valid phone' : null,
+              decoration: const InputDecoration(
+                labelText: 'Phone number *',
+                prefixIcon: Icon(Icons.phone_outlined),
+              ),
+              validator: (String? v) => (v == null || v.trim().length < 8)
+                  ? 'Enter a valid phone'
+                  : null,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _bio,
               maxLines: 2,
               decoration: const InputDecoration(
                 labelText: 'Short bio (optional)',
+                prefixIcon: Icon(Icons.notes_rounded),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             OutlinedButton.icon(
               onPressed: _pickCv,
-              icon: const Icon(Icons.upload_file_outlined),
-              label: Text(_cvFile == null ? 'Attach CV (optional)' : 'CV selected'),
+              icon: Icon(
+                _cvFile == null
+                    ? Icons.upload_file_outlined
+                    : Icons.check_circle_outline_rounded,
+              ),
+              label: Text(
+                _cvFile == null ? 'Attach CV (optional)' : 'CV selected',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textPrimary,
+                side: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppColors.buttonRadius),
+                ),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             FilledButton(
               onPressed: _submitting ? null : _submit,
               child: _submitting
                   ? const SizedBox(
                       height: 22,
                       width: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Text('Submit application'),
             ),
@@ -256,17 +310,14 @@ class _QuickApplyFormState extends ConsumerState<_QuickApplyForm> {
           );
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Application sent! The employer may contact you soon.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        showMndSnackBar(context, 'Application sent! The employer may contact you soon.', variant: MndSnackBarVariant.success);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
+        showMndSnackBar(
+          context,
+          userFacingError(e, fallback: 'Could not send your application.'),
+          variant: MndSnackBarVariant.error,
         );
       }
     } finally {

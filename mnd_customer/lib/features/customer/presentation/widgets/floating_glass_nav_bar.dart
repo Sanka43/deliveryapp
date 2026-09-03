@@ -3,7 +3,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
 
+/// Floating bottom nav — slim frosted-glass pill, icon-only tabs that grow
+/// into a soft tinted pill with a label when selected.
 class FloatingGlassNavBar extends StatelessWidget {
   const FloatingGlassNavBar({
     required this.selectedIndex,
@@ -14,17 +17,15 @@ class FloatingGlassNavBar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
 
-  static const List<({IconData icon, IconData selectedIcon, String label})> _items =
-      <({IconData icon, IconData selectedIcon, String label})>[
+  static const double barHeight = 64;
+  static const double bottomGap = 8;
+
+  static const List<({IconData icon, IconData selectedIcon, String label})>
+      _items = <({IconData icon, IconData selectedIcon, String label})>[
     (
       icon: Icons.home_outlined,
       selectedIcon: Icons.home_rounded,
       label: 'Home',
-    ),
-    (
-      icon: Icons.search_rounded,
-      selectedIcon: Icons.search_rounded,
-      label: 'Search',
     ),
     (
       icon: Icons.receipt_long_outlined,
@@ -32,9 +33,14 @@ class FloatingGlassNavBar extends StatelessWidget {
       label: 'Orders',
     ),
     (
-      icon: Icons.person_outline_rounded,
-      selectedIcon: Icons.person_rounded,
-      label: 'Profile',
+      icon: Icons.favorite_border_rounded,
+      selectedIcon: Icons.favorite_rounded,
+      label: 'Favorites',
+    ),
+    (
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings_rounded,
+      label: 'Settings',
     ),
   ];
 
@@ -43,33 +49,53 @@ class FloatingGlassNavBar extends StatelessWidget {
     final double bottom = MediaQuery.paddingOf(context).bottom;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, bottom + 8),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        bottom + bottomGap,
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
-            height: 60,
+            height: barHeight,
             decoration: BoxDecoration(
-              color: AppColors.glassFill,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppColors.glassBorder),
-              boxShadow: AppColors.shadowElevated,
+              color: AppColors.homeMutedFill.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.black.withValues(alpha: 0.06),
+                width: 1,
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: List<Widget>.generate(_items.length, (int index) {
-                final bool selected = index == selectedIndex;
-                final item = _items[index];
-                return Expanded(
-                  child: _NavItem(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List<Widget>.generate(_items.length, (int index) {
+                  final bool selected = index == selectedIndex;
+                  final item = _items[index];
+                  return _NavItem(
                     icon: selected ? item.selectedIcon : item.icon,
                     label: item.label,
                     selected: selected,
                     onTap: () => onDestinationSelected(index),
-                  ),
-                );
-              }),
+                  );
+                }),
+              ),
             ),
           ),
         ),
@@ -93,48 +119,45 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
-          padding: EdgeInsets.symmetric(
-            vertical: selected ? 4 : 8,
-            horizontal: selected ? 4 : 0,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: selected ? AppColors.brandGradient : null,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                icon,
-                size: selected ? 20 : 22,
-                color: selected ? Colors.white : AppColors.textSecondary,
-              ),
-              if (selected) ...<Widget>[
-                const SizedBox(height: 1),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 9,
-                        height: 1,
+    return MndPressable(
+      onTap: onTap,
+      scale: 0.95,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.all(selected ? 14 : 12),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.brandPrimary : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              icon,
+              size: 21,
+              color: selected ? Colors.white : AppColors.textSecondary,
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: selected
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              height: 1,
+                            ),
                       ),
-                ),
-              ],
-            ],
-          ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
       ),
     );
@@ -143,5 +166,8 @@ class _NavItem extends StatelessWidget {
 
 /// Bottom inset reserved for floating nav + safe area.
 double floatingNavTotalHeight(BuildContext context) {
-  return 60 + MediaQuery.paddingOf(context).bottom + 16;
+  return FloatingGlassNavBar.barHeight +
+      MediaQuery.paddingOf(context).bottom +
+      FloatingGlassNavBar.bottomGap +
+      8;
 }

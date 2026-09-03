@@ -5,7 +5,6 @@ import 'package:mnd_delivery_app/features/orders/data/order_placement_repository
 final Provider<OrderPlacementRepository> orderPlacementRepositoryProvider =
     Provider<OrderPlacementRepository>((Ref ref) {
   return OrderPlacementRepository(
-    firestore: ref.watch(firestoreProvider),
     auth: ref.watch(firebaseAuthProvider),
   );
 });

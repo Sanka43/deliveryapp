@@ -97,6 +97,15 @@ class AppTheme {
           borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
         ),
       ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
+        ),
+        insetPadding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      ),
       dividerColor: Colors.black.withValues(alpha: 0.06),
     );
   }

@@ -20,24 +20,47 @@ const List<String> kFoodCategoryFallbackLabels = <String>[
 
 /// Product name keywords per chip label (lowercase).
 const Map<String, List<String>> kFoodCategoryProductKeywords = <String, List<String>>{
-  'Rice': <String>['rice', 'biryani', 'kottu', 'fried rice'],
-  'Pizza': <String>['pizza'],
-  'Burgers': <String>['burger', 'cheeseburger'],
-  'Noodles': <String>['noodle', 'ramen', 'pasta', 'spaghetti'],
+  'Rice and curry': <String>['rice and curry', 'rice & curry', 'curry'],
+  'Fried rice': <String>['fried rice', 'biryani'],
+  'Kottu': <String>['kottu', 'kotthu'],
+  'Pasta': <String>['pasta', 'spaghetti', 'macaroni'],
+  'Noodles': <String>['noodle', 'ramen'],
   'Beverages': <String>['drink', 'juice', 'coffee', 'tea', 'smoothie', 'milkshake'],
-  'Desserts': <String>['cake', 'dessert', 'ice cream', 'brownie', 'waffle'],
-  'Seafood': <String>['fish', 'prawn', 'crab', 'seafood', 'lobster'],
+  'Desert': <String>['cake', 'dessert', 'ice cream', 'brownie', 'waffle'],
+  'Shot eats': <String>['short eats', 'shot eats', 'roll', 'cutlet', 'patty', 'samosa', 'vadai'],
 };
 
 bool isGroceryStore(SearchStore store) {
+  // Shop app persists `catalogKind: grocery` at registration — prefer that.
+  final String kind = store.catalogKind.toLowerCase().trim();
+  if (kind == 'grocery' || kind == 'groc') {
+    return true;
+  }
   final String cat = store.category.toLowerCase();
   final String tag = store.tag.toLowerCase();
+  final String name = store.name.toLowerCase();
   return cat.contains('groc') ||
+      cat.contains('grosery') ||
+      cat.contains('grocary') ||
       tag.contains('groc') ||
+      tag.contains('grosery') ||
+      tag.contains('grocary') ||
       cat.contains('supermarket') ||
       tag.contains('supermarket') ||
       cat.contains('pharmacy') ||
-      tag.contains('pharmacy');
+      tag.contains('pharmacy') ||
+      cat.contains('hypermarket') ||
+      tag.contains('hypermarket') ||
+      cat.contains('convenience') ||
+      tag.contains('convenience') ||
+      tag.contains('mini mart') ||
+      tag.contains('minimart') ||
+      tag.contains('mini-mart') ||
+      tag.endsWith(' mart') ||
+      tag == 'mart' ||
+      name.contains('grocery') ||
+      name.contains('grosery') ||
+      name.contains('supermarket');
 }
 
 /// Food hub: explicit food vendors, or any non-grocery shop (legacy `General` / `Store`).
@@ -126,7 +149,7 @@ final StateProvider<String?> selectedFoodCategoryProvider =
     StateProvider<String?>((Ref ref) => 'All');
 
 final Provider<List<SearchStore>> foodStoresProvider = Provider<List<SearchStore>>((Ref ref) {
-  final List<SearchStore> stores = ref.watch(storesStreamProvider).maybeWhen(
+  final List<SearchStore> stores = ref.watch(browseStoresStreamProvider).maybeWhen(
         data: (List<SearchStore> items) => items,
         orElse: () => const <SearchStore>[],
       );
@@ -139,8 +162,8 @@ final Provider<Set<String>> foodStoreIdsProvider = Provider<Set<String>>((Ref re
 
 final Provider<List<SearchProduct>> foodProductsProvider =
     Provider<List<SearchProduct>>((Ref ref) {
-  final bool storesLoaded = ref.watch(storesStreamProvider).hasValue;
-  final List<SearchProduct> products = ref.watch(productsStreamProvider).maybeWhen(
+  final bool storesLoaded = ref.watch(browseStoresStreamProvider).hasValue;
+  final List<SearchProduct> products = ref.watch(browseProductsStreamProvider).maybeWhen(
         data: (List<SearchProduct> items) => items,
         orElse: () => const <SearchProduct>[],
       );

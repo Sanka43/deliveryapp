@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
@@ -13,13 +14,16 @@ class JobsRepository {
     required FirebaseFirestore firestore,
     required FirebaseAuth auth,
     FirebaseStorage? storage,
+    FirebaseFunctions? functions,
   })  : _firestore = firestore,
         _auth = auth,
-        _storage = storage ?? FirebaseStorage.instance;
+        _storage = storage ?? FirebaseStorage.instance,
+        _functions = functions ?? FirebaseFunctions.instanceFor(region: 'asia-south1');
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final FirebaseStorage _storage;
+  final FirebaseFunctions _functions;
 
   CollectionReference<Map<String, dynamic>> get _jobs =>
       _firestore.collection(FirebaseCollections.jobs);
@@ -34,6 +38,19 @@ class JobsRepository {
       _firestore.collection(FirebaseCollections.jobReports);
 
   String? get _uid => _auth.currentUser?.uid;
+
+  static String? _cvContentTypeForExtension(String ext) {
+    switch (ext) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      default:
+        return null;
+    }
+  }
 
   /// Public approved jobs stream (guests can browse).
   Stream<List<JobListing>> watchActiveJobs({int limit = 80}) {
@@ -74,13 +91,12 @@ class JobsRepository {
     );
   }
 
-  Stream<Set<String>> watchSavedJobIds() {
-    final String? uid = _uid;
-    if (uid == null) {
+  Stream<Set<String>> watchSavedJobIds({required String userId}) {
+    if (userId.isEmpty) {
       return Stream<Set<String>>.value(<String>{});
     }
     return _savedJobs
-        .where('userId', isEqualTo: uid)
+        .where('userId', isEqualTo: userId)
         .snapshots()
         .map(
           (QuerySnapshot<Map<String, dynamic>> snap) => snap.docs
@@ -90,12 +106,11 @@ class JobsRepository {
         );
   }
 
-  Stream<List<JobListing>> watchSavedJobs() {
-    final String? uid = _uid;
-    if (uid == null) {
+  Stream<List<JobListing>> watchSavedJobs({required String userId}) {
+    if (userId.isEmpty) {
       return Stream<List<JobListing>>.value(const <JobListing>[]);
     }
-    return _savedJobs.where('userId', isEqualTo: uid).snapshots().asyncMap(
+    return _savedJobs.where('userId', isEqualTo: userId).snapshots().asyncMap(
       (QuerySnapshot<Map<String, dynamic>> snap) async {
         final List<JobListing> jobs = <JobListing>[];
         for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
@@ -120,11 +135,22 @@ class JobsRepository {
   }
 
   Future<void> incrementViewCount(String jobId) async {
-    await _jobs.doc(jobId).update(<String, dynamic>{
-      'viewCount': FieldValue.increment(1),
-    });
+    try {
+      await _jobs.doc(jobId).update(<String, dynamic>{
+        'viewCount': FieldValue.increment(1),
+      });
+    } on FirebaseException catch (_) {
+      // Client updates are denied by rules; ignore quietly.
+    } catch (_) {
+      // Best-effort metric only.
+    }
   }
 
+  /// Posts a job via the `createJobPost` Cloud Function so the credit
+  /// check and decrement are atomic with the job write, server-side — a
+  /// client-direct Firestore create can no longer skip the decrement (see
+  /// `firestore.rules`, `jobs` collection: non-admin `allow create` was
+  /// removed for this reason).
   Future<String> submitJob({
     required JobListing draft,
     File? imageFile,
@@ -135,69 +161,56 @@ class JobsRepository {
       throw StateError('Sign in to post a job.');
     }
 
+    final String jobId;
     try {
-      final bool duplicate = await _hasRecentDuplicate(uid, draft.title);
-      if (duplicate) {
-        throw StateError(
-          'You already posted a similar job recently. Please wait 24 hours.',
-        );
+      final HttpsCallableResult<dynamic> result = await _functions
+          .httpsCallable('createJobPost')
+          .call(<String, dynamic>{
+        'title': draft.title,
+        'category': draft.category,
+        'type': draft.type,
+        'salary': draft.salary,
+        'location': draft.location,
+        'description': draft.description,
+        'companyName': draft.companyName,
+        'contactPhone': draft.contactPhone,
+        if (draft.whatsapp != null && draft.whatsapp!.isNotEmpty)
+          'whatsapp': draft.whatsapp,
+        'responsibilities': draft.responsibilities,
+        'schedule': draft.schedule,
+        'skills': draft.skills,
+        if (draft.deadline != null)
+          'deadline': draft.deadline!.millisecondsSinceEpoch,
+        'urgent': draft.urgent,
+        'remote': draft.remote,
+        'city': draft.city,
+        if (draft.latitude != null) 'latitude': draft.latitude,
+        if (draft.longitude != null) 'longitude': draft.longitude,
+        'availableLaborCount': draft.availableLaborCount,
+      });
+      final Map<dynamic, dynamic> data =
+          result.data as Map<dynamic, dynamic>;
+      jobId = (data['jobId'] as String?)?.trim() ?? '';
+      if (jobId.isEmpty) {
+        throw StateError('Could not post job. Try again.');
       }
-    } on FirebaseException catch (e) {
-      if (e.code != 'permission-denied') {
-        rethrow;
-      }
-      // Pre-check skipped when rules/index not ready; create still validated server-side.
+    } on FirebaseFunctionsException catch (e) {
+      throw StateError(
+        (e.message?.trim().isNotEmpty ?? false)
+            ? e.message!.trim()
+            : 'Could not post job. Try again.',
+      );
     }
 
-    final DateTime now = DateTime.now();
-    final DateTime expiresAt = now.add(JobConstants.defaultListingDuration);
-    final DocumentReference<Map<String, dynamic>> ref = _jobs.doc();
-
-    final JobListing toSave = JobListing(
-      id: ref.id,
-      title: draft.title,
-      category: draft.category,
-      type: draft.type,
-      salary: draft.salary,
-      location: draft.location,
-      description: draft.description,
-      companyName: draft.companyName,
-      contactPhone: draft.contactPhone,
-      whatsapp: draft.whatsapp,
-      responsibilities: draft.responsibilities,
-      schedule: draft.schedule,
-      skills: draft.skills,
-      deadline: draft.deadline,
-      expiresAt: expiresAt,
-      userId: uid,
-      status: JobConstants.statusPending,
-      verified: false,
-      urgent: draft.urgent,
-      remote: draft.remote,
-      city: draft.city,
-      imageUrl: draft.imageUrl,
-      logoUrl: draft.logoUrl,
-      latitude: draft.latitude,
-      longitude: draft.longitude,
-      createdAt: now,
-      availableLaborCount: draft.availableLaborCount,
-    );
-
-    await ref.set(toSave.toCreateMap(
-      userId: uid,
-      status: JobConstants.statusPending,
-      createdAt: now,
-      expiresAt: expiresAt,
-    ));
-
+    final DocumentReference<Map<String, dynamic>> ref = _jobs.doc(jobId);
     String? imageUrl;
     String? logoUrl;
     try {
       if (imageFile != null) {
-        imageUrl = await _uploadJobAsset(ref.id, imageFile, 'banner');
+        imageUrl = await _uploadJobAsset(jobId, imageFile, 'banner');
       }
       if (logoFile != null) {
-        logoUrl = await _uploadJobAsset(ref.id, logoFile, 'logo');
+        logoUrl = await _uploadJobAsset(jobId, logoFile, 'logo');
       }
       if (imageUrl != null || logoUrl != null) {
         await ref.update(<String, dynamic>{
@@ -209,30 +222,7 @@ class JobsRepository {
       // Listing saved; images optional if Storage rules lag behind deploy.
     }
 
-    return ref.id;
-  }
-
-  Future<bool> _hasRecentDuplicate(String userId, String title) async {
-    final String normalized = title.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return false;
-    }
-    final DateTime since =
-        DateTime.now().subtract(JobConstants.duplicateWindow);
-    final QuerySnapshot<Map<String, dynamic>> snap = await _jobs
-        .where('userId', isEqualTo: userId)
-        .limit(10)
-        .get();
-    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
-      final String t = (doc.data()['title'] as String?)?.trim().toLowerCase() ?? '';
-      final Timestamp? created = doc.data()['createdAt'] as Timestamp?;
-      if (t == normalized &&
-          created != null &&
-          created.toDate().isAfter(since)) {
-        return true;
-      }
-    }
-    return false;
+    return jobId;
   }
 
   Future<String> _uploadJobAsset(String jobId, File file, String kind) async {
@@ -241,14 +231,16 @@ class JobsRepository {
     return ref.getDownloadURL();
   }
 
-  /// Jobs posted by the signed-in user (any status).
-  Stream<List<JobListing>> watchMyPostedJobs({int limit = 50}) {
-    final String? uid = _uid;
-    if (uid == null) {
+  /// Jobs posted by [userId] (any status).
+  Stream<List<JobListing>> watchMyPostedJobs({
+    required String userId,
+    int limit = 50,
+  }) {
+    if (userId.isEmpty) {
       return Stream<List<JobListing>>.value(const <JobListing>[]);
     }
     return _jobs
-        .where('userId', isEqualTo: uid)
+        .where('userId', isEqualTo: userId)
         .snapshots()
         .map((QuerySnapshot<Map<String, dynamic>> snap) {
           final List<JobListing> list = snap.docs
@@ -295,13 +287,12 @@ class JobsRepository {
     return snap.docs.length;
   }
 
-  Stream<List<JobApplication>> watchMyApplications() {
-    final String? uid = _uid;
-    if (uid == null) {
+  Stream<List<JobApplication>> watchMyApplications({required String userId}) {
+    if (userId.isEmpty) {
       return Stream<List<JobApplication>>.value(const <JobApplication>[]);
     }
     return _applications
-        .where('applicantId', isEqualTo: uid)
+        .where('applicantId', isEqualTo: userId)
         .orderBy('appliedAt', descending: true)
         .snapshots()
         .map(_mapApplications);
@@ -312,12 +303,9 @@ class JobsRepository {
     if (uid == null) {
       return false;
     }
-    final QuerySnapshot<Map<String, dynamic>> snap = await _applications
-        .where('jobId', isEqualTo: jobId)
-        .where('applicantId', isEqualTo: uid)
-        .limit(1)
-        .get();
-    return snap.docs.isNotEmpty;
+    final DocumentSnapshot<Map<String, dynamic>> snap =
+        await _applications.doc('${uid}_$jobId').get();
+    return snap.exists;
   }
 
   Future<void> applyToJob({
@@ -348,13 +336,18 @@ class JobsRepository {
 
     String? cvUrl;
     if (cvFile != null) {
+      final String ext = cvFile.path.split('.').last.toLowerCase();
+      final String? contentType = _cvContentTypeForExtension(ext);
+      if (contentType == null) {
+        throw StateError('CV must be a PDF, DOC, or DOCX file.');
+      }
       final Reference ref =
-          _storage.ref().child('job_applications/$uid/${jobId}_cv.pdf');
-      await ref.putFile(cvFile);
+          _storage.ref().child('job_applications/$uid/${jobId}_cv.$ext');
+      await ref.putFile(cvFile, SettableMetadata(contentType: contentType));
       cvUrl = await ref.getDownloadURL();
     }
 
-    await _applications.add(<String, dynamic>{
+    await _applications.doc('${uid}_$jobId').set(<String, dynamic>{
       'jobId': jobId,
       'applicantId': uid,
       'applicantName': applicantName.trim(),
@@ -455,12 +448,19 @@ class JobsRepository {
     if (uid == null) {
       throw StateError('Sign in to report a job.');
     }
-    await _reports.add(<String, dynamic>{
-      'jobId': jobId,
-      'reporterId': uid,
-      'reason': reason.trim(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      await _reports.doc('${uid}_$jobId').set(<String, dynamic>{
+        'jobId': jobId,
+        'reporterId': uid,
+        'reason': reason.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        throw StateError('You already reported this job.');
+      }
+      rethrow;
+    }
     await _jobs.doc(jobId).update(<String, dynamic>{
       'reportedCount': FieldValue.increment(1),
     });
@@ -469,16 +469,15 @@ class JobsRepository {
   // --- Admin ---
 
   Future<void> approveJob(String jobId) async {
-    await _jobs.doc(jobId).update(<String, dynamic>{
-      'status': JobConstants.statusActive,
-      'approvedAt': FieldValue.serverTimestamp(),
+    await _functions.httpsCallable('approveJobPost').call(<String, dynamic>{
+      'jobId': jobId,
     });
   }
 
   Future<void> rejectJob(String jobId, {String? note}) async {
-    await _jobs.doc(jobId).update(<String, dynamic>{
-      'status': JobConstants.statusRejected,
-      if (note != null) 'rejectionNote': note,
+    await _functions.httpsCallable('rejectJobPost').call(<String, dynamic>{
+      'jobId': jobId,
+      if (note != null) 'note': note,
     });
   }
 

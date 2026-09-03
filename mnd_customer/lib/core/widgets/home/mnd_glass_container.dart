@@ -7,7 +7,7 @@ import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 class MndGlassContainer extends StatelessWidget {
   const MndGlassContainer({
     required this.child,
-    this.borderRadius = 20,
+    this.borderRadius = 14,
     this.padding,
     this.margin,
     this.blurSigma = 18,

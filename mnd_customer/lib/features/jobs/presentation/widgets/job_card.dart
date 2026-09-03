@@ -1,15 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
+import 'package:mnd_delivery_app/core/widgets/sign_in_required_prompt.dart';
+import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_listing.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_providers.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/widgets/job_booked_badge.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/widgets/job_quick_apply_sheet.dart';
+
+Future<void> _toggleJobSave(
+  BuildContext context,
+  WidgetRef ref,
+  String jobId,
+) async {
+  final bool guest = ref.read(guestBrowsingProvider);
+  if (guest || ref.read(firebaseAuthProvider).currentUser == null) {
+    if (context.mounted) {
+      showMndSnackBar(
+        context,
+        'Sign in to save jobs',
+        variant: MndSnackBarVariant.warning,
+      );
+      navigateToSignIn(ref, context, redirectTo: AppRoutes.customerJobs);
+    }
+    return;
+  }
+  try {
+    await ref.read(jobsRepositoryProvider).toggleSaveJob(jobId);
+  } catch (e) {
+    if (context.mounted) {
+      showMndSnackBar(
+        context,
+        userFacingError(e, fallback: 'Could not update saved jobs.'),
+        variant: MndSnackBarVariant.error,
+      );
+    }
+  }
+}
 
 /// Job listing card — full white surface (compact rails + feed list).
 class JobCard extends ConsumerWidget {
@@ -26,10 +60,9 @@ class JobCard extends ConsumerWidget {
   static const double compactHeight = 228;
 
   static BoxDecoration get _whiteDecoration => BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceElevated,
         borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-        boxShadow: AppColors.cardShadow,
+        boxShadow: AppColors.shadowElevated,
       );
 
   @override
@@ -74,6 +107,7 @@ class _CompactJobCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Container(
       width: JobCard.compactWidth,
       height: JobCard.compactHeight,
@@ -93,13 +127,16 @@ class _CompactJobCard extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      _JobTitleRow(job: job, fontSize: 14),
+                      _JobTitleRow(job: job, compact: true),
                       const SizedBox(height: 2),
                       Text(
                         job.companyName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _bodyStyle(11.5, AppColors.textSecondary),
+                        style: textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
@@ -110,7 +147,7 @@ class _CompactJobCard extends ConsumerWidget {
                 else
                   _SaveIconButton(
                     saved: saved,
-                    onTap: () => _toggleSave(context, ref),
+                    onTap: () => _toggleJobSave(context, ref, job.id),
                   ),
               ],
             ),
@@ -124,7 +161,10 @@ class _CompactJobCard extends ConsumerWidget {
               children: <Widget>[
                 Text(
                   job.postedAgo,
-                  style: _bodyStyle(10.5, AppColors.textSecondary),
+                  style: textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
                 const Spacer(),
                 _QuickApplyChip(
@@ -140,17 +180,6 @@ class _CompactJobCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _toggleSave(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(jobsRepositoryProvider).toggleSaveJob(job.id);
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e'), behavior: SnackBarBehavior.floating),
-        );
-      }
-    }
-  }
 }
 
 class _FullJobCard extends ConsumerWidget {
@@ -168,6 +197,7 @@ class _FullJobCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final bool hasBanner =
         job.imageUrl != null && job.imageUrl!.trim().isNotEmpty;
 
@@ -192,13 +222,16 @@ class _FullJobCard extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          _JobTitleRow(job: job, fontSize: 16),
+                          _JobTitleRow(job: job, compact: false),
                           const SizedBox(height: 3),
                           Text(
                             job.companyName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: _bodyStyle(13, AppColors.textSecondary),
+                            style: textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
                           ),
                         ],
                       ),
@@ -208,69 +241,77 @@ class _FullJobCard extends ConsumerWidget {
                     else
                       _SaveIconButton(
                         saved: saved,
-                        onTap: () => _toggleSave(context, ref),
+                        onTap: () => _toggleJobSave(context, ref, job.id),
                       ),
                   ],
                 ),
                 if (job.urgent) ...<Widget>[
                   const SizedBox(height: 10),
-                  const _UrgentBanner(),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: const _UrgentBanner(),
+                  ),
                 ],
                 const SizedBox(height: 12),
                 _SalaryLabel(salary: job.salary),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _MetaChipRow(job: job, isBooked: isBooked),
                 const SizedBox(height: 14),
                 Row(
                   children: <Widget>[
                     Text(
                       job.postedAgo,
-                      style: _bodyStyle(12, AppColors.textSecondary),
+                      style: textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                     const Spacer(),
-                    TextButton(
-                      onPressed: () => context.push(
-                        '${AppRoutes.customerJobDetail}/${job.id}',
-                      ),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.brandPrimary,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                      ),
-                      child: Text(
-                        'Details',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: hasApplied || isBooked
-                          ? null
-                          : () => showJobQuickApplySheet(context, ref, job),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.brandPrimary,
-                        disabledBackgroundColor: AppColors.homeMutedFill,
+                    if (hasApplied || isBooked)
+                      Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
+                          horizontal: 12,
+                          vertical: 8,
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        decoration: BoxDecoration(
+                          color: isBooked
+                              ? AppColors.success.withValues(alpha: 0.1)
+                              : AppColors.homeMutedFill,
+                          borderRadius:
+                              BorderRadius.circular(AppColors.buttonRadius),
+                        ),
+                        child: Text(
+                          isBooked ? 'Booked' : 'Applied',
+                          style: textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: isBooked
+                                ? AppColors.success
+                                : AppColors.textSecondary,
+                          ),
+                        ),
+                      )
+                    else
+                      FilledButton(
+                        onPressed: () =>
+                            showJobQuickApplySheet(context, ref, job),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.brandPrimary,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppColors.buttonRadius),
+                          ),
+                        ),
+                        child: Text(
+                          'Quick apply',
+                          style: textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      child: Text(
-                        isBooked
-                            ? 'Booked'
-                            : hasApplied
-                                ? 'Applied'
-                                : 'Quick apply',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ],
@@ -281,17 +322,6 @@ class _FullJobCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _toggleSave(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(jobsRepositoryProvider).toggleSaveJob(job.id);
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e'), behavior: SnackBarBehavior.floating),
-        );
-      }
-    }
-  }
 }
 
 class _UrgentDot extends StatelessWidget {
@@ -320,11 +350,12 @@ class _UrgentBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: AppColors.offerOrange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppColors.buttonRadius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -333,8 +364,7 @@ class _UrgentBanner extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             'Urgent hiring',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
+            style: textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: AppColors.offerOrange,
             ),
@@ -380,8 +410,20 @@ class _CompanyAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final String? logo = job.logoUrl?.trim();
     final bool hasLogo = logo != null && logo.isNotEmpty;
+    final TextStyle initialsStyle = size >= 48
+        ? textTheme.titleSmall!.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppColors.brandPrimary,
+            letterSpacing: -0.5,
+          )
+        : textTheme.bodyMedium!.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppColors.brandPrimary,
+            letterSpacing: -0.5,
+          );
 
     return Container(
       width: size,
@@ -397,12 +439,7 @@ class _CompanyAvatar extends StatelessWidget {
           : Center(
               child: Text(
                 _initials,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: size * 0.32,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.brandPrimary,
-                  letterSpacing: -0.5,
-                ),
+                style: initialsStyle,
               ),
             ),
     );
@@ -410,13 +447,29 @@ class _CompanyAvatar extends StatelessWidget {
 }
 
 class _JobTitleRow extends StatelessWidget {
-  const _JobTitleRow({required this.job, required this.fontSize});
+  const _JobTitleRow({required this.job, required this.compact});
 
   final JobListing job;
-  final double fontSize;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
+    final TextStyle titleStyle = compact
+        ? textTheme.bodyMedium!.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.35,
+            height: 1.15,
+          )
+        : textTheme.titleSmall!.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.35,
+            height: 1.15,
+          );
+    final double iconSize = compact ? 16 : 18;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -425,20 +478,14 @@ class _JobTitleRow extends StatelessWidget {
             job.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-              letterSpacing: -0.35,
-              height: 1.15,
-            ),
+            style: titleStyle,
           ),
         ),
         if (job.verified) ...<Widget>[
           const SizedBox(width: 4),
           Icon(
             Icons.verified_rounded,
-            size: fontSize + 2,
+            size: iconSize,
             color: AppColors.brandPrimary,
           ),
         ],
@@ -466,6 +513,7 @@ class _SalaryLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Row(
       children: <Widget>[
         Icon(
@@ -479,8 +527,8 @@ class _SalaryLabel extends StatelessWidget {
             _formatSalary(salary),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: compact ? 14 : 16,
+            style: (compact ? textTheme.bodyMedium : textTheme.titleSmall)
+                ?.copyWith(
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
               letterSpacing: -0.25,
@@ -559,6 +607,7 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
@@ -579,8 +628,7 @@ class _InfoChip extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 11,
+            style: textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w600,
               color: filled ? tint : AppColors.textSecondary,
             ),
@@ -603,10 +651,10 @@ class _SaveIconButton extends StatelessWidget {
       color: saved
           ? AppColors.brandPrimary.withValues(alpha: 0.1)
           : AppColors.homeMutedFill,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppColors.buttonRadius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppColors.buttonRadius),
         child: Padding(
           padding: const EdgeInsets.all(7),
           child: Icon(
@@ -633,18 +681,18 @@ class _QuickApplyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Material(
       color: enabled ? AppColors.brandPrimary : AppColors.homeMutedFill,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppColors.buttonRadius),
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppColors.buttonRadius),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           child: Text(
             label,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
+            style: textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: enabled ? Colors.white : AppColors.textSecondary,
             ),
@@ -653,12 +701,4 @@ class _QuickApplyChip extends StatelessWidget {
       ),
     );
   }
-}
-
-TextStyle _bodyStyle(double size, Color color) {
-  return GoogleFonts.plusJakartaSans(
-    fontSize: size,
-    fontWeight: FontWeight.w500,
-    color: color,
-  );
 }

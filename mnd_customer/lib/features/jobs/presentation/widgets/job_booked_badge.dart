@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 
 /// Visual indicator that the current user was booked for a job.
@@ -22,6 +21,7 @@ class JobBookedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     if (compact) {
       return Tooltip(
         message: 'Booked',
@@ -64,8 +64,7 @@ class JobBookedBadge extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               'Booked',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
+              style: textTheme.labelSmall?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: AppColors.success,
               ),
@@ -83,6 +82,7 @@ class JobBookedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -114,8 +114,7 @@ class JobBookedBanner extends StatelessWidget {
               children: <Widget>[
                 Text(
                   'You are booked',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 15,
+                  style: textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                     color: AppColors.success,
                   ),
@@ -123,8 +122,7 @@ class JobBookedBanner extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'The employer selected you for this job. Contact them to confirm start date.',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12.5,
+                  style: textTheme.bodySmall?.copyWith(
                     color: AppColors.textSecondary,
                     height: 1.35,
                   ),

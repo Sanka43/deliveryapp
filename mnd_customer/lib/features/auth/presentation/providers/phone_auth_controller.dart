@@ -1,6 +1,5 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -8,41 +7,49 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
 import 'package:mnd_delivery_app/core/services/fcm_token_repository.dart';
-import 'package:mnd_delivery_app/firebase_options.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-
-/// Debug-only OTP screen: pass this as the SMS [verificationId] (see [LoginPage]).
-const String kTemporaryOtpVerificationId = '__MND_TEMP_OTP__';
+import 'package:mnd_delivery_app/features/customer/data/customer_profile_repository.dart';
+import 'package:mnd_delivery_app/features/customer/domain/entities/customer_profile.dart';
 
 class PhoneAuthState {
   const PhoneAuthState({
     this.isLoading = false,
     this.errorMessage,
+    this.pendingPhoneNumber,
   });
 
   final bool isLoading;
   final String? errorMessage;
+  final String? pendingPhoneNumber;
+
+  bool get hasPendingOtp =>
+      pendingPhoneNumber != null && pendingPhoneNumber!.isNotEmpty;
 
   PhoneAuthState copyWith({
     bool? isLoading,
     String? errorMessage,
+    String? pendingPhoneNumber,
     bool clearError = false,
+    bool clearPendingPhone = false,
   }) {
     return PhoneAuthState(
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      pendingPhoneNumber: clearPendingPhone
+          ? null
+          : (pendingPhoneNumber ?? this.pendingPhoneNumber),
     );
   }
 }
 
-final StateNotifierProvider<PhoneAuthController, PhoneAuthState> phoneAuthControllerProvider =
+final StateNotifierProvider<PhoneAuthController, PhoneAuthState>
+    phoneAuthControllerProvider =
     StateNotifierProvider<PhoneAuthController, PhoneAuthState>(
   (Ref ref) {
     return PhoneAuthController(
       ref.read(firebaseAuthProvider),
       ref.read(firestoreProvider),
       ref.read(firebaseMessagingProvider),
-      ref.read(googleSignInProvider),
+      FirebaseFunctions.instanceFor(region: 'asia-south1'),
     );
   },
 );
@@ -52,242 +59,263 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
     this._auth,
     this._firestore,
     this._messaging,
-    this._googleSignIn,
-  )
-      : super(const PhoneAuthState());
+    this._functions,
+  ) : super(const PhoneAuthState());
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final FirebaseMessaging _messaging;
-  final GoogleSignIn _googleSignIn;
+  final FirebaseFunctions _functions;
 
-  static const String _temporaryOtpCode = '123456';
-  static const String _temporaryDevPassword = 'MndTempOtp123456!';
+  /// Sync locks — Riverpod isLoading alone can race on double-taps.
+  bool _sendInFlight = false;
+  bool _verifyInFlight = false;
 
-  static String _debugEmailForPhone(String phoneNumber) {
-    final String digits = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-    final String safe = digits.isEmpty ? '0' : digits;
-    final String projectId = DefaultFirebaseOptions.currentPlatform.projectId;
-    return 'mnd-temp-debug.$safe@$projectId.firebaseapp.com';
-  }
+  /// Server session id from [requestPhoneOtp] (memory only).
+  String? _sessionId;
 
-  /// Debug builds only: signs in with Email/Password (one Firebase user per phone)
-  /// when [smsCode] is [_temporaryOtpCode]. Writes/merges `customers/{uid}` like phone OTP.
-  ///
-  /// Requires **Email/Password** enabled in Firebase Authentication for this project.
-  Future<bool> signInWithTemporaryOtp({
-    required String phoneNumber,
-    required String smsCode,
-  }) async {
-    if (!kDebugMode) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage:
-            'Invalid or expired code. Request a new OTP and try again.',
-      );
-      return false;
-    }
-    if (smsCode.trim() != _temporaryOtpCode) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage:
-            'Invalid or expired code. Request a new OTP and try again.',
-      );
-      return false;
-    }
+  /// Monotonic id so a slow older send cannot overwrite a newer session.
+  int _sendGeneration = 0;
 
-    state = state.copyWith(isLoading: true, clearError: true);
-
-    final String email = _debugEmailForPhone(phoneNumber);
-
-    try {
-      UserCredential credential;
-      try {
-        credential = await _auth.signInWithEmailAndPassword(
-          email: email,
-          password: _temporaryDevPassword,
-        );
-      } on FirebaseAuthException catch (e) {
-        if (e.code == 'user-not-found' ||
-            e.code == 'wrong-password' ||
-            e.code == 'invalid-credential') {
-          try {
-            credential = await _auth.createUserWithEmailAndPassword(
-              email: email,
-              password: _temporaryDevPassword,
-            );
-          } on FirebaseAuthException catch (createError) {
-            if (createError.code == 'email-already-in-use') {
-              credential = await _auth.signInWithEmailAndPassword(
-                email: email,
-                password: _temporaryDevPassword,
-              );
-            } else {
-              rethrow;
-            }
-          }
-        } else {
-          rethrow;
-        }
-      }
-
-      await _ensureUserProfile(
-        credential.user,
-        fallbackPhoneNumber: phoneNumber,
-      );
-      state = state.copyWith(
-        isLoading: false,
-        clearError: true,
-      );
-      return true;
-    } on FirebaseAuthException catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: _temporaryAuthErrorMessage(e),
-      );
-      return false;
-    } catch (_) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage:
-            'Temporary login failed. Enable Email/Password in Firebase Console and try again.',
-      );
-      return false;
-    }
-  }
-
-  static String _temporaryAuthErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'operation-not-allowed':
-        return 'Email/Password sign-in is not enabled in Firebase Console.';
-      case 'invalid-email':
-        return 'Could not build a dev login email for this phone number.';
-      default:
-        return e.message ?? 'Temporary login failed.';
-    }
-  }
+  String? get pendingVerificationId => _sessionId;
 
   static String _otpSendErrorMessage(Object e) {
-    if (e is FirebaseAuthException) {
+    if (e is FirebaseFunctionsException) {
+      debugPrint('OTP send error code=${e.code} message=${e.message}');
       switch (e.code) {
-        case 'invalid-phone-number':
-          return 'This phone number format is not valid.';
-        case 'too-many-requests':
-          return 'Too many attempts. Please try again later.';
-        case 'quota-exceeded':
-          return 'SMS quota exceeded. Please try again later.';
-        case 'missing-client-identifier':
-        case 'app-not-authorized':
-          final String base =
-              'This app is not authorized to send SMS. In Firebase Console add SHA-1 and SHA-256 for this build, re-download google-services.json, and ensure this package+SHA is not registered in another Firebase project.';
-          if (kDebugMode) {
-            return '$base [${e.code}]';
-          }
-          return base;
-        case 'operation-not-allowed':
-          return 'Phone sign-in is not enabled in Firebase Console.';
+        case 'invalid-argument':
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'This phone number format is not valid.';
+        case 'resource-exhausted':
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'Too many attempts. Please try again later.';
+        case 'unavailable':
+        case 'failed-precondition':
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'SMS could not be sent right now. Please try again later.';
+        case 'deadline-exceeded':
+          return 'Request timed out. Check your connection and try again.';
         default:
-          return e.message ?? 'Could not send verification code.';
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'Could not send verification code. Please try again.';
+      }
+    }
+    if (e is FirebaseAuthException) {
+      debugPrint('OTP send auth error code=${e.code} message=${e.message}');
+      if (e.code == 'network-request-failed') {
+        return 'Network error. Check your connection and try again.';
       }
     }
     return 'Could not send verification code. Please try again.';
   }
 
-  Future<String?> sendOtp(String phoneNumber) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+  static String _otpVerifyErrorMessage(Object e) {
+    if (e is FirebaseFunctionsException) {
+      debugPrint('OTP verify error code=${e.code} message=${e.message}');
+      switch (e.code) {
+        case 'permission-denied':
+          return 'Wrong code. Check the latest SMS and try again.';
+        case 'not-found':
+        case 'failed-precondition':
+        case 'deadline-exceeded':
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'This code is no longer valid. Tap Resend for a new one.';
+        case 'resource-exhausted':
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'Too many attempts. Please try again later.';
+        case 'invalid-argument':
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'Enter the full 6-digit code';
+        default:
+          return e.message?.trim().isNotEmpty == true
+              ? e.message!.trim()
+              : 'Could not verify the code. Tap Resend and use the newest SMS.';
+      }
+    }
+    if (e is FirebaseAuthException) {
+      debugPrint('OTP verify auth error code=${e.code} message=${e.message}');
+      switch (e.code) {
+        case 'invalid-custom-token':
+        case 'custom-token-mismatch':
+          return 'Sign-in failed. Tap Resend and try again.';
+        case 'network-request-failed':
+          return 'Network error. Check your connection and try again.';
+        default:
+          return 'Could not verify the code. Tap Verify again or Resend.';
+      }
+    }
+    return 'OTP verification failed. Please try again.';
+  }
 
-    final Completer<String?> completer = Completer<String?>();
+  Future<String?> sendOtp(
+    String phoneNumber, {
+    bool forceResend = false,
+  }) async {
+    if (_sendInFlight || state.isLoading) {
+      return null;
+    }
+    _sendInFlight = true;
+    final int generation = ++_sendGeneration;
+
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      pendingPhoneNumber: phoneNumber,
+    );
 
     try {
-      await _auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          try {
-            final UserCredential userCredential =
-                await _auth.signInWithCredential(credential);
-            await _ensureUserProfile(
-              userCredential.user,
-              fallbackPhoneNumber: userCredential.user?.phoneNumber,
-            );
-            if (!completer.isCompleted) {
-              completer.complete(null);
-            }
-          } on FirebaseAuthException catch (e) {
-            if (!completer.isCompleted) {
-              completer.completeError(e);
-            }
-          }
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          if (!completer.isCompleted) {
-            completer.completeError(e);
-          }
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          if (!completer.isCompleted) {
-            completer.complete(verificationId);
-          }
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          if (!completer.isCompleted) {
-            completer.complete(verificationId);
-          }
-        },
-      );
+      final HttpsCallableResult<dynamic> result = await _functions
+          .httpsCallable('requestPhoneOtp')
+          .call(<String, dynamic>{
+        'phone': phoneNumber,
+        'purpose': forceResend ? 'customer_resend' : 'customer_login',
+      });
 
-      final String? verificationId = await completer.future;
+      if (generation != _sendGeneration) {
+        return null;
+      }
+
+      final Object? data = result.data;
+      String? sessionId;
+      if (data is Map) {
+        final Object? raw = data['sessionId'];
+        if (raw is String && raw.isNotEmpty) {
+          sessionId = raw;
+        }
+      }
+      if (sessionId == null || sessionId.isEmpty) {
+        throw StateError('requestPhoneOtp missing sessionId');
+      }
+
+      _sessionId = sessionId;
       state = state.copyWith(
         isLoading: false,
         clearError: true,
+        pendingPhoneNumber: phoneNumber,
       );
-      return verificationId;
+      return sessionId;
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: _otpSendErrorMessage(e),
-      );
+      debugPrint('OTP send failed: $e');
+      if (generation == _sendGeneration) {
+        _sessionId = null;
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: _otpSendErrorMessage(e),
+          clearPendingPhone: true,
+        );
+      }
       return null;
+    } finally {
+      if (generation == _sendGeneration) {
+        _sendInFlight = false;
+      }
     }
   }
 
   Future<bool> verifyOtp({
-    required String verificationId,
     required String smsCode,
+    String? verificationId,
   }) async {
+    if (_verifyInFlight || state.isLoading) {
+      return false;
+    }
+    _verifyInFlight = true;
     state = state.copyWith(isLoading: true, clearError: true);
 
+    final String code = smsCode.replaceAll(RegExp(r'\D'), '');
+    if (code.length != 6) {
+      _verifyInFlight = false;
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Enter the full 6-digit code',
+      );
+      return false;
+    }
+
+    final String? phone = state.pendingPhoneNumber;
+    if (phone == null || phone.isEmpty) {
+      _verifyInFlight = false;
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Session expired. Go back and request a new OTP.',
+      );
+      return false;
+    }
+
+    final String? sessionId = _sessionId ?? verificationId;
+    if (sessionId == null || sessionId.isEmpty) {
+      _verifyInFlight = false;
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Session expired. Go back and request a new OTP.',
+      );
+      return false;
+    }
+
     try {
-      final PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: smsCode,
-      );
+      final HttpsCallableResult<dynamic> result = await _functions
+          .httpsCallable('verifyPhoneOtp')
+          .call(<String, dynamic>{
+        'phone': phone,
+        'otp': code,
+        'sessionId': sessionId,
+      });
+
+      final Object? data = result.data;
+      String? customToken;
+      if (data is Map) {
+        final Object? raw = data['customToken'];
+        if (raw is String && raw.isNotEmpty) {
+          customToken = raw;
+        }
+      }
+      if (customToken == null) {
+        throw StateError('verifyPhoneOtp missing customToken');
+      }
+
       final UserCredential userCredential =
-          await _auth.signInWithCredential(credential);
-      await _ensureUserProfile(
-        userCredential.user,
-        fallbackPhoneNumber: userCredential.user?.phoneNumber,
-      );
+          await _auth.signInWithCustomToken(customToken);
+
+      try {
+        await _ensureUserProfile(
+          userCredential.user,
+          fallbackPhoneNumber: phone,
+        );
+      } catch (e, st) {
+        // Sign-in already succeeded; profile sync is best-effort.
+        debugPrint('OTP profile sync failed after sign-in: $e\n$st');
+      }
+
+      _sessionId = null;
       state = state.copyWith(
         isLoading: false,
         clearError: true,
+        clearPendingPhone: true,
       );
       return true;
-    } on FirebaseAuthException catch (e) {
-      final String message = e.code == 'invalid-verification-code'
-          ? 'Invalid or expired code. Request a new OTP and try again.'
-          : (e.message ?? 'Invalid OTP code');
+    } catch (e, st) {
+      debugPrint('OTP verify failed: $e\n$st');
+      final bool sessionDead = e is FirebaseFunctionsException &&
+          (e.code == 'not-found' ||
+              e.code == 'deadline-exceeded' ||
+              e.code == 'failed-precondition');
+      if (sessionDead) {
+        _sessionId = null;
+      }
       state = state.copyWith(
         isLoading: false,
-        errorMessage: message,
+        errorMessage: _otpVerifyErrorMessage(e),
       );
       return false;
-    } catch (_) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: 'OTP verification failed. Please try again.',
-      );
-      return false;
+    } finally {
+      _verifyInFlight = false;
     }
   }
 
@@ -295,59 +323,17 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
     state = state.copyWith(clearError: true);
   }
 
-  Future<bool> signInWithGoogle() async {
-    state = state.copyWith(isLoading: true, clearError: true);
-    try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        state = state.copyWith(isLoading: false, clearError: true);
-        return false;
-      }
-
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      final OAuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final UserCredential userCredential =
-          await _auth.signInWithCredential(credential);
-      await _ensureUserProfile(
-        userCredential.user,
-      );
-      state = state.copyWith(
-        isLoading: false,
-        clearError: true,
-      );
-      return true;
-    } on FirebaseAuthException catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: e.message ?? 'Google Sign-In failed',
-      );
-      return false;
-    } catch (_) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: 'Google Sign-In failed. Please try again.',
-      );
-      return false;
-    }
-  }
-
-  Future<void> _ensureUserProfile(
+  /// Creates or merges [customers]/{uid}, syncs FCM, then returns the merged profile.
+  Future<CustomerProfile?> _ensureUserProfile(
     User? user, {
     String? fallbackPhoneNumber,
   }) async {
     if (user == null) {
-      return;
+      return null;
     }
 
-    final DocumentReference<Map<String, dynamic>> userRef = _firestore
-        .collection(FirebaseCollections.customers)
-        .doc(user.uid);
+    final DocumentReference<Map<String, dynamic>> userRef =
+        _firestore.collection(FirebaseCollections.customers).doc(user.uid);
     final DocumentSnapshot<Map<String, dynamic>> snapshot = await userRef.get();
 
     if (!snapshot.exists) {
@@ -360,24 +346,26 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      return;
+    } else {
+      await userRef.set(
+        <String, dynamic>{
+          'displayName': user.displayName,
+          'email': user.email,
+          'phoneNumber': user.phoneNumber ?? fallbackPhoneNumber,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
     }
-
-    await userRef.set(
-      <String, dynamic>{
-        'displayName': user.displayName,
-        'email': user.email,
-        'phoneNumber': user.phoneNumber ?? fallbackPhoneNumber,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
 
     await FcmTokenRepository(
       firestore: _firestore,
       auth: _auth,
       messaging: _messaging,
     ).syncTokenForCurrentUser();
+
+    final DocumentSnapshot<Map<String, dynamic>> fresh = await userRef.get();
+    return CustomerProfile.merge(user, fresh.data());
   }
 
   Future<void> signOut() async {
@@ -388,20 +376,12 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
         auth: _auth,
         messaging: _messaging,
       ).clearTokenForCurrentUser();
-      // Invalidate push token on this device as part of logout cleanup.
       await _messaging.deleteToken();
     } catch (_) {}
 
     try {
-      await _googleSignIn.disconnect();
-    } catch (_) {
-      try {
-        await _googleSignIn.signOut();
-      } catch (_) {}
-    }
-
-    try {
       await _auth.signOut();
+      _sessionId = null;
       state = const PhoneAuthState(
         isLoading: false,
       );
@@ -409,6 +389,68 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Logout failed. Please try again.',
+      );
+    }
+  }
+
+  /// Deletes Auth user + customer profile data (Play Store account deletion).
+  Future<void> deleteAccount() async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'You must be signed in to delete your account.',
+      );
+      return;
+    }
+
+    final String uid = user.uid;
+
+    try {
+      await FcmTokenRepository(
+        firestore: _firestore,
+        auth: _auth,
+        messaging: _messaging,
+      ).clearTokenForCurrentUser();
+    } catch (_) {}
+
+    try {
+      await CustomerProfileRepository(
+        auth: _auth,
+        firestore: _firestore,
+      ).wipeAccountOwnedData(uid);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage:
+            'Could not remove your profile data. Please try again or contact support.',
+      );
+      return;
+    }
+
+    try {
+      await user.delete();
+      _sessionId = null;
+      state = const PhoneAuthState(isLoading: false);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage:
+              'For security, sign out, sign in again with OTP, then delete your account.',
+        );
+        return;
+      }
+      debugPrint('Account delete failed: code=${e.code} message=${e.message}');
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Could not delete your account. Please try again.',
+      );
+    } catch (_) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Could not delete your account. Please try again.',
       );
     }
   }

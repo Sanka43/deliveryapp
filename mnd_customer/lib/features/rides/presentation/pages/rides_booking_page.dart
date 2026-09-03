@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,7 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
-import 'package:mnd_delivery_app/core/services/google_maps_web_loader.dart';
+import 'package:mnd_delivery_app/core/widgets/map_unavailable_banner.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/core/widgets/sign_in_required_prompt.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
@@ -218,7 +217,9 @@ class _RidesBookingPageState extends ConsumerState<RidesBookingPage> {
 
   Future<void> _fitRouteIfPossible() async {
     final RideBookingDraft draft = ref.read(rideBookingDraftProvider);
-    if (draft.pickup == null || draft.dropoff == null || _mapController == null) {
+    if (draft.pickup == null ||
+        draft.dropoff == null ||
+        _mapController == null) {
       return;
     }
     final List<LatLng> points = <LatLng>[
@@ -258,7 +259,8 @@ class _RidesBookingPageState extends ConsumerState<RidesBookingPage> {
   void _onViewVehicle() {
     final RideBookingDraft draft = ref.read(rideBookingDraftProvider);
     if (!draft.canViewVehicles) {
-      showMndSnackBar(context, 'Choose pickup and drop-off first.', variant: MndSnackBarVariant.warning);
+      showMndSnackBar(context, 'Choose pickup and drop-off first.',
+          variant: MndSnackBarVariant.warning);
       return;
     }
     // Ensure fare prefetch is running before confirm opens — only once
@@ -295,8 +297,7 @@ class _RidesBookingPageState extends ConsumerState<RidesBookingPage> {
     final AsyncValue<RideTrip?> unpaidCompleted =
         ref.watch(unpaidCompletedRideTripProvider);
     final bool guest = ref.watch(guestBrowsingProvider);
-    final bool signedOut =
-        ref.watch(firebaseAuthProvider).currentUser == null;
+    final bool signedOut = ref.watch(firebaseAuthProvider).currentUser == null;
     final bool showSignInBanner = guest || signedOut;
     // Prefetch server fares as soon as both pins exist (before confirm) —
     // only once signed in. `quoteRideFares` requires auth and throws
@@ -464,34 +465,13 @@ class _RidesBookingPageState extends ConsumerState<RidesBookingPage> {
                   if (showSignInBanner) ...<Widget>[
                     const SizedBox(height: 8),
                     SignInRequiredBanner(
-                      message:
-                          'Sign in to book rides and track your trips.',
+                      message: 'Sign in to book rides and track your trips.',
                       redirectTo: AppRoutes.customerRides,
                     ),
                   ],
-                  if (kIsWeb && googleMapsWebScriptFailed) ...<Widget>[
+                  if (MapUnavailableBanner.shouldShow) ...<Widget>[
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Row(
-                        children: <Widget>[
-                          Icon(Icons.warning_amber_rounded,
-                              color: Colors.black87),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Map unavailable — missing or invalid Google Maps '
-                              'key. See README.md (dart_defines.json).',
-                              style: TextStyle(color: Colors.black87),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const MapUnavailableBanner(),
                   ],
                 ],
               ),
@@ -529,11 +509,13 @@ class _RidesBookingPageState extends ConsumerState<RidesBookingPage> {
                           child: Text(
                             "Couldn't load your active ride. Tap to retry.",
                             textAlign: TextAlign.center,
-                            style:
-                                Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: AppColors.textPrimary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -583,7 +565,9 @@ class _RidesBookingPageState extends ConsumerState<RidesBookingPage> {
                             hint: 'tap to choose on map',
                             onTap: _openPickupPicker,
                           ),
-                          for (int i = 0; i < draft.stops.length; i++) ...<Widget>[
+                          for (int i = 0;
+                              i < draft.stops.length;
+                              i++) ...<Widget>[
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 10),
                               child:

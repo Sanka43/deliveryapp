@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:mnd_delivery_app/core/utils/placemark_address_utils.dart';
 
 /// Resolved GPS label for the home header.
 class CustomerLiveLocationLabel {
@@ -27,34 +28,11 @@ class CustomerLiveLocationLabel {
 
 class CustomerLiveLocationService {
   static String formatPlacemarkLine(Placemark p) {
-    final String street = (p.street ?? '').trim();
-    final String thoroughfare = (p.thoroughfare ?? '').trim();
-    final String name = (p.name ?? '').trim();
-    final String sub = (p.subThoroughfare ?? '').trim();
-
-    String primary;
-    if (street.isNotEmpty) {
-      primary = street;
-    } else {
-      final List<String> parts = <String>[
-        if (sub.isNotEmpty) sub,
-        if (thoroughfare.isNotEmpty) thoroughfare,
-        if (name.isNotEmpty && name != thoroughfare) name,
-      ];
-      primary = parts.join(', ');
+    final String label = formatPlacemarkLabel(p);
+    if (label.isNotEmpty) {
+      return label;
     }
-
-    final String city =
-        (p.locality ?? p.subAdministrativeArea ?? p.administrativeArea ?? '')
-            .trim();
-
-    if (primary.isEmpty && city.isNotEmpty) {
-      return city;
-    }
-    if (primary.isNotEmpty && city.isNotEmpty && !primary.contains(city)) {
-      return '$primary, $city';
-    }
-    return primary.isNotEmpty ? primary : (city.isNotEmpty ? city : 'Unknown area');
+    return 'Unknown area';
   }
 
   static Future<CustomerLiveLocationLabel> labelForPosition(Position position) async {
@@ -70,12 +48,15 @@ class CustomerLiveLocationService {
           isLive: true,
         );
       }
+      final String line = formatBestPlacemarkLabel(marks);
       final Placemark p = marks.first;
-      final String city =
-          (p.locality ?? p.subAdministrativeArea ?? p.administrativeArea ?? '')
-              .trim();
+      final String city = cleanAddressPart(
+        p.locality ?? p.subAdministrativeArea ?? p.administrativeArea,
+      );
       return CustomerLiveLocationLabel(
-        line: formatPlacemarkLine(p),
+        line: line.isNotEmpty
+            ? line
+            : '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}',
         city: city.isNotEmpty ? city : null,
         isLive: true,
       );

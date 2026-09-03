@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/phone_auth_controller.dart';
 
@@ -40,7 +41,7 @@ class LogoutActionButton extends ConsumerWidget {
 
     final String? error = ref.read(phoneAuthControllerProvider).errorMessage;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      showMndSnackBar(context, error, variant: MndSnackBarVariant.error);
       return;
     }
 

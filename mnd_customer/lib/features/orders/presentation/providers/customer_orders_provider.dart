@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/features/orders/data/customer_orders_repository.dart';
@@ -12,7 +13,17 @@ final Provider<CustomerOrdersRepository> customerOrdersRepositoryProvider =
 });
 
 /// Real-time list of the current customer’s orders (newest first).
+///
+/// Watches [authStateUserProvider] so the stream rebinds after sign-in / sign-out.
 final StreamProvider<List<CustomerOrderSummary>> customerOrdersStreamProvider =
     StreamProvider<List<CustomerOrderSummary>>((Ref ref) {
-  return ref.watch(customerOrdersRepositoryProvider).watchMyOrders();
+  final User? user = resolveAuthUser(ref);
+  if (user == null) {
+    return Stream<List<CustomerOrderSummary>>.value(
+      const <CustomerOrderSummary>[],
+    );
+  }
+  return ref
+      .watch(customerOrdersRepositoryProvider)
+      .watchMyOrders(user.uid);
 });

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
 
 /// Loading / error / empty wrapper for jobs list screens.
 class JobsAsyncBody<T> extends StatelessWidget {
@@ -27,7 +28,10 @@ class JobsAsyncBody<T> extends StatelessWidget {
       loading: () => JobsLoadingState(message: loadingMessage),
       error: (Object e, _) => JobsErrorState(
         message: errorMessage ?? 'Something went wrong',
-        detail: '$e',
+        detail: userFacingError(
+          e,
+          fallback: errorMessage ?? 'Something went wrong. Please try again.',
+        ),
         onRetry: onRetry,
       ),
       data: data,
@@ -42,27 +46,28 @@ class JobsLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Center(
-      child: Container(
-        margin: const EdgeInsets.all(AppSpacing.lg),
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-          boxShadow: AppColors.cardShadow,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const CircularProgressIndicator(color: AppColors.brandPrimary),
-            if (message != null) ...<Widget>[
-              const SizedBox(height: 14),
-              Text(
-                message!,
-                style: GoogleFonts.plusJakartaSans(color: AppColors.textSecondary),
-              ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: MndPremiumCard(
+          borderRadius: AppColors.cardRadiusLg,
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const CircularProgressIndicator(color: AppColors.brandPrimary),
+              if (message != null) ...<Widget>[
+                const SizedBox(height: 14),
+                Text(
+                  message!,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -83,51 +88,52 @@ class JobsErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Center(
-      child: Container(
-        margin: const EdgeInsets.all(AppSpacing.lg),
+      child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-          boxShadow: AppColors.cardShadow,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.textSecondary),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
+        child: MndPremiumCard(
+          borderRadius: AppColors.cardRadiusLg,
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const _JobsIconWell(
+                icon: Icons.cloud_off_rounded,
+                background: AppColors.homeMutedFill,
+                iconColor: AppColors.textSecondary,
               ),
-            ),
-            if (detail != null && detail!.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 6),
+              const SizedBox(height: 14),
               Text(
-                detail!,
+                message,
                 textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
+                style: textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
                 ),
               ),
+              if (detail != null && detail!.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 6),
+                Text(
+                  detail!,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+              if (onRetry != null) ...<Widget>[
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Try again'),
+                ),
+              ],
             ],
-            if (onRetry != null) ...<Widget>[
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try again'),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -150,36 +156,63 @@ class JobsEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     return Center(
-      child: Container(
-        margin: const EdgeInsets.all(AppSpacing.lg),
+      child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-          boxShadow: AppColors.cardShadow,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 56, color: AppColors.brandPrimary.withValues(alpha: 0.5)),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(
-                color: AppColors.textSecondary,
-                height: 1.4,
+        child: MndPremiumCard(
+          borderRadius: AppColors.cardRadiusLg,
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              _JobsIconWell(
+                icon: icon,
+                background: AppColors.serviceJobs,
+                iconColor: AppColors.accentPurple,
               ),
-            ),
-            if (actionLabel != null && onAction != null) ...<Widget>[
               const SizedBox(height: 16),
-              FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+              if (actionLabel != null && onAction != null) ...<Widget>[
+                const SizedBox(height: 16),
+                FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+              ],
             ],
-          ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _JobsIconWell extends StatelessWidget {
+  const _JobsIconWell({
+    required this.icon,
+    required this.background,
+    required this.iconColor,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(icon, size: 26, color: iconColor),
     );
   }
 }

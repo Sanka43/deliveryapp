@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_detail.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_summary.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/rider_live_location.dart';
@@ -16,15 +19,14 @@ class CustomerOrdersRepository {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
 
-  /// Firestore [orders] for the signed-in user, newest first. Empty stream if not signed in.
-  Stream<List<CustomerOrderSummary>> watchMyOrders() {
-    final User? user = _auth.currentUser;
-    if (user == null) {
+  /// Firestore [orders] for [customerUid], newest first. Empty stream if uid is empty.
+  Stream<List<CustomerOrderSummary>> watchMyOrders(String customerUid) {
+    if (customerUid.isEmpty) {
       return Stream<List<CustomerOrderSummary>>.value(const <CustomerOrderSummary>[]);
     }
     return _firestore
         .collection(FirebaseCollections.orders)
-        .where('customerId', isEqualTo: user.uid)
+        .where('customerId', isEqualTo: customerUid)
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map(
@@ -40,10 +42,12 @@ class CustomerOrdersRepository {
         );
   }
 
-  /// Single order document for the signed-in customer only.
-  Stream<CustomerOrderDetail?> watchOrderDetail(String orderId) {
-    final User? user = _auth.currentUser;
-    if (user == null) {
+  /// Single order document owned by [customerUid] only.
+  Stream<CustomerOrderDetail?> watchOrderDetail({
+    required String orderId,
+    required String customerUid,
+  }) {
+    if (customerUid.isEmpty) {
       return Stream<CustomerOrderDetail?>.value(null);
     }
     return _firestore
@@ -56,28 +60,66 @@ class CustomerOrdersRepository {
       }
       final Map<String, dynamic> data = snapshot.data()!;
       final String? owner = data['customerId'] as String?;
-      if (owner != user.uid) {
+      if (owner != customerUid) {
         return null;
       }
       return CustomerOrderDetail.fromDoc(snapshot.id, data);
     });
   }
 
-  /// Real-time location for a rider document (no auth check — secure in Firestore rules).
+  /// Real-time location from `rider_locations/{riderId}` (no rider PII).
+  ///
+  /// Rules only allow reading this doc while `online == true`, so when a
+  /// rider goes offline the listener gets `permission-denied` — and Firestore
+  /// treats that as terminal, killing the underlying native listener for
+  /// good. Mapping that error to `null` (empty/offline state) isn't enough by
+  /// itself: without resubscribing, the stream would never receive updates
+  /// again even after the rider goes back online and the doc starts changing.
+  /// So on `permission-denied` we tear down and re-`snapshots()` on a timer,
+  /// which picks the feed back up as soon as `online` flips true again.
   Stream<RiderLiveLocation?> watchRiderLiveLocation(String riderId) {
     if (riderId.isEmpty) {
       return Stream<RiderLiveLocation?>.value(null);
     }
-    return _firestore
-        .collection(FirebaseCollections.riders)
-        .doc(riderId)
-        .snapshots()
-        .map((DocumentSnapshot<Map<String, dynamic>> snapshot) {
-      if (!snapshot.exists || snapshot.data() == null) {
-        return null;
-      }
-      return RiderLiveLocation.fromMap(snapshot.data()!);
-    });
+
+    late final StreamController<RiderLiveLocation?> controller;
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sub;
+    Timer? retryTimer;
+
+    void subscribe() {
+      sub = _firestore
+          .collection(FirebaseCollections.riderLocations)
+          .doc(riderId)
+          .snapshots()
+          .listen(
+        (DocumentSnapshot<Map<String, dynamic>> snapshot) {
+          if (!snapshot.exists || snapshot.data() == null) {
+            controller.add(null);
+            return;
+          }
+          controller.add(RiderLiveLocation.fromMap(snapshot.data()!));
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (error is FirebaseException && error.code == 'permission-denied') {
+            controller.add(null);
+            unawaited(sub?.cancel());
+            retryTimer?.cancel();
+            retryTimer = Timer(const Duration(seconds: 5), subscribe);
+            return;
+          }
+          controller.addError(error, stackTrace);
+        },
+      );
+    }
+
+    controller = StreamController<RiderLiveLocation?>.broadcast(
+      onListen: subscribe,
+      onCancel: () {
+        retryTimer?.cancel();
+        unawaited(sub?.cancel());
+      },
+    );
+    return controller.stream;
   }
 
   /// Customer cancels their own order with a reason (validated in a transaction).
@@ -133,12 +175,14 @@ class CustomerOrdersRepository {
         transaction.update(ref, update);
       });
       return OrderCancellationResult.success();
-    } on FirebaseException catch (e) {
-      return OrderCancellationResult.failure(e.message ?? 'Could not cancel order.');
     } on StateError catch (e) {
-      return OrderCancellationResult.failure(e.message);
+      return OrderCancellationResult.failure(
+        userFacingError(e, fallback: 'Could not cancel order.'),
+      );
     } catch (e) {
-      return OrderCancellationResult.failure(e.toString());
+      return OrderCancellationResult.failure(
+        userFacingError(e, fallback: 'Could not cancel order.'),
+      );
     }
   }
 
@@ -179,8 +223,8 @@ class CustomerOrdersRepository {
         }
         final String status =
             (order['status'] as String?)?.trim().toLowerCase() ?? '';
-        if (status != 'delivered') {
-          throw StateError('You can rate only after delivery.');
+        if (status != 'delivered' && status != 'completed') {
+          throw StateError('You can rate only after the order is finished.');
         }
         if (order['storeRated'] == true) {
           throw StateError('You already rated this order.');
@@ -216,12 +260,99 @@ class CustomerOrdersRepository {
         });
       });
       return StoreRatingResult.success();
-    } on FirebaseException catch (e) {
-      return StoreRatingResult.failure(e.message ?? 'Could not submit rating.');
     } on StateError catch (e) {
-      return StoreRatingResult.failure(e.message);
+      return StoreRatingResult.failure(
+        userFacingError(e, fallback: 'Could not submit rating.'),
+      );
     } catch (e) {
-      return StoreRatingResult.failure(e.toString());
+      return StoreRatingResult.failure(
+        userFacingError(e, fallback: 'Could not submit rating.'),
+      );
+    }
+  }
+
+  /// Submit a 1–5 star rider rating for a delivered order (one rating per order).
+  Future<StoreRatingResult> submitRiderRating({
+    required String orderId,
+    required int stars,
+    String? comment,
+  }) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      return StoreRatingResult.failure('Sign in to rate this rider.');
+    }
+    if (stars < 1 || stars > 5) {
+      return StoreRatingResult.failure('Choose a rating from 1 to 5 stars.');
+    }
+
+    final String trimmedComment = (comment ?? '').trim();
+    if (trimmedComment.length > 500) {
+      return StoreRatingResult.failure('Comment must be 500 characters or less.');
+    }
+
+    try {
+      await _firestore.runTransaction((Transaction transaction) async {
+        final DocumentReference<Map<String, dynamic>> orderRef =
+            _firestore.collection(FirebaseCollections.orders).doc(orderId);
+        final DocumentReference<Map<String, dynamic>> ratingRef =
+            _firestore.collection(FirebaseCollections.riderRatings).doc(orderId);
+
+        final DocumentSnapshot<Map<String, dynamic>> orderSnap =
+            await transaction.get(orderRef);
+        if (!orderSnap.exists || orderSnap.data() == null) {
+          throw StateError('Order not found.');
+        }
+        final Map<String, dynamic> order = orderSnap.data()!;
+        if (order['customerId'] != user.uid) {
+          throw StateError('You cannot rate this order.');
+        }
+        final String status =
+            (order['status'] as String?)?.trim().toLowerCase() ?? '';
+        if (status != 'delivered' && status != 'completed') {
+          throw StateError('You can rate only after the order is finished.');
+        }
+        if (order['riderRated'] == true) {
+          throw StateError('You already rated this rider.');
+        }
+
+        final DocumentSnapshot<Map<String, dynamic>> existingRating =
+            await transaction.get(ratingRef);
+        if (existingRating.exists) {
+          throw StateError('You already rated this rider.');
+        }
+
+        final String riderId =
+            ((order['riderId'] ?? order['assignedRiderId']) as String?)
+                    ?.trim() ??
+                '';
+        if (riderId.isEmpty) {
+          throw StateError('Rider is missing on this order.');
+        }
+
+        transaction.set(ratingRef, <String, dynamic>{
+          'orderId': orderId,
+          'customerId': user.uid,
+          'riderId': riderId,
+          'stars': stars,
+          'comment': trimmedComment,
+          'status': 'visible',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        transaction.update(orderRef, <String, dynamic>{
+          'riderRated': true,
+          'riderRatingStars': stars,
+        });
+      });
+      return StoreRatingResult.success();
+    } on StateError catch (e) {
+      return StoreRatingResult.failure(
+        userFacingError(e, fallback: 'Could not submit rating.'),
+      );
+    } catch (e) {
+      return StoreRatingResult.failure(
+        userFacingError(e, fallback: 'Could not submit rating.'),
+      );
     }
   }
 }

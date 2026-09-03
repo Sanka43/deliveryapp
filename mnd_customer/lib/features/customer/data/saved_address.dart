@@ -9,6 +9,8 @@ class SavedAddress {
     required this.city,
     required this.phone,
     required this.isDefault,
+    this.latitude,
+    this.longitude,
     this.createdAt,
   });
 
@@ -19,7 +21,14 @@ class SavedAddress {
   final String city;
   final String phone;
   final bool isDefault;
+
+  /// Pinned drop-off coordinates, if the address was saved via map pick.
+  /// Null for legacy addresses saved before pinning was captured.
+  final double? latitude;
+  final double? longitude;
   final DateTime? createdAt;
+
+  bool get hasPin => latitude != null && longitude != null;
 
   factory SavedAddress.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -36,6 +45,8 @@ class SavedAddress {
       city: (data['city'] as String?) ?? '',
       phone: (data['phone'] as String?) ?? '',
       isDefault: data['isDefault'] as bool? ?? false,
+      latitude: (data['latitude'] as num?)?.toDouble(),
+      longitude: (data['longitude'] as num?)?.toDouble(),
       createdAt: ts?.toDate(),
     );
   }
@@ -48,6 +59,8 @@ class SavedAddress {
       'city': city.trim(),
       'phone': phone.trim(),
       'isDefault': isDefault,
+      'latitude': latitude,
+      'longitude': longitude,
       if (includeCreatedAt) 'createdAt': FieldValue.serverTimestamp(),
     };
   }

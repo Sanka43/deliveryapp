@@ -1,22 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:mnd_delivery_app/core/widgets/logout_action_button.dart';
 
-/// Shown when this install (customer app) is opened by a rider or vendor account.
+/// Shown when this install (customer app) is opened by a non-customer role.
 class WrongDedicatedAppPage extends StatelessWidget {
   const WrongDedicatedAppPage({
     required this.forRider,
+    this.forAdmin = false,
     super.key,
   });
 
   final bool forRider;
+  final bool forAdmin;
 
   @override
   Widget build(BuildContext context) {
-    final String title = forRider ? 'Rider account' : 'Vendor account';
-    final String appName = forRider ? 'MND Rider' : 'MND Vendor';
-    final String body = forRider
-        ? 'This phone build is the customer app. Riders should sign in using the MND Rider app.'
-        : 'This phone build is the customer app. Shop owners should sign in using the MND Vendor app.';
+    final String title;
+    final IconData icon;
+    final String body;
+    final String nextStep;
+
+    if (forAdmin) {
+      title = 'Admin account';
+      icon = Icons.admin_panel_settings_outlined;
+      body =
+          'This Play Store build is for customers only. Admin tools are not included here.';
+      nextStep = 'Use the internal admin distribution, or sign out.';
+    } else if (forRider) {
+      title = 'Rider account';
+      icon = Icons.delivery_dining_rounded;
+      body =
+          'This phone build is the customer app. Riders should sign in using the MND Rider app.';
+      nextStep = 'Install and open: MND Rider';
+    } else {
+      title = 'Vendor account';
+      icon = Icons.storefront_rounded;
+      body =
+          'This phone build is the customer app. Shop owners should sign in using the MND Vendor app.';
+      nextStep = 'Install and open: MND Vendor';
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -31,7 +52,7 @@ class WrongDedicatedAppPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Icon(
-              forRider ? Icons.delivery_dining_rounded : Icons.storefront_rounded,
+              icon,
               size: 56,
               color: Theme.of(context).colorScheme.primary,
             ),
@@ -47,7 +68,7 @@ class WrongDedicatedAppPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Install and open: $appName',
+              nextStep,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),

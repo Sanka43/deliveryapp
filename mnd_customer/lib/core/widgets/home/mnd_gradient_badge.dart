@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 
-enum MndBadgeStyle { brand, success, offer, neutral }
+enum MndBadgeStyle { brand, success, offer, warning, error, neutral }
 
 class MndGradientBadge extends StatelessWidget {
   const MndGradientBadge({
@@ -26,6 +26,14 @@ class MndGradientBadge extends StatelessWidget {
         ),
       MndBadgeStyle.offer => (
           colors: <Color>[AppColors.offerOrange, Color(0xFFFB923C)],
+          text: Colors.white,
+        ),
+      MndBadgeStyle.warning => (
+          colors: <Color>[AppColors.warning, Color(0xFFFBBF24)],
+          text: Colors.white,
+        ),
+      MndBadgeStyle.error => (
+          colors: <Color>[AppColors.error, Color(0xFFEF4444)],
           text: Colors.white,
         ),
       MndBadgeStyle.neutral => (

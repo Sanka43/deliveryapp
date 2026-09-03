@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/customer/data/saved_address.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/saved_addresses_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/address_form_dialog.dart';
@@ -13,9 +17,8 @@ class SavedAddressesPage extends ConsumerWidget {
     final AsyncValue<List<SavedAddress>> async = ref.watch(savedAddressesStreamProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Saved addresses'),
-      ),
+      backgroundColor: AppColors.backgroundCanvas,
+      appBar: mndPageAppBar(title: 'Saved addresses'),
       body: async.when(
         data: (List<SavedAddress> addresses) {
           if (addresses.isEmpty) {
@@ -52,7 +55,7 @@ class SavedAddressesPage extends ConsumerWidget {
                 child: ListTile(
                   leading: Icon(
                     a.isDefault ? Icons.star_rounded : Icons.location_on_outlined,
-                    color: a.isDefault ? Colors.amber.shade700 : null,
+                    color: a.isDefault ? AppColors.warning : null,
                   ),
                   title: Text(a.label),
                   subtitle: Text(
@@ -80,20 +83,22 @@ class SavedAddressesPage extends ConsumerWidget {
                             city: result.city,
                             phone: result.phone,
                             isDefault: result.isDefault,
+                            latitude: result.latitude,
+                            longitude: result.longitude,
                           );
                           if (context.mounted && err != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                            showMndSnackBar(context, err, variant: MndSnackBarVariant.error);
                           }
                         }
                       } else if (value == 'default') {
                         final String? err = await actions.setDefaultAddress(a.id);
                         if (context.mounted && err != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                          showMndSnackBar(context, err, variant: MndSnackBarVariant.error);
                         }
                       } else if (value == 'delete') {
                         final String? err = await actions.deleteAddress(a.id);
                         if (context.mounted && err != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+                          showMndSnackBar(context, err, variant: MndSnackBarVariant.error);
                         }
                       }
                     },
@@ -114,7 +119,10 @@ class SavedAddressesPage extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: Text(
-              'Could not load addresses.\n$e',
+              userFacingError(
+                e,
+                fallback: 'Could not load addresses. Please try again.',
+              ),
               textAlign: TextAlign.center,
             ),
           ),
@@ -137,9 +145,11 @@ class SavedAddressesPage extends ConsumerWidget {
               city: result.city,
               phone: result.phone,
               setAsDefault: result.isDefault,
+              latitude: result.latitude,
+              longitude: result.longitude,
             );
             if (context.mounted && err != null) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+              showMndSnackBar(context, err, variant: MndSnackBarVariant.error);
             }
           }
         },

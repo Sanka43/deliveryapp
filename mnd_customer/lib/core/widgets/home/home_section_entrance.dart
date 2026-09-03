@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Fade + slide entrance for home sections (respects reduce motion).
+/// On Flutter web, skip motion to reduce CanvasKit jank on first paint.
 class HomeSectionEntrance extends StatefulWidget {
   const HomeSectionEntrance({
     required this.child,
@@ -34,6 +36,11 @@ class _HomeSectionEntranceState extends State<HomeSectionEntrance>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
+    if (kIsWeb) {
+      _controller.value = 1;
+      return;
+    }
+
     Future<void>.delayed(widget.delay, () {
       if (mounted) {
         _controller.forward();
@@ -57,6 +64,9 @@ class _HomeSectionEntranceState extends State<HomeSectionEntrance>
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return widget.child;
+    }
     return FadeTransition(
       opacity: _opacity,
       child: SlideTransition(position: _offset, child: widget.child),

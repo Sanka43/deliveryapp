@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_detail.dart';
 import 'package:mnd_delivery_app/features/orders/domain/reorder_cart_mapper.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/order_detail_provider.dart';
@@ -19,9 +21,7 @@ Future<void> reorderFromOrderId(
   }
 
   if (order == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not load order for reorder.')),
-    );
+    showMndSnackBar(context, 'Could not load order for reorder.', variant: MndSnackBarVariant.error);
     return;
   }
 
@@ -34,15 +34,18 @@ Future<void> handleReorder(
   CustomerOrderDetail order,
 ) async {
   if (order.items.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No items to add from this order.')),
-    );
+    showMndSnackBar(context, 'No items to add from this order.', variant: MndSnackBarVariant.warning);
     return;
   }
   if (order.vendorId.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cannot reorder — missing store information.')),
-    );
+    showMndSnackBar(context, 'Cannot reorder — missing store information.', variant: MndSnackBarVariant.error);
+    return;
+  }
+
+  if (!isStoreOpenInCatalog(ref, order.vendorId)) {
+    if (context.mounted) {
+      showShopClosedSnackBar(context);
+    }
     return;
   }
 
@@ -62,20 +65,12 @@ Future<void> handleReorder(
       return;
     }
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not update cart.')),
-      );
+      showMndSnackBar(context, 'Could not update cart.', variant: MndSnackBarVariant.error);
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          cartItems.length == 1
-              ? 'Added item to your cart.'
-              : 'Added ${cartItems.length} items to your cart.',
-        ),
-      ),
-    );
+    showMndSnackBar(context, cartItems.length == 1
+          ? 'Added item to your cart.'
+          : 'Added ${cartItems.length} items to your cart.', variant: MndSnackBarVariant.success);
     return;
   }
 
@@ -103,6 +98,11 @@ Future<void> handleReorder(
     return;
   }
 
+  if (!isStoreOpenInCatalog(ref, order.vendorId)) {
+    showShopClosedSnackBar(context);
+    return;
+  }
+
   notifier.replaceCartContents(
     cartItems,
     deliveryNote: order.deliveryNote,
@@ -114,13 +114,7 @@ Future<void> handleReorder(
   if (!context.mounted) {
     return;
   }
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        cartItems.length == 1
-            ? 'Cart updated with your previous item.'
-            : 'Cart updated with ${cartItems.length} items from this order.',
-      ),
-    ),
-  );
+  showMndSnackBar(context, cartItems.length == 1
+        ? 'Cart updated with your previous item.'
+        : 'Cart updated with ${cartItems.length} items from this order.', variant: MndSnackBarVariant.success);
 }

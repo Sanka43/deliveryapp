@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/utils/product_price_display.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/home_recent_searches_provider.dart';
 
-/// Horizontal product tile — white card, image on top, title, subtitle, price + add.
+/// Product tile for home / food / grocery / favorites.
 class ProductCard extends ConsumerWidget {
   const ProductCard({
     required this.name,
@@ -18,24 +17,39 @@ class ProductCard extends ConsumerWidget {
     this.storeName,
     this.description,
     this.etaLabel,
+    this.rating,
     this.isAvailable = true,
     this.premium = false,
+    this.showAddToCartButton = true,
+    this.onTap,
     super.key,
   });
 
-  static const double premiumWidth = 188;
-  static const double standardWidth = 170;
+  static const double premiumWidth = 164;
+  static const double standardWidth = 160;
 
-  /// Fixed height for text + price row (with subtitle) — avoids grid overflow.
-  static const double contentHeightWithSubtitle = 108;
-  static const double contentHeightNoSubtitle = 84;
+  /// Tall food-photo plane + compact text block.
+  static const double premiumImageHeight = 148;
 
-  /// Suggested grid aspect ratio for a 2-column product grid.
-  static const double gridChildAspectRatio = 0.62;
+  static const double contentHeightWithSubtitle = 80;
+  static const double contentHeightNoSubtitle = 64;
 
-  /// Height for horizontal home lists (square image + content).
+  /// Shorter content block used when [showAddToCartButton] is false — no
+  /// button row means less room is needed, so the subtitle-to-price gap
+  /// doesn't stretch to fill the taller, button-sized box.
+  static const double contentHeightWithSubtitleCompact = 68;
+  static const double contentHeightNoSubtitleCompact = 54;
+
+  static const double gridChildAspectRatio = 0.64;
+
+  /// 8px top image inset is included in the card stack.
   static double get homeListHeight =>
-      premiumWidth + contentHeightWithSubtitle;
+      8 + premiumImageHeight + contentHeightWithSubtitle;
+
+  /// Matches [homeListHeight] but for cards rendered with
+  /// `showAddToCartButton: false`.
+  static double get homeListHeightCompact =>
+      8 + premiumImageHeight + contentHeightWithSubtitleCompact;
 
   final String name;
   final String imageUrl;
@@ -43,20 +57,47 @@ class ProductCard extends ConsumerWidget {
   final String? storeName;
   final String? description;
   final String? etaLabel;
+  final double? rating;
   final VoidCallback onAddToCart;
   final bool isAvailable;
   final String? productKey;
   final bool premium;
+  final bool showAddToCartButton;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final String? subtitle = description ?? storeName;
-    final bool hasSubtitle = subtitle != null && subtitle.isNotEmpty;
-    final String key = productKey ?? name;
+    final String? shopLabel = () {
+      final String? store = storeName?.trim();
+      if (store != null && store.isNotEmpty) {
+        return store;
+      }
+      final String? desc = description?.trim();
+      if (desc != null && desc.isNotEmpty) {
+        return desc;
+      }
+      return null;
+    }();
+    final String? eta = () {
+      final String? raw = etaLabel?.trim();
+      if (raw == null || raw.isEmpty) {
+        return null;
+      }
+      if (raw.toLowerCase() == 'n/a') {
+        return null;
+      }
+      return raw;
+    }();
+    final bool hasMeta = shopLabel != null || eta != null;
+    final double contentHeight = showAddToCartButton
+        ? (hasMeta ? contentHeightWithSubtitle : contentHeightNoSubtitle)
+        : (hasMeta
+            ? contentHeightWithSubtitleCompact
+            : contentHeightNoSubtitleCompact);
+    final String favKey = productKey ?? name;
     final bool isFavorite =
-        premium && ref.watch(productFavoritesProvider).contains(key);
-    final double contentHeight =
-        hasSubtitle ? contentHeightWithSubtitle : contentHeightNoSubtitle;
+        ref.watch(productFavoritesProvider).contains(favKey);
+    final bool showRating = rating != null && rating! > 0;
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
@@ -67,87 +108,112 @@ class ProductCard extends ConsumerWidget {
                 : standardWidth);
 
         final bool boundedHeight = constraints.hasBoundedHeight;
-        // Grid cells: fit image + fixed content inside max height. Home/premium: strict 1:1.
         final double imageSide = premium
-            ? width
+            ? premiumImageHeight
             : boundedHeight
-                ? (constraints.maxHeight - contentHeight).clamp(0.0, width)
-                : width;
+                ? (constraints.maxHeight - contentHeight - 8)
+                    .clamp(96.0, width)
+                : width * 0.92;
 
-        final Widget imageStack = Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            ColoredBox(
-              color: AppColors.homeMutedFill,
-              child: SizedBox.expand(
-                child: isAvailable
-                    ? MndNetworkImage(
-                        imageUrl: imageUrl,
-                        fit: BoxFit.cover,
-                      )
-                    : ColorFiltered(
-                        colorFilter: ColorFilter.mode(
-                          Colors.white.withValues(alpha: 0.5),
-                          BlendMode.srcATop,
-                        ),
-                        child: MndNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-              ),
+        final Widget card = DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: const Color(0xFFE8EEF6),
+              width: 1,
             ),
-            if (premium)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: _FavoriteIcon(
-                  isFavorite: isFavorite,
-                  onTap: () =>
-                      ref.read(productFavoritesProvider.notifier).toggle(key),
-                ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
               ),
-            if (!isAvailable)
-              const Positioned(
-                left: 8,
-                top: 8,
-                child: _AvailabilityBadge(isAvailable: false),
-              ),
-          ],
-        );
-
-        return SizedBox(
-          width: premium ? width : double.infinity,
-          height: boundedHeight ? constraints.maxHeight : null,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-              boxShadow: AppColors.cardShadow,
-            ),
-            clipBehavior: Clip.antiAlias,
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                SizedBox(
-                  width: width,
-                  height: imageSide,
-                  child: imageStack,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                  child: SizedBox(
+                    height: imageSide,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: ColoredBox(
+                            color: AppColors.homeMutedFill,
+                            child: isAvailable
+                                ? MndNetworkImage(
+                                    imageUrl: imageUrl,
+                                    fit: BoxFit.cover,
+                                  )
+                                : ColorFiltered(
+                                    colorFilter: ColorFilter.mode(
+                                      Colors.white.withValues(alpha: 0.55),
+                                      BlendMode.srcATop,
+                                    ),
+                                    child: MndNetworkImage(
+                                      imageUrl: imageUrl,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: _FavoriteButton(
+                            isFavorite: isFavorite,
+                            onTap: () => ref
+                                .read(productFavoritesProvider.notifier)
+                                .toggle(favKey),
+                          ),
+                        ),
+                        if (!isAvailable)
+                          const Positioned(
+                            left: 8,
+                            top: 8,
+                            child: _AvailabilityBadge(),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
                 SizedBox(
                   height: contentHeight,
                   child: _ProductCardContent(
+                    shopName: shopLabel,
+                    etaLabel: eta,
                     name: name,
-                    subtitle: hasSubtitle ? subtitle : null,
-                    etaLabel: etaLabel,
                     priceLabel: priceLabel,
+                    rating: showRating ? rating : null,
                     isAvailable: isAvailable,
                     onAddToCart: onAddToCart,
+                    showAddToCartButton: showAddToCartButton,
                   ),
                 ),
               ],
             ),
           ),
+        );
+
+        return SizedBox(
+          width: premium ? width : double.infinity,
+          height: boundedHeight
+              ? constraints.maxHeight
+              : (premium ? 8 + imageSide + contentHeight : null),
+          child: onTap == null
+              ? card
+              : MndPressable(
+                  onTap: onTap,
+                  scale: 0.98,
+                  child: card,
+                ),
         );
       },
     );
@@ -160,186 +226,92 @@ class _ProductCardContent extends StatelessWidget {
     required this.priceLabel,
     required this.isAvailable,
     required this.onAddToCart,
-    this.subtitle,
+    required this.showAddToCartButton,
+    this.shopName,
     this.etaLabel,
+    this.rating,
   });
 
-  final String name;
-  final String? subtitle;
+  final String? shopName;
   final String? etaLabel;
+  final String name;
   final String priceLabel;
+  final double? rating;
   final bool isAvailable;
   final VoidCallback onAddToCart;
-
-  static bool _showEta(String? eta) {
-    if (eta == null) {
-      return false;
-    }
-    final String trimmed = eta.trim();
-    if (trimmed.isEmpty) {
-      return false;
-    }
-    return trimmed.toLowerCase() != 'n/a';
-  }
+  final bool showAddToCartButton;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: AppColors.homeMutedFill.withValues(alpha: 0.9),
-          ),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                          letterSpacing: -0.25,
-                          height: 1.1,
-                        ),
-                      ),
-                      if (subtitle != null) ...<Widget>[
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textSecondary,
-                            height: 1.1,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (_showEta(etaLabel))
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: _EtaChip(label: etaLabel!.trim()),
-                  ),
-              ],
+    final TextTheme text = Theme.of(context).textTheme;
+    final bool hasShop = shopName != null;
+    final bool hasEta = etaLabel != null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 10, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: text.titleSmall?.copyWith(
+              fontSize: (text.titleSmall?.fontSize ?? 14) + 1,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.2,
+              height: 1.15,
             ),
-            const Spacer(),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                Expanded(
-                  child: _ProductPriceText(priceLabel: priceLabel),
+          ),
+          if (hasShop || hasEta) ...<Widget>[
+            const SizedBox(height: 2),
+            Text(
+              <String>[
+                if (hasShop) shopName!,
+                if (hasEta) etaLabel!,
+              ].join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.labelSmall?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+                height: 1.1,
+              ),
+            ),
+          ],
+          const Spacer(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              if (rating != null) ...<Widget>[
+                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                const SizedBox(width: 2),
+                Text(
+                  rating!.toStringAsFixed(1),
+                  style: text.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                    height: 1.0,
+                  ),
                 ),
                 const SizedBox(width: 8),
-                _CircularAddButton(
+              ],
+              Expanded(
+                child: showAddToCartButton
+                    ? _PriceLabel(priceLabel: priceLabel, text: text)
+                    : Align(
+                        alignment: Alignment.centerRight,
+                        child: _PriceLabel(priceLabel: priceLabel, text: text),
+                      ),
+              ),
+              if (showAddToCartButton) ...<Widget>[
+                const SizedBox(width: 8),
+                _AddToCartButton(
                   onPressed: isAvailable ? onAddToCart : null,
                 ),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProductPriceText extends StatelessWidget {
-  const _ProductPriceText({required this.priceLabel});
-
-  final String priceLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final ProductPriceParts parts = ProductPriceDisplay.parse(priceLabel);
-
-    final TextStyle prefixStyle = GoogleFonts.plusJakartaSans(
-      fontSize: 11,
-      fontWeight: FontWeight.w500,
-      color: AppColors.textSecondary,
-      letterSpacing: -0.1,
-      height: 1.1,
-    );
-
-    final TextStyle amountStyle = GoogleFonts.plusJakartaSans(
-      fontSize: 17,
-      fontWeight: FontWeight.w700,
-      color: AppColors.textPrimary,
-      letterSpacing: -0.35,
-      height: 1.1,
-    );
-
-    final String prefixLine = parts.showFrom ? 'From Rs' : 'Rs';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          prefixLine,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: prefixStyle,
-        ),
-        const SizedBox(height: 2),
-        Text(
-          parts.amount,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: amountStyle,
-        ),
-      ],
-    );
-  }
-}
-
-class _EtaChip extends StatelessWidget {
-  const _EtaChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.brandPrimary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(
-            Icons.schedule_rounded,
-            size: 11,
-            color: AppColors.brandPrimary.withValues(alpha: 0.9),
-          ),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: AppColors.brandPrimary,
-              height: 1.0,
-            ),
+            ],
           ),
         ],
       ),
@@ -347,8 +319,58 @@ class _EtaChip extends StatelessWidget {
   }
 }
 
-class _FavoriteIcon extends StatelessWidget {
-  const _FavoriteIcon({required this.isFavorite, required this.onTap});
+/// Renders `priceLabel` with a smaller, muted "From" prefix (when present)
+/// ahead of the full-size price amount.
+class _PriceLabel extends StatelessWidget {
+  const _PriceLabel({required this.priceLabel, required this.text});
+
+  final String priceLabel;
+  final TextTheme text;
+
+  @override
+  Widget build(BuildContext context) {
+    final ProductPriceParts parts = ProductPriceDisplay.parse(priceLabel);
+    final TextStyle? amountStyle = text.titleSmall?.copyWith(
+      fontWeight: FontWeight.w800,
+      color: AppColors.textPrimary,
+      letterSpacing: 0,
+      height: 1.0,
+    );
+
+    if (!parts.showFrom) {
+      return Text(
+        priceLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: amountStyle,
+      );
+    }
+
+    return Text.rich(
+      TextSpan(
+        children: <InlineSpan>[
+          TextSpan(
+            text: 'From ',
+            style: text.labelSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary.withValues(alpha: 0.75),
+              height: 1.0,
+            ),
+          ),
+          TextSpan(text: 'Rs ${parts.amount}', style: amountStyle),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+class _FavoriteButton extends StatelessWidget {
+  const _FavoriteButton({
+    required this.isFavorite,
+    required this.onTap,
+  });
 
   final bool isFavorite;
   final VoidCallback onTap;
@@ -358,51 +380,62 @@ class _FavoriteIcon extends StatelessWidget {
     return MndPressable(
       onTap: onTap,
       scale: 0.9,
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          child: Icon(
-            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            key: ValueKey<bool>(isFavorite),
-            size: 21,
-            color: isFavorite
-                ? const Color(0xFFE53935)
-                : const Color(0xFFE53935).withValues(alpha: 0.35),
-          ),
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          size: 15,
+          color: isFavorite ? const Color(0xFFE53935) : AppColors.textSecondary,
         ),
       ),
     );
   }
 }
 
-class _CircularAddButton extends StatelessWidget {
-  const _CircularAddButton({required this.onPressed});
+class _AddToCartButton extends StatelessWidget {
+  const _AddToCartButton({required this.onPressed});
 
   final VoidCallback? onPressed;
-
-  static const double _size = 38;
 
   @override
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null;
 
-    return Material(
-      elevation: enabled ? 2 : 0,
-      shadowColor: AppColors.brandPrimary.withValues(alpha: 0.35),
-      color: enabled ? AppColors.brandPrimary : AppColors.homeMutedFill,
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: onPressed,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: _size,
-          height: _size,
-          child: Icon(
-            Icons.add_rounded,
-            color: enabled ? Colors.white : AppColors.textSecondary,
-            size: 24,
-          ),
+    return MndPressable(
+      onTap: onPressed,
+      scale: 0.9,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: enabled ? AppColors.brandPrimary : AppColors.homeMutedFill,
+          shape: BoxShape.circle,
+          boxShadow: enabled
+              ? <BoxShadow>[
+                  BoxShadow(
+                    color: AppColors.brandPrimary.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(
+          Icons.add_rounded,
+          size: 22,
+          color: enabled ? Colors.white : AppColors.textSecondary,
         ),
       ),
     );
@@ -410,25 +443,23 @@ class _CircularAddButton extends StatelessWidget {
 }
 
 class _AvailabilityBadge extends StatelessWidget {
-  const _AvailabilityBadge({required this.isAvailable});
-
-  final bool isAvailable;
+  const _AvailabilityBadge();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isAvailable ? AppColors.success : AppColors.error,
+        color: AppColors.error,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        isAvailable ? 'In Stock' : 'Out of Stock',
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
+        'Out of stock',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              height: 1.0,
+            ),
       ),
     );
   }

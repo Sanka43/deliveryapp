@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
+import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
 import 'package:mnd_delivery_app/features/jobs/domain/entities/job_application.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/widgets/job_booked_badge.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -25,15 +26,12 @@ class JobApplicationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
-        side: BorderSide(color: AppColors.homeMutedFill),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    final TextTheme textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: MndPremiumCard(
+        borderRadius: AppColors.cardRadiusMd,
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -41,10 +39,11 @@ class JobApplicationCard extends StatelessWidget {
               children: <Widget>[
                 CircleAvatar(
                   radius: 22,
-                  backgroundColor: AppColors.brandPrimary.withValues(alpha: 0.12),
+                  backgroundColor:
+                      AppColors.brandPrimary.withValues(alpha: 0.12),
                   child: Text(
                     _initials(application.applicantName),
-                    style: GoogleFonts.plusJakartaSans(
+                    style: textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: AppColors.brandPrimary,
                     ),
@@ -57,15 +56,14 @@ class JobApplicationCard extends StatelessWidget {
                     children: <Widget>[
                       Text(
                         application.applicantName,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 15,
+                        style: textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       Text(
                         application.applicantPhone,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12.5,
+                        style: textTheme.bodySmall?.copyWith(
                           color: AppColors.textSecondary,
                         ),
                       ),
@@ -83,20 +81,20 @@ class JobApplicationCard extends StatelessWidget {
                 application.jobTitle.isNotEmpty
                     ? application.jobTitle
                     : application.companyName,
-                style: GoogleFonts.plusJakartaSans(
+                style: textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppColors.textPrimary,
                 ),
               ),
             ],
-            if (application.bio != null && application.bio!.isNotEmpty) ...<Widget>[
+            if (application.bio != null &&
+                application.bio!.isNotEmpty) ...<Widget>[
               const SizedBox(height: 8),
               Text(
                 application.bio!,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
+                style: textTheme.bodyMedium?.copyWith(
                   color: AppColors.textSecondary,
                   height: 1.35,
                 ),
@@ -182,6 +180,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final ({Color bg, Color fg, String label}) style = switch (status) {
       JobApplicationStatus.booked => (
           bg: AppColors.success.withValues(alpha: 0.15),
@@ -211,7 +210,7 @@ class _StatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: style.bg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppColors.buttonRadius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -226,8 +225,7 @@ class _StatusChip extends StatelessWidget {
           ],
           Text(
             style.label,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 11,
+            style: textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: style.fg,
             ),
