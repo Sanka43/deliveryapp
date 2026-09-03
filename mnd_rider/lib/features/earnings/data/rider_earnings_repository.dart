@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/app/providers/firebase_providers.dart';
 import 'package:mnd_rider/core/constants/firebase_collections.dart';
-import 'package:mnd_rider/features/earnings/data/rider_earnings_period_keys.dart';
+import 'package:mnd_rider/core/utils/user_facing_error.dart';
+import 'package:mnd_rider/features/earnings/domain/rider_earnings_aggregate.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_transaction.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_wallet.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_withdrawal.dart';
@@ -13,6 +15,7 @@ final Provider<RiderEarningsRepository> riderEarningsRepositoryProvider =
   return RiderEarningsRepository(
     firestore: ref.watch(firestoreProvider),
     auth: ref.watch(firebaseAuthProvider),
+    functions: ref.watch(firebaseFunctionsProvider),
   );
 });
 
@@ -27,13 +30,17 @@ class RiderEarningsRepository {
   RiderEarningsRepository({
     required FirebaseFirestore firestore,
     required FirebaseAuth auth,
+    required FirebaseFunctions functions,
   })  : _firestore = firestore,
-        _auth = auth;
+        _auth = auth,
+        _functions = functions;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  final FirebaseFunctions _functions;
 
   static const double minWithdrawalLkr = 500;
+  static const double maxWithdrawalLkr = 500000;
 
   String? get _uid => _auth.currentUser?.uid;
 
@@ -45,14 +52,38 @@ class RiderEarningsRepository {
           .collection(FirebaseCollections.riderWallet)
           .doc(FirebaseCollections.riderWalletSummaryId);
 
-  CollectionReference<Map<String, dynamic>> _aggregatesRef(String riderId) =>
-      _riderRef(riderId).collection(FirebaseCollections.riderEarningsAggregates);
-
   CollectionReference<Map<String, dynamic>> _transactionsRef(String riderId) =>
       _riderRef(riderId).collection(FirebaseCollections.riderTransactions);
 
   CollectionReference<Map<String, dynamic>> _withdrawalsRef(String riderId) =>
       _riderRef(riderId).collection(FirebaseCollections.riderWithdrawals);
+
+  CollectionReference<Map<String, dynamic>> _earningsAggregatesRef(
+    String riderId,
+  ) =>
+      _riderRef(riderId).collection(FirebaseCollections.riderEarningsAggregates);
+
+  /// Watches one daily/weekly/monthly aggregate doc (see
+  /// [RiderEarningsPeriodKeys]), written server-side by
+  /// `onOrderDeliveredCreditRider`/`onTripCompletedCreditRider`. This is the
+  /// authoritative, commission-adjusted total covering both deliveries and
+  /// passenger rides — null while the rider has no completed job in that
+  /// period yet.
+  Stream<RiderEarningsAggregate?> watchEarningsAggregate(String periodKey) {
+    final String? uid = _uid;
+    if (uid == null) {
+      return Stream<RiderEarningsAggregate?>.value(null);
+    }
+    return _earningsAggregatesRef(uid).doc(periodKey).snapshots().map(
+      (DocumentSnapshot<Map<String, dynamic>> snap) {
+        final Map<String, dynamic>? data = snap.data();
+        if (data == null) {
+          return null;
+        }
+        return RiderEarningsAggregate.fromDoc(snap.id, data);
+      },
+    );
+  }
 
   Stream<RiderWallet> watchWallet() {
     final String? uid = _uid;
@@ -103,133 +134,24 @@ class RiderEarningsRepository {
         );
   }
 
-  /// Idempotent credit when a delivery is marked delivered.
-  Future<String?> recordDeliveryEarning({
-    required String orderId,
-    required int amountLkr,
-    required String storeName,
-    String? trackingNumber,
-    DateTime? completedAt,
-  }) async {
-    final String? uid = _uid;
-    if (uid == null) {
-      return 'Not signed in.';
-    }
-    if (amountLkr <= 0) {
-      return null;
-    }
-
-    final String txnId = 'earning_$orderId';
-    final DocumentReference<Map<String, dynamic>> txnRef =
-        _transactionsRef(uid).doc(txnId);
-
-    try {
-      await _firestore.runTransaction((Transaction tx) async {
-        final DocumentSnapshot<Map<String, dynamic>> existing =
-            await tx.get(txnRef);
-        if (existing.exists) {
-          return;
-        }
-
-        final DateTime at = completedAt ?? DateTime.now();
-        final double amount = amountLkr.toDouble();
-
-        final DocumentReference<Map<String, dynamic>> walletRef =
-            _walletRef(uid);
-        final DocumentSnapshot<Map<String, dynamic>> walletSnap =
-            await tx.get(walletRef);
-        final RiderWallet wallet = RiderWallet.fromMap(walletSnap.data());
-
-        tx.set(
-          txnRef,
-          <String, dynamic>{
-            'type': 'delivery_earning',
-            'status': 'completed',
-            'amountLkr': amount,
-            'orderId': orderId,
-            'title': storeName,
-            'subtitle': trackingNumber?.trim().isNotEmpty == true
-                ? trackingNumber!.trim()
-                : orderId,
-            'createdAt': FieldValue.serverTimestamp(),
-          },
-        );
-
-        tx.set(
-          walletRef,
-          <String, dynamic>{
-            'balanceLkr': wallet.balanceLkr + amount,
-            'pendingWithdrawalLkr': wallet.pendingWithdrawalLkr,
-            'lifetimeEarnedLkr': wallet.lifetimeEarnedLkr + amount,
-            'lifetimeWithdrawnLkr': wallet.lifetimeWithdrawnLkr,
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-
-        _incrementAggregateTx(
-          tx: tx,
-          riderId: uid,
-          periodKey: RiderEarningsPeriodKeys.dailyKey(at),
-          periodType: 'daily',
-          amount: amount,
-        );
-        _incrementAggregateTx(
-          tx: tx,
-          riderId: uid,
-          periodKey: RiderEarningsPeriodKeys.weeklyKey(at),
-          periodType: 'weekly',
-          amount: amount,
-        );
-        _incrementAggregateTx(
-          tx: tx,
-          riderId: uid,
-          periodKey: RiderEarningsPeriodKeys.monthlyKey(at),
-          periodType: 'monthly',
-          amount: amount,
-        );
-      });
-      return null;
-    } on FirebaseException catch (e) {
-      return e.message ?? 'Could not record earnings.';
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  void _incrementAggregateTx({
-    required Transaction tx,
-    required String riderId,
-    required String periodKey,
-    required String periodType,
-    required double amount,
-  }) {
-    final DocumentReference<Map<String, dynamic>> ref =
-        _aggregatesRef(riderId).doc(periodKey);
-    tx.set(
-      ref,
-      <String, dynamic>{
-        'periodType': periodType,
-        'totalLkr': FieldValue.increment(amount),
-        'tripCount': FieldValue.increment(1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
-  }
-
+  /// Server-validated withdrawal. Balance verification and the wallet debit
+  /// happen inside the `requestRiderWithdrawal` Cloud Function (Admin SDK), so
+  /// the client can no longer bypass the balance check.
   Future<String?> requestWithdrawal({
     required double amountLkr,
     required String payoutMethod,
     required String payoutAccount,
     String? note,
   }) async {
-    final String? uid = _uid;
-    if (uid == null) {
+    if (_uid == null) {
       return 'Not signed in.';
     }
-    if (amountLkr < minWithdrawalLkr) {
+    final int amount = amountLkr.round();
+    if (amount < minWithdrawalLkr) {
       return 'Minimum withdrawal is Rs. ${minWithdrawalLkr.round()}.';
+    }
+    if (amount > maxWithdrawalLkr) {
+      return 'Maximum withdrawal is Rs. ${maxWithdrawalLkr.round()}.';
     }
 
     final String account = payoutAccount.trim();
@@ -238,62 +160,19 @@ class RiderEarningsRepository {
     }
 
     try {
-      await _firestore.runTransaction((Transaction tx) async {
-        final DocumentReference<Map<String, dynamic>> walletRef =
-            _walletRef(uid);
-        final DocumentSnapshot<Map<String, dynamic>> walletSnap =
-            await tx.get(walletRef);
-        final RiderWallet wallet = RiderWallet.fromMap(walletSnap.data());
-
-        if (amountLkr > wallet.balanceLkr) {
-          throw StateError('Insufficient balance.');
-        }
-
-        final DocumentReference<Map<String, dynamic>> withdrawalRef =
-            _withdrawalsRef(uid).doc();
-        final String withdrawalId = withdrawalRef.id;
-
-        tx.set(withdrawalRef, <String, dynamic>{
-          'amountLkr': amountLkr,
-          'status': 'pending',
-          'payoutMethod': payoutMethod.trim().toLowerCase(),
-          'payoutAccount': account,
-          if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        tx.set(
-          _transactionsRef(uid).doc(),
-          <String, dynamic>{
-            'type': 'withdrawal',
-            'status': 'pending',
-            'amountLkr': -amountLkr,
-            'withdrawalId': withdrawalId,
-            'title': 'Withdrawal request',
-            'subtitle': payoutMethod,
-            'createdAt': FieldValue.serverTimestamp(),
-          },
-        );
-
-        tx.set(
-          walletRef,
-          <String, dynamic>{
-            'balanceLkr': wallet.balanceLkr - amountLkr,
-            'pendingWithdrawalLkr': wallet.pendingWithdrawalLkr + amountLkr,
-            'lifetimeEarnedLkr': wallet.lifetimeEarnedLkr,
-            'lifetimeWithdrawnLkr': wallet.lifetimeWithdrawnLkr,
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+      await _functions
+          .httpsCallable('requestRiderWithdrawal')
+          .call<dynamic>(<String, dynamic>{
+        'amountLkr': amount,
+        'payoutMethod': payoutMethod.trim().toLowerCase(),
+        'payoutAccount': account,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       });
       return null;
-    } on StateError catch (e) {
-      return e.message;
-    } on FirebaseException catch (e) {
+    } on FirebaseFunctionsException catch (e) {
       return e.message ?? 'Withdrawal request failed.';
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Withdrawal request failed.');
     }
   }
 }

@@ -5,7 +5,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mnd_rider/core/constants/firebase_collections.dart';
-import 'package:mnd_rider/core/notifications/firebase_messaging_background.dart';
 import 'package:mnd_rider/core/notifications/rider_local_notifications.dart';
 import 'package:mnd_rider/core/notifications/rider_push_message.dart';
 import 'package:mnd_rider/core/notifications/rider_push_preferences.dart';
@@ -43,7 +42,9 @@ class FirebaseMessagingService {
   Future<void> initialize({RiderPushTapCallback? onNotificationTap}) async {
     _onNotificationTap = onNotificationTap;
 
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    // Note: FirebaseMessaging.onBackgroundMessage is registered in
+    // bootstrapRiderApp() before runApp, so terminated-state pushes are
+    // handled even before this service initializes.
 
     await _messaging.setForegroundNotificationPresentationOptions(
       alert: true,
@@ -75,6 +76,15 @@ class FirebaseMessagingService {
     if (initial != null) {
       _onOpenedApp(initial);
     }
+
+    // Locally-shown notifications (data-only pushes displayed by the
+    // background handler) tapped from terminated state launch the app without
+    // firing onDidReceiveNotificationResponse — recover the payload here.
+    final String? launchPayload =
+        await RiderLocalNotifications.takeLaunchPayload();
+    if (launchPayload != null) {
+      _handleLocalNotificationTap(launchPayload);
+    }
   }
 
   void dispose() {
@@ -105,7 +115,13 @@ class FirebaseMessagingService {
   }
 
   /// Persists FCM token to `device_tokens` and `riders/{uid}`.
-  Future<void> syncDeviceToken() async {
+  ///
+  /// A failure here is silent to the rider (no snackbar host is guaranteed
+  /// to exist at startup), so a single delayed retry covers the common case
+  /// of a transient network blip during app launch — a token that never
+  /// syncs means the rider stops receiving job pushes with no visible sign
+  /// why.
+  Future<void> syncDeviceToken({bool isRetry = false}) async {
     final User? user = _auth.currentUser;
     if (user == null) {
       return;
@@ -140,6 +156,11 @@ class FirebaseMessagingService {
       );
     } catch (e, st) {
       debugPrint('FCM token sync failed: $e\n$st');
+      if (!isRetry) {
+        Future<void>.delayed(const Duration(seconds: 15), () {
+          unawaited(syncDeviceToken(isRetry: true));
+        });
+      }
     }
   }
 

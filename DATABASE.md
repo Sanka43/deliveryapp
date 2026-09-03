@@ -25,7 +25,7 @@ This document describes the **current** data storage used by the MND workspace (
 | **Firebase Authentication** | UID, phone/email providers, tokens | User identity; `customers/{uid}` doc mirrors profile fields |
 | **SharedPreferences** | Notification UI toggles (`notif_pref_order_updates`, `notif_pref_promotions`) | Local only; FCM topics `mnd_order_updates`, `mnd_promotions` synced on device |
 | **In-memory (Riverpod)** | Shopping cart, coupons, delivery notes, map drop-off coords | Not persisted to Firestore until checkout |
-| **FCM** | Push delivery | Topics documented in `NotificationSettingsRepository`; no `device_tokens` writes found in current Flutter client |
+| **FCM** | Push delivery | Topics documented in `NotificationSettingsRepository`; no `device_tokens` writes found in `mnd_customer` — `mnd_rider` does write `device_tokens` (see §3.9) |
 
 ---
 
@@ -309,7 +309,7 @@ Rider self-write of `licensePhotoUrl`/`licenseExpiresAt`/`insurancePhotoUrl`/`in
 | Field | Type | Notes |
 |-------|------|--------|
 | `cashInHandLkr` | int | Collected cash the rider has not handed over: cash ride fares + COD `amountDueFromCustomer` |
-| `cashOwedToAdminLkr` | int | The slice of the above that must reach admin: shop product cash + service charge + ride commission |
+| `cashOwedToAdminLkr` | int | The slice of the above that must reach admin: shop product cash + service charge + ride/delivery commission |
 | `cashPendingSettlementLkr` | int | Locked in a handover waiting for admin confirmation |
 | `cashHoldActive` | bool | `true` once `cashInHandLkr` goes **above** `platform_config/fees.maxRiderCashInHandLkr` |
 | `cashHoldSince` | timestamp\|null | Stamped when the hold starts, cleared when it lifts |
@@ -325,8 +325,8 @@ One row per cash job. Written only by `onTripCompletedCreditRider` / `onOrderDel
 |-------|------|--------|
 | `type` | `'ride_cash'` \| `'order_cash'` | |
 | `cashLkr` | int | Cash the rider took from the customer |
-| `owedLkr` | int | Of that, what must reach admin (ride commission, or the order's `productCashLkr` + `serviceCharge`) |
-| `breakdown` | map | `{productCashLkr, serviceChargeLkr, rideCommissionLkr}` — component split of `owedLkr`; absent on entries written before this field existed, in which case `owedLkr` is inferred as 100% `productCashLkr` (order) or 100% `rideCommissionLkr` (ride) |
+| `owedLkr` | int | Of that, what must reach admin (ride commission, or the order's `productCashLkr` + `serviceCharge` + delivery commission) |
+| `breakdown` | map | `{productCashLkr, serviceChargeLkr, rideCommissionLkr}` — component split of `owedLkr`; `rideCommissionLkr` holds the flat commission for both ride and order entries (`platform_config/fees.rideCommissionLkr` / `.orderRiderCommissionLkr`). Absent on entries written before this field existed, in which case `owedLkr` is inferred as 100% `productCashLkr` (order) or 100% `rideCommissionLkr` (ride) |
 | `status` | `'open'` → `'pending_settlement'` → `'settled'` | Reject sends it back to `'open'` |
 | `settlementId` | string? | Set while pending/settled |
 | `tripId` / `orderId` | string? | Whichever applies |
@@ -352,6 +352,18 @@ A handover the rider asked admin to confirm (`riderRequestCashSettlement`), clos
 
 **Rules:** both subcollections are read-only to the owning rider and admin; all writes go through Cloud Functions. A collection-group read on `cash_settlements` is allowed for admin (the mnd_web handover queue), mirroring `withdrawals`.
 
+#### 3.6.3 `riders` / `{riderId}` — remaining subcollections used by `mnd_rider`
+
+All of the below are written only by Cloud Functions (`riderEarnings.ts`) or read/created by the rider's own client through callables; none accept direct client writes.
+
+| Subcollection | Purpose | Key fields |
+|---|---|---|
+| `wallet` / `summary` (single doc) | Withdrawable balance | `balanceLkr`, `pendingWithdrawalLkr`, `lifetimeEarnedLkr`, `lifetimeWithdrawnLkr`, `updatedAt` |
+| `transactions` / `{id}` | Ledger of earnings + withdrawals | `type` (`delivery_earning`\|`ride_earning`\|`withdrawal`), `amountLkr`, `status`, `orderId`/`tripId`/`withdrawalId`, `title`, `subtitle`, `createdAt`. Deterministic ids (`earning_{orderId}`, `earning_trip_{tripId}`) make delivery/ride credits idempotent |
+| `withdrawals` / `{id}` | Payout requests | `amountLkr`, `status` (`pending`\|`approved`\|`paid`\|`rejected`), `payoutMethod`, `payoutAccount`, `note?`, `processedAt/By`. Created via `requestRiderWithdrawal`, settled via `adminSettleRiderWithdrawal` |
+| `earnings_aggregates` / `{periodKey}` | Daily/weekly/monthly totals, e.g. `daily_2026-05-17`, `weekly_2026-W20`, `monthly_2026-05` (Asia/Colombo wall-clock) | `periodType`, `totalLkr` (commission-adjusted net, deliveries + rides combined), `tripCount`, `updatedAt`. Incremented transactionally alongside each `transactions` write; this is the source of truth the rider app's Earnings screen reads for period totals |
+| `notifications` / `{id}` | Rider inbox feed (distinct from the top-level `notifications` collection in §3.8, which `mnd_rider` does not use) | `type` (e.g. `documents_expiring`, `documents_expired`, `withdrawal_settled`, `cash_hold_started`), `title`, `body`, `amountLkr?`, `read`, `createdAt` |
+
 ---
 
 ### 3.7 `orders` / `{orderId}`
@@ -369,7 +381,9 @@ A handover the rider asked admin to confirm (`riderRequestCashSettlement`), clos
 | `status` | `'placed'` |
 | `paymentMethod` | `'cashOnDelivery'` |
 | `items` | list of maps (see below) |
-| `subtotal`, `discount`, `deliveryFee`, `total` | int (LKR) |
+| `subtotal`, `discount`, `deliveryFee`, `serviceCharge`, `total` | int (LKR) |
+| `productCashLkr` | int — `subtotal − discount`. Fee/discount/products are all final at placement for this fixed-fee flow (unlike `placeVendorManualOrder`'s actual-trip orders), so this is set here rather than on delivery — the rider's own status update (`updateOrderStatus` in the rider app) just flips `status` with no recalculation, and `completeDeliveryOrder` never runs for these orders. |
+| `productCashStatus` | `'owed'` — read by `onOrderDeliveredCreditRider` when the rider marks the order delivered, and by `adminConfirmCashSettlement`'s remittance tracking. |
 | `deliveryAddress` | map: `line1`, `line2`, `city`, `phone` |
 | `deliveryNote`, `specialInstructions` | string |
 | `createdAt` | timestamp |
@@ -408,6 +422,8 @@ Same pricing fields as customer COD, plus:
 Lookup helper: callable `lookupVendorOrderCustomer` (vendor auth) returns found/guest + optional saved address hints.
 
 Completion helper: callable `completeDeliveryOrder` (assigned rider) takes `orderId` + `traveledKm`, writes fee/total/`amountDueFromCustomer` / product-cash ledger, sets `status: delivered`.
+
+**Rider earnings and commission (`onOrderDeliveredCreditRider`, fires on `status: delivered`):** the rider earns `deliveryFee − platform_config/fees.orderRiderCommissionLkr` (commission is capped at the fee). Where that money sits depends on who collected it — same split as passenger rides (see 5.2): online-paid orders credit the net to `wallet/summary.balanceLkr`; COD orders credit nothing and instead write an `order_{orderId}` `cash_ledger` entry with `cashLkr` = `amountDueFromCustomer` and `owedLkr` = `productCashLkr` + `serviceCharge` + commission.
 
 Product cash admin helpers: `adminMarkProductCashRemitted` (`owed` → `remitted_to_admin`), `adminMarkProductCashSettledToShop` (`remitted_to_admin` → `settled_to_shop`).
 
@@ -554,7 +570,7 @@ Product cash admin helpers: `adminMarkProductCashRemitted` (`owed` → `remitted
 
 **Rules:** Owner read/write with `userId` matching Auth.
 
-**Client:** No writes located in current Flutter code — **future**: register token here or rely purely on topics.
+**Client:** No writes located in `mnd_customer`. `mnd_rider` writes here on every sign-in and token refresh (`FirebaseMessagingService.syncDeviceToken`, doc id = the token with `/` replaced by `_`; fields: `userId`, `token`, `platform`, `app: 'mnd_rider'`, `role: 'rider'`, `updatedAt`), and deletes the doc on sign-out (`clearDeviceToken`).
 
 ---
 
@@ -626,10 +642,11 @@ Admin-editable knobs from the **Fees & commissions** page in `mnd_web`. Read ser
 | Field | Type | Default | Used by |
 |-------|------|---------|---------|
 | `serviceChargePercent` | number 0–100 | 5 | Order service charge at checkout |
-| `minDeliveryFeeLkr` | int | 120 | Delivery-fee curve (first 2.5 km) |
-| `pricePerKmLkr` | int | 42 | Delivery-fee curve (after 2.5 km) |
+| `minDeliveryFeeLkr` | int | 120 | Delivery-fee curve (first 1.5 km) |
+| `pricePerKmLkr` | int | 42 | Delivery-fee curve (after 1.5 km) |
 | `shopMonthlyCommissionPercent` | number 0–100 | 1 | Monthly shop invoices (admin-generated) |
 | `rideCommissionLkr` | int | 0 | Flat platform cut per completed passenger ride |
+| `orderRiderCommissionLkr` | int | 0 | Flat platform cut out of the delivery fee per delivered food order |
 | `maxRiderCashInHandLkr` | int | 7000 | Cash a rider may hold before new jobs stop being claimable |
 
 `riderCommissionLkr` and `orderCommissionLkr` are legacy fields that were never read by anything; the fees page deletes both on save.

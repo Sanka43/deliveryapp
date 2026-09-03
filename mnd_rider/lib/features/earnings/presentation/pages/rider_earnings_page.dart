@@ -74,6 +74,10 @@ class _RiderEarningsPageState extends ConsumerState<RiderEarningsPage> {
           ref.invalidate(riderWalletProvider);
           ref.invalidate(riderWithdrawalsProvider);
           ref.invalidate(riderDeliveredHistoryProvider);
+          ref.invalidate(riderEarningsCompletedTripsProvider);
+          ref.invalidate(riderDailyEarningsAggregateProvider);
+          ref.invalidate(riderWeeklyEarningsAggregateProvider);
+          ref.invalidate(riderMonthlyEarningsAggregateProvider);
         },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -139,7 +143,7 @@ class _RiderEarningsPageState extends ConsumerState<RiderEarningsPage> {
                     const SizedBox(height: AppSpacing.md),
                   ],
                   Text(
-                    'Deliveries',
+                    'Activity',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -147,7 +151,7 @@ class _RiderEarningsPageState extends ConsumerState<RiderEarningsPage> {
                   const SizedBox(height: AppSpacing.sm),
                   if (snapshot.lineItems.isEmpty)
                     _EmptyDeliveries(
-                      message: 'No completed deliveries in this period.',
+                      message: 'No completed deliveries or rides in this period.',
                     )
                   else
                     ...snapshot.lineItems.map(
@@ -356,8 +360,10 @@ class _DeliveryTile extends StatelessWidget {
                 color: AppColors.primaryBlue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
-                Icons.local_shipping_outlined,
+              child: Icon(
+                item.kind == RiderEarningsItemKind.ride
+                    ? Icons.directions_car_outlined
+                    : Icons.local_shipping_outlined,
                 size: 20,
                 color: AppColors.primaryBlue,
               ),

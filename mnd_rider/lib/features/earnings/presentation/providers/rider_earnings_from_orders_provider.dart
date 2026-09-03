@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/features/dashboard/presentation/providers/rider_dashboard_provider.dart';
 import 'package:mnd_rider/features/earnings/data/rider_earnings_aggregator.dart';
+import 'package:mnd_rider/features/earnings/data/rider_earnings_period_keys.dart';
 import 'package:mnd_rider/features/earnings/data/rider_earnings_repository.dart';
 import 'package:mnd_rider/features/earnings/data/rider_earnings_snapshots.dart';
+import 'package:mnd_rider/features/earnings/domain/rider_earnings_aggregate.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_earnings_analytics.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_earnings_period_snapshot.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_transaction.dart';
@@ -10,16 +12,50 @@ import 'package:mnd_rider/features/earnings/domain/rider_wallet.dart';
 import 'package:mnd_rider/features/earnings/domain/rider_withdrawal.dart';
 import 'package:mnd_rider/features/orders/data/rider_orders_repository.dart';
 import 'package:mnd_rider/features/orders/domain/rider_order_detail.dart';
+import 'package:mnd_rider/features/trips/data/rider_trips_repository.dart';
+
+/// The rider's own completed passenger rides, as watched by the earnings hub
+/// (separate provider name from [riderCompletedTripsProvider] so the
+/// history screen's "Load more" page size never affects earnings totals —
+/// same reasoning as [riderDeliveredHistoryProvider]).
+final StreamProvider<List<RiderPassengerTrip>> riderEarningsCompletedTripsProvider =
+    StreamProvider<List<RiderPassengerTrip>>((Ref ref) {
+  return ref.watch(riderTripsRepositoryProvider).watchMyCompletedTrips(limit: 200);
+});
+
+final StreamProvider<RiderEarningsAggregate?> riderDailyEarningsAggregateProvider =
+    StreamProvider<RiderEarningsAggregate?>((Ref ref) {
+  final String key = RiderEarningsPeriodKeys.dailyKey(DateTime.now());
+  return ref.watch(riderEarningsRepositoryProvider).watchEarningsAggregate(key);
+});
+
+final StreamProvider<RiderEarningsAggregate?> riderWeeklyEarningsAggregateProvider =
+    StreamProvider<RiderEarningsAggregate?>((Ref ref) {
+  final String key = RiderEarningsPeriodKeys.weeklyKey(DateTime.now());
+  return ref.watch(riderEarningsRepositoryProvider).watchEarningsAggregate(key);
+});
+
+final StreamProvider<RiderEarningsAggregate?> riderMonthlyEarningsAggregateProvider =
+    StreamProvider<RiderEarningsAggregate?>((Ref ref) {
+  final String key = RiderEarningsPeriodKeys.monthlyKey(DateTime.now());
+  return ref.watch(riderEarningsRepositoryProvider).watchEarningsAggregate(key);
+});
 
 final Provider<RiderEarningsSummary> riderEarningsSummaryProvider =
     Provider<RiderEarningsSummary>((Ref ref) {
-  final AsyncValue<List<RiderOrderDetail>> history =
-      ref.watch(riderDeliveredHistoryProvider);
-  return history.when(
-    data: _summaryFromOrders,
-    loading: () => const RiderEarningsSummary.empty(),
-    error: (_, __) => const RiderEarningsSummary.empty(),
-  );
+  final List<RiderOrderDetail> orders =
+      ref.watch(riderDeliveredHistoryProvider).valueOrNull ??
+          const <RiderOrderDetail>[];
+  final List<RiderPassengerTrip> trips =
+      ref.watch(riderEarningsCompletedTripsProvider).valueOrNull ??
+          const <RiderPassengerTrip>[];
+  final RiderEarningsAggregate? daily =
+      ref.watch(riderDailyEarningsAggregateProvider).valueOrNull;
+  final RiderEarningsAggregate? weekly =
+      ref.watch(riderWeeklyEarningsAggregateProvider).valueOrNull;
+  final RiderEarningsAggregate? monthly =
+      ref.watch(riderMonthlyEarningsAggregateProvider).valueOrNull;
+  return _summaryFrom(orders, trips, daily, weekly, monthly);
 });
 
 final Provider<RiderEarningsPeriodSnapshot> riderDailyEarningsSnapshotProvider =
@@ -27,7 +63,16 @@ final Provider<RiderEarningsPeriodSnapshot> riderDailyEarningsSnapshotProvider =
   final List<RiderOrderDetail> orders =
       ref.watch(riderDeliveredHistoryProvider).valueOrNull ??
           const <RiderOrderDetail>[];
-  return RiderEarningsSnapshots.dailyFromOrders(orders);
+  final List<RiderPassengerTrip> trips =
+      ref.watch(riderEarningsCompletedTripsProvider).valueOrNull ??
+          const <RiderPassengerTrip>[];
+  final RiderEarningsAggregate? aggregate =
+      ref.watch(riderDailyEarningsAggregateProvider).valueOrNull;
+  return RiderEarningsSnapshots.daily(
+    orders: orders,
+    trips: trips,
+    aggregate: aggregate,
+  );
 });
 
 final Provider<RiderEarningsPeriodSnapshot> riderWeeklyEarningsSnapshotProvider =
@@ -35,7 +80,16 @@ final Provider<RiderEarningsPeriodSnapshot> riderWeeklyEarningsSnapshotProvider 
   final List<RiderOrderDetail> orders =
       ref.watch(riderDeliveredHistoryProvider).valueOrNull ??
           const <RiderOrderDetail>[];
-  return RiderEarningsSnapshots.weeklyFromOrders(orders);
+  final List<RiderPassengerTrip> trips =
+      ref.watch(riderEarningsCompletedTripsProvider).valueOrNull ??
+          const <RiderPassengerTrip>[];
+  final RiderEarningsAggregate? aggregate =
+      ref.watch(riderWeeklyEarningsAggregateProvider).valueOrNull;
+  return RiderEarningsSnapshots.weekly(
+    orders: orders,
+    trips: trips,
+    aggregate: aggregate,
+  );
 });
 
 final Provider<RiderEarningsPeriodSnapshot> riderMonthlyEarningsSnapshotProvider =
@@ -43,7 +97,16 @@ final Provider<RiderEarningsPeriodSnapshot> riderMonthlyEarningsSnapshotProvider
   final List<RiderOrderDetail> orders =
       ref.watch(riderDeliveredHistoryProvider).valueOrNull ??
           const <RiderOrderDetail>[];
-  return RiderEarningsSnapshots.monthlyFromOrders(orders);
+  final List<RiderPassengerTrip> trips =
+      ref.watch(riderEarningsCompletedTripsProvider).valueOrNull ??
+          const <RiderPassengerTrip>[];
+  final RiderEarningsAggregate? aggregate =
+      ref.watch(riderMonthlyEarningsAggregateProvider).valueOrNull;
+  return RiderEarningsSnapshots.monthly(
+    orders: orders,
+    trips: trips,
+    aggregate: aggregate,
+  );
 });
 
 final StreamProvider<RiderWallet> riderWalletProvider =
@@ -66,19 +129,26 @@ final Provider<RiderEarningsAnalytics> riderEarningsAnalyticsProvider =
   final List<RiderOrderDetail> orders =
       ref.watch(riderDeliveredHistoryProvider).valueOrNull ??
           const <RiderOrderDetail>[];
+  final List<RiderPassengerTrip> trips =
+      ref.watch(riderEarningsCompletedTripsProvider).valueOrNull ??
+          const <RiderPassengerTrip>[];
   final RiderWallet wallet =
       ref.watch(riderWalletProvider).valueOrNull ?? const RiderWallet.empty();
   return RiderEarningsAggregator.buildAnalytics(
     wallet: wallet,
     orders: orders,
+    trips: trips,
   );
 });
 
-RiderEarningsSummary _summaryFromOrders(List<RiderOrderDetail> orders) {
-  final stats = RiderEarningsAggregator.deliveryStats(orders);
-  double todayNet = 0;
-  double weekNet = 0;
-  double monthNet = 0;
+RiderEarningsSummary _summaryFrom(
+  List<RiderOrderDetail> orders,
+  List<RiderPassengerTrip> trips,
+  RiderEarningsAggregate? daily,
+  RiderEarningsAggregate? weekly,
+  RiderEarningsAggregate? monthly,
+) {
+  final stats = RiderEarningsAggregator.deliveryStats(orders, trips);
 
   final DateTime now = DateTime.now();
   final DateTime dayStart = DateTime(now.year, now.month, now.day);
@@ -86,24 +156,33 @@ RiderEarningsSummary _summaryFromOrders(List<RiderOrderDetail> orders) {
       dayStart.subtract(Duration(days: now.weekday - DateTime.monday));
   final DateTime monthStart = DateTime(now.year, now.month);
 
-  for (final RiderOrderDetail o in orders) {
-    final DateTime at = RiderEarningsAggregator.orderCompletedAt(o);
-    final double fee = o.deliveryFeeLkr.toDouble();
+  double todayFallback = 0;
+  double weekFallback = 0;
+  double monthFallback = 0;
+
+  void tally(DateTime at, double amount) {
     if (!at.isBefore(dayStart)) {
-      todayNet += fee;
+      todayFallback += amount;
     }
     if (!at.isBefore(weekStart)) {
-      weekNet += fee;
+      weekFallback += amount;
     }
     if (!at.isBefore(monthStart)) {
-      monthNet += fee;
+      monthFallback += amount;
     }
   }
 
+  for (final RiderOrderDetail o in orders) {
+    tally(RiderEarningsAggregator.orderCompletedAt(o), o.deliveryFeeLkr.toDouble());
+  }
+  for (final RiderPassengerTrip t in trips) {
+    tally(RiderEarningsAggregator.tripCompletedAt(t), t.estimatedFareLkr.toDouble());
+  }
+
   return RiderEarningsSummary(
-    todayNet: todayNet,
-    weekNet: weekNet,
-    monthNet: monthNet,
+    todayNet: daily?.totalLkr ?? todayFallback,
+    weekNet: weekly?.totalLkr ?? weekFallback,
+    monthNet: monthly?.totalLkr ?? monthFallback,
     tripsToday: stats.todayDeliveries,
     tripsWeek: stats.weekDeliveries,
     tripsMonth: stats.monthDeliveries,
