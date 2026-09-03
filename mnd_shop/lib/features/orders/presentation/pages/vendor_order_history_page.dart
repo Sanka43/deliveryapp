@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/core/utils/phone_call_launcher.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
+import 'package:mnd_shop/features/incoming_orders/presentation/pages/incoming_vendor_order_page.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
 import 'package:mnd_shop/features/orders/presentation/widgets/vendor_orders_ui.dart';
@@ -13,6 +16,16 @@ class VendorOrderHistoryPage extends ConsumerWidget {
   const VendorOrderHistoryPage({super.key});
 
   static String _money(double value) => 'Rs. ${value.toStringAsFixed(2)}';
+
+  static void _openDetail(BuildContext context, VendorPendingOrder order) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (BuildContext ctx) =>
+            IncomingVendorOrderPage(order: order, readOnly: true),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,7 +81,10 @@ class VendorOrderHistoryPage extends ConsumerWidget {
                       en: 'Could not load history',
                       si: 'Could not load history',
                     ),
-                    subtitle: '$e',
+                    subtitle: userFacingError(
+                      e,
+                      fallback: 'Please check your connection and try again.',
+                    ),
                   ),
                 ),
                 data: (VendorOrderBoard value) {
@@ -129,15 +145,10 @@ class VendorOrderHistoryPage extends ConsumerWidget {
                           ...completed.map(
                             (VendorPendingOrder order) => Padding(
                               padding: const EdgeInsets.only(bottom: 10),
-                              child: VendorOrderListCard(
+                              child: _VendorOrderHistoryCard(
                                 order: order,
-                                stage: VendorOrderCardStage.ready,
-                                amountLabel: _money(order.shopTotal),
-                                onOpen: () {},
-                                onPrimary: null,
-                                primaryLabel: '',
-                                onSecondary: null,
-                                secondaryLabel: null,
+                                moneyLabel: _money(order.shopTotal),
+                                onOpen: () => _openDetail(context, order),
                               ),
                             ),
                           ),
@@ -158,15 +169,10 @@ class VendorOrderHistoryPage extends ConsumerWidget {
                           ...cancelled.map(
                             (VendorPendingOrder order) => Padding(
                               padding: const EdgeInsets.only(bottom: 10),
-                              child: VendorOrderListCard(
+                              child: _VendorOrderHistoryCard(
                                 order: order,
-                                stage: VendorOrderCardStage.progress,
-                                amountLabel: _money(order.shopTotal),
-                                onOpen: () {},
-                                onPrimary: null,
-                                primaryLabel: '',
-                                onSecondary: null,
-                                secondaryLabel: null,
+                                moneyLabel: _money(order.shopTotal),
+                                onOpen: () => _openDetail(context, order),
                               ),
                             ),
                           ),
@@ -179,6 +185,135 @@ class VendorOrderHistoryPage extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Minimal history row — tracking number, time, price, name, phone. No
+/// items list or status badges; tap opens the full read-only order detail.
+class _VendorOrderHistoryCard extends StatelessWidget {
+  const _VendorOrderHistoryCard({
+    required this.order,
+    required this.moneyLabel,
+    required this.onOpen,
+  });
+
+  final VendorPendingOrder order;
+  final String moneyLabel;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final Color cardBg = VendorOrdersTheme.cardSurface(context);
+    final Color titleColor = VendorOrdersTheme.primaryText(context);
+    final Color mutedColor = VendorOrdersTheme.mutedText(context);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: VendorOrdersTheme.cardShadow(context),
+      ),
+      child: Material(
+        color: cardBg,
+        elevation: 0,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        order.referenceForDisplay,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                          color: titleColor,
+                          fontFamily: 'monospace',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (order.placedAtLabel.isNotEmpty) ...<Widget>[
+                      const SizedBox(width: 10),
+                      Icon(Icons.schedule_rounded, size: 13, color: mutedColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        order.placedAtLabel,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: mutedColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (order.customerName.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(
+                    order.customerName,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: titleColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    if (order.customerPhone.isNotEmpty)
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => launchPhoneCall(context, order.customerPhone),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Icon(Icons.call_rounded, size: 13, color: AppColors.openGreen),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  order.customerPhone,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: mutedColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    Text(
+                      moneyLabel,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.vendorHeroBlue,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -42,6 +42,14 @@ enum VendorOrderStatus {
   static bool isReadyForPickup(String? value) =>
       parse(value) == VendorOrderStatus.ready;
 
+  /// Rider has claimed / is en route (not yet delivered).
+  static bool isWithRider(String? value) {
+    final String s = (value ?? '').trim().toLowerCase();
+    return s == 'out_for_delivery' ||
+        s == 'picked_up' ||
+        s == 'on_the_way';
+  }
+
   static bool isCompleted(String? value) =>
       parse(value) == VendorOrderStatus.completed ||
       parse(value) == VendorOrderStatus.delivered;
@@ -57,10 +65,18 @@ enum VendorOrderStatus {
         fulfillmentMode.trim() != 'selfPickup';
   }
 
-  static bool canVendorTransition({required String? from, required String to}) {
+  static bool canVendorTransition({
+    required String? from,
+    required String to,
+    String fulfillmentMode = 'delivery',
+    bool hasAssignedRider = false,
+  }) {
     final VendorOrderStatus? current = parse(from);
     final VendorOrderStatus? next = parse(to);
     if (next == null) {
+      return false;
+    }
+    if (hasAssignedRider && next == VendorOrderStatus.cancelled) {
       return false;
     }
     if (current == null) {
@@ -70,15 +86,17 @@ enum VendorOrderStatus {
     if (current == next) {
       return true;
     }
+    final bool selfPickup = fulfillmentMode.trim() == 'selfPickup';
+    // Cancel is only allowed on a still-new order (not yet accepted). Once
+    // it's in the kitchen or ready, the shop has committed to it — no cancel.
     return switch (current) {
       VendorOrderStatus.placed =>
         next == VendorOrderStatus.confirmed ||
             next == VendorOrderStatus.cancelled,
       VendorOrderStatus.confirmed || VendorOrderStatus.preparing =>
-        next == VendorOrderStatus.ready || next == VendorOrderStatus.cancelled,
+        next == VendorOrderStatus.ready,
       VendorOrderStatus.ready =>
-        next == VendorOrderStatus.completed ||
-            next == VendorOrderStatus.cancelled,
+        next == VendorOrderStatus.completed && selfPickup,
       VendorOrderStatus.completed ||
       VendorOrderStatus.delivered ||
       VendorOrderStatus.cancelled => false,

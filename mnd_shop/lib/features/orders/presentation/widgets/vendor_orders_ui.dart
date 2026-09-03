@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/utils/phone_call_launcher.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
+import 'package:mnd_shop/features/orders/data/vendor_order_rider_contact_repository.dart';
+import 'package:mnd_shop/features/orders/presentation/widgets/vendor_order_items_list.dart';
 
 /// Orders-tab colors — light mode values are fixed; dark mode uses adapted surfaces.
 abstract final class VendorOrdersTheme {
@@ -199,6 +203,7 @@ class VendorOrdersPipelineBar extends StatelessWidget {
     required this.activeCount,
     required this.selectedFilter,
     required this.onFilterSelected,
+    this.kitchenLabel = 'Kitchen',
   });
 
   final int incomingCount;
@@ -207,6 +212,7 @@ class VendorOrdersPipelineBar extends StatelessWidget {
   final int activeCount;
   final VendorOrderPipelineFilter selectedFilter;
   final ValueChanged<VendorOrderPipelineFilter> onFilterSelected;
+  final String kitchenLabel;
 
   static const double _chipGap = 8;
 
@@ -229,7 +235,7 @@ class VendorOrdersPipelineBar extends StatelessWidget {
             fixedWidth: useScroll ? _PipelineChip.scrollWidth : null,
           ),
           _PipelineChip(
-            label: 'Kitchen',
+            label: kitchenLabel,
             value: kitchenCount,
             selected: selectedFilter == VendorOrderPipelineFilter.kitchen,
             onTap: () => onFilterSelected(VendorOrderPipelineFilter.kitchen),
@@ -527,6 +533,7 @@ class VendorOrderListCard extends StatefulWidget {
 
 class _VendorOrderListCardState extends State<VendorOrderListCard> {
   bool _primaryPressed = false;
+  bool _primaryBusy = false;
 
   Color get _stageAccent => switch (widget.stage) {
         VendorOrderCardStage.urgent => VendorOrdersStageColors.newOrders,
@@ -535,16 +542,27 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
       };
 
   Future<void> _runPrimary() async {
-    if (widget.onPrimary == null) {
+    // Guards against a fast double-tap firing the status-update write (and
+    // its rider-matching notification) twice before the first call lands.
+    if (widget.onPrimary == null || _primaryBusy) {
       return;
     }
     HapticFeedback.lightImpact();
-    setState(() => _primaryPressed = true);
+    setState(() {
+      _primaryPressed = true;
+      _primaryBusy = true;
+    });
     await Future<void>.delayed(const Duration(milliseconds: 85));
     if (mounted) {
       setState(() => _primaryPressed = false);
     }
-    await widget.onPrimary!();
+    try {
+      await widget.onPrimary!();
+    } finally {
+      if (mounted) {
+        setState(() => _primaryBusy = false);
+      }
+    }
   }
 
   @override
@@ -596,18 +614,50 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (order.customerPhone.isNotEmpty) ...<Widget>[
+                          if (order.customerName.isNotEmpty) ...<Widget>[
                             const SizedBox(height: 4),
                             Text(
-                              order.customerPhone,
+                              order.customerName,
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: mutedColor,
+                                color: titleColor,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14,
                                 height: 1.2,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          if (order.customerPhone.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: () =>
+                                  launchPhoneCall(context, order.customerPhone),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Icon(
+                                    Icons.call_rounded,
+                                    size: 13,
+                                    color: AppColors.openGreen,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      order.customerPhone,
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        color: mutedColor,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                        height: 1.2,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ],
@@ -617,6 +667,58 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: <Widget>[
                         _OrderPlacedAtBadge(label: order.placedAtLabel),
+                        if (order.isVendorManual) ...<Widget>[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.pendingAmber.withValues(
+                                alpha: VendorOrdersTheme.isDark(context)
+                                    ? 0.22
+                                    : 0.16,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              order.isGuestCustomer ? 'PHONE' : 'MANUAL',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AppColors.textCharcoal,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                                fontSize: 9.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (order.hasProductCashLedger) ...<Widget>[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: order.productCashStatus == 'settled_to_shop'
+                                  ? AppColors.openGreen.withValues(alpha: 0.16)
+                                  : AppColors.pendingAmber.withValues(
+                                      alpha: 0.16,
+                                    ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              order.productCashBadgeLabel,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AppColors.textCharcoal,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.3,
+                                fontSize: 9.5,
+                              ),
+                            ),
+                          ),
+                        ],
                         if (widget.stage == VendorOrderCardStage.urgent) ...<Widget>[
                           const SizedBox(height: 6),
                           Container(
@@ -681,31 +783,46 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                         color: VendorOrdersTheme.itemsBoxBorder(context),
                       ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: order.itemLines.asMap().entries.map(
-                        (MapEntry<int, String> entry) {
-                          final bool isLast = entry.key == order.itemLines.length - 1;
-                          final TextStyle itemStyle = GoogleFonts.poppins(
-                            textStyle: theme.textTheme.bodyLarge,
-                            color: titleColor,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                            height: 1.45,
-                          );
-                          return Padding(
-                            padding: EdgeInsets.only(bottom: isLast ? 0 : 7),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text('• ', style: itemStyle.copyWith(fontWeight: FontWeight.w700)),
-                                Expanded(child: Text(entry.value, style: itemStyle)),
-                              ],
-                            ),
-                          );
-                        },
-                      ).toList(),
+                    child: VendorOrderItemsList(
+                      items: order.items,
+                      primaryText: titleColor,
+                      mutedText: mutedColor,
                     ),
+                  ),
+                ],
+                if (order.hasAssignedRider) ...<Widget>[
+                  const SizedBox(height: 10),
+                  Consumer(
+                    builder: (BuildContext context, WidgetRef ref, _) {
+                      final AsyncValue<VendorOrderRiderContact> contact = ref
+                          .watch(vendorOrderRiderContactProvider(order.id));
+                      return contact.maybeWhen(
+                        data: (VendorOrderRiderContact c) => InkWell(
+                          onTap: () => launchPhoneCall(context, c.phone),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Icon(
+                                Icons.delivery_dining_rounded,
+                                size: 15,
+                                color: VendorOrdersStageColors.kitchen,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Call rider · ${c.name}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: VendorOrdersStageColors.kitchen,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        orElse: () => const SizedBox.shrink(),
+                      );
+                    },
                   ),
                 ],
                 if (widget.onPrimary != null) ...<Widget>[
@@ -753,7 +870,7 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                               ],
                             ),
                             child: FilledButton(
-                              onPressed: _runPrimary,
+                              onPressed: _primaryBusy ? null : _runPrimary,
                               style: FilledButton.styleFrom(
                                 backgroundColor: _stageAccent,
                                 foregroundColor: Colors.white,
@@ -767,7 +884,16 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                                   fontSize: 14,
                                 ),
                               ),
-                              child: Text(widget.primaryLabel),
+                              child: _primaryBusy
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(widget.primaryLabel),
                             ),
                           ),
                         ),

@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/firebase_collections.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
+import 'package:mnd_shop/features/dashboard/domain/vendor_open_hours.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_sales_aggregator.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_sales_summary.dart';
@@ -110,6 +113,48 @@ class VendorOrdersRepository {
     return _isAuthorizedVendorId(vendorId);
   }
 
+  /// Clears any `order_reminder` inbox entries for [orderId] once it's no
+  /// longer `placed` — e.g. the vendor confirmed it from the board rather
+  /// than by tapping the reminder notification itself. The reminder doc ids
+  /// are deterministic (`sweepStalePlacedOrders` writes at most two,
+  /// `_order_reminder_1`/`_order_reminder_2`) and usually don't exist at all
+  /// if no reminder ever fired — `.update()` is used instead of
+  /// `.set(merge: true)` so a missing doc is a safe no-op rather than
+  /// creating an empty stub notification.
+  ///
+  /// Best-effort only: this runs *after* the status write has committed, so a
+  /// failure here must never be reported as a failed accept/reject. A missing
+  /// reminder doc comes back as `permission-denied`, not `not-found` — the
+  /// security rule for these docs inspects `resource.data`, which can't be
+  /// evaluated when the document doesn't exist — so every Firestore error is
+  /// swallowed rather than just `not-found`.
+  Future<void> _clearOrderReminderNotifications({
+    required String vendorId,
+    required String orderId,
+  }) async {
+    final String v = vendorId.trim();
+    if (v.isEmpty) {
+      return;
+    }
+    final CollectionReference<Map<String, dynamic>> notifications = _firestore
+        .collection(FirebaseCollections.vendors)
+        .doc(v)
+        .collection(FirebaseCollections.vendorNotifications);
+    final Map<String, dynamic> patch = <String, dynamic>{
+      'read': true,
+      'readAt': FieldValue.serverTimestamp(),
+    };
+    for (final String suffix in const <String>['1', '2']) {
+      try {
+        await notifications.doc('${orderId}_order_reminder_$suffix').update(patch);
+      } on FirebaseException catch (e) {
+        if (kDebugMode) {
+          debugPrint('clearOrderReminderNotifications skipped: ${e.code}');
+        }
+      }
+    }
+  }
+
   /// Whether the store is accepting orders (`active != false`).
   ///
   /// Missing vendor docs default to closed so an unlinked or deleted storefront
@@ -143,15 +188,83 @@ class VendorOrdersRepository {
       if (!allowed) {
         return 'You are not allowed to update this store.';
       }
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await _vendors.doc(id).get();
+      final Map<String, dynamic> data = snap.data() ?? <String, dynamic>{};
+      final String? approval = data['approvalStatus'] as String?;
+      if (isApprovalBlocking(approval)) {
+        return 'Your shop must be approved before going live.';
+      }
+      final OpeningHours hours = parseOpeningHours(data['openingHours']);
+      final DateTime boundary = nextScheduleBoundary(DateTime.now(), hours);
       await _vendors.doc(id).set(<String, dynamic>{
         'active': active,
+        'openOverrideUntil': Timestamp.fromDate(boundary.toUtc()),
       }, SetOptions(merge: true));
       return null;
     } on FirebaseException catch (e) {
-      return e.message ?? 'Could not update store.';
+      return userFacingError(e, fallback: 'Could not update store.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not update store.');
     }
+  }
+
+  /// Align `active` with opening hours when no manual override is in effect.
+  ///
+  /// Called on dashboard/settings load so vendors do not wait for the scheduler.
+  Future<String?> syncVendorOpenStatusFromSchedule(String vendorId) async {
+    final String id = vendorId.trim();
+    if (id.isEmpty) {
+      return null;
+    }
+    if (_auth.currentUser == null) {
+      return null;
+    }
+    try {
+      final bool allowed = await _isAuthorizedVendorId(id);
+      if (!allowed) {
+        return null;
+      }
+      final DocumentReference<Map<String, dynamic>> ref = _vendors.doc(id);
+      final DocumentSnapshot<Map<String, dynamic>> snap = await ref.get();
+      if (!snap.exists || snap.data() == null) {
+        return null;
+      }
+      final Map<String, dynamic> data = snap.data()!;
+      final DateTime? overrideUntil = _readTimestamp(data['openOverrideUntil']);
+      final SyncVendorOpenResult result = syncVendorOpenStatus(
+        now: DateTime.now(),
+        approvalStatus: data['approvalStatus'] as String?,
+        active: data['active'] as bool?,
+        openingHours: data['openingHours'],
+        openOverrideUntil: overrideUntil,
+      );
+      if (!result.changed) {
+        return null;
+      }
+      final Map<String, dynamic> patch = <String, dynamic>{
+        'active': result.active,
+      };
+      if (result.clearOverride) {
+        patch['openOverrideUntil'] = FieldValue.delete();
+      }
+      await ref.set(patch, SetOptions(merge: true));
+      return null;
+    } on FirebaseException catch (e) {
+      return userFacingError(e, fallback: 'Could not sync store hours.');
+    } catch (e) {
+      return userFacingError(e, fallback: 'Could not sync store hours.');
+    }
+  }
+
+  DateTime? _readTimestamp(Object? value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+    if (value is DateTime) {
+      return value;
+    }
+    return null;
   }
 
   /// Live orders for this store (newest first). Empty stream if [vendorId] blank or not signed in.
@@ -169,6 +282,13 @@ class VendorOrdersRepository {
         .limit(1000)
         .snapshots()
         .map((QuerySnapshot<Map<String, dynamic>> snap) {
+          return _mapOrderBoardSnapshot(snap);
+        });
+  }
+
+  VendorOrderBoard _mapOrderBoardSnapshot(
+    QuerySnapshot<Map<String, dynamic>> snap,
+  ) {
           final bool isTruncated = snap.docs.length >= 1000;
           final List<VendorPendingOrder> incoming = <VendorPendingOrder>[];
           final List<VendorPendingOrder> kitchen = <VendorPendingOrder>[];
@@ -192,6 +312,8 @@ class VendorOrdersRepository {
               kitchen.add(o);
             } else if (VendorOrderStatus.isReadyForPickup(s)) {
               ready.add(o);
+            } else if (VendorOrderStatus.isWithRider(s)) {
+              outForDelivery.add(o);
             } else if (VendorOrderStatus.isCompleted(s)) {
               completed.add(o);
             } else if (VendorOrderStatus.isCancelled(s)) {
@@ -210,7 +332,6 @@ class VendorOrdersRepository {
             salesSummary: salesSummary,
             isTruncated: isTruncated,
           );
-        });
   }
 
   Future<String?> updateOrderStatus({
@@ -224,39 +345,76 @@ class VendorOrdersRepository {
     if (!VendorOrderStatus.isKnown(normalizedStatus)) {
       return 'Invalid order status.';
     }
+    String priorStatus = '';
+    String vendorId = '';
     try {
       final bool allowed = await _canMutateOrder(orderId);
       if (!allowed) {
         return 'You are not allowed to update this order.';
       }
-      final DocumentSnapshot<Map<String, dynamic>> orderSnap = await _orders
-          .doc(orderId)
-          .get();
-      final String currentStatus =
-          (orderSnap.data()?['status'] as String?)?.trim().toLowerCase() ?? '';
-      if (!VendorOrderStatus.canVendorTransition(
-        from: currentStatus,
-        to: normalizedStatus,
-      )) {
-        return 'Invalid order status transition.';
+      final String? txError = await _firestore.runTransaction<String?>((
+        Transaction tx,
+      ) async {
+        final DocumentReference<Map<String, dynamic>> orderRef = _orders.doc(
+          orderId,
+        );
+        final DocumentSnapshot<Map<String, dynamic>> orderSnap = await tx.get(
+          orderRef,
+        );
+        if (!orderSnap.exists) {
+          return 'This order no longer exists.';
+        }
+        final Map<String, dynamic> data = orderSnap.data() ?? <String, dynamic>{};
+        final String currentStatus =
+            (data['status'] as String?)?.trim().toLowerCase() ?? '';
+        final String fulfillmentMode =
+            (data['fulfillmentMode'] as String?)?.trim() ?? 'delivery';
+        final String assigned =
+            (data['assignedRiderId'] as String?)?.trim() ??
+            (data['riderId'] as String?)?.trim() ??
+            '';
+        // Re-check the transition against the status read inside this
+        // transaction (not a stale pre-fetch) so a concurrent write —
+        // e.g. the backend's stale-order auto-cancel sweep, or a rider
+        // claiming the job — can't be silently overwritten by a vendor
+        // action that read the order a moment earlier.
+        if (!VendorOrderStatus.canVendorTransition(
+          from: currentStatus,
+          to: normalizedStatus,
+          fulfillmentMode: fulfillmentMode,
+          hasAssignedRider: assigned.isNotEmpty,
+        )) {
+          return 'Invalid order status transition.';
+        }
+        final Map<String, dynamic> patch = <String, dynamic>{
+          'status': normalizedStatus,
+          'vendorStatusUpdatedAt': FieldValue.serverTimestamp(),
+        };
+        patch['openForRiders'] = VendorOrderStatus.opensRiderMatching(
+          status: normalizedStatus,
+          fulfillmentMode: fulfillmentMode,
+        );
+        tx.update(orderRef, patch);
+        priorStatus = currentStatus;
+        vendorId = (data['vendorId'] as String?)?.trim() ?? '';
+        return null;
+      });
+      if (txError == null &&
+          priorStatus == 'placed' &&
+          normalizedStatus != 'placed') {
+        // The vendor confirmed this order from the board rather than by
+        // tapping the reminder notification itself — clear any pending
+        // accept-reminder so it doesn't linger unread in the inbox.
+        await _clearOrderReminderNotifications(
+          vendorId: vendorId,
+          orderId: orderId,
+        );
       }
-      final String fulfillmentMode =
-          (orderSnap.data()?['fulfillmentMode'] as String?)?.trim() ??
-          'delivery';
-      final Map<String, dynamic> patch = <String, dynamic>{
-        'status': normalizedStatus,
-        'vendorStatusUpdatedAt': FieldValue.serverTimestamp(),
-      };
-      patch['openForRiders'] = VendorOrderStatus.opensRiderMatching(
-        status: normalizedStatus,
-        fulfillmentMode: fulfillmentMode,
-      );
-      await _orders.doc(orderId).update(patch);
-      return null;
+      return txError;
     } on FirebaseException catch (e) {
-      return e.message ?? 'Could not update order.';
+      return userFacingError(e, fallback: 'Could not update order.');
     } catch (e) {
-      return 'Could not update order.';
+      return userFacingError(e, fallback: 'Could not update order.');
     }
   }
 
@@ -264,23 +422,64 @@ class VendorOrdersRepository {
     if (_auth.currentUser == null) {
       return 'Sign in to update orders.';
     }
+    String priorStatus = '';
+    String vendorId = '';
     try {
       final bool allowed = await _canMutateOrder(orderId);
       if (!allowed) {
         return 'You are not allowed to update this order.';
       }
-      await _orders.doc(orderId).update(<String, dynamic>{
-        'status': 'cancelled',
-        'openForRiders': false,
-        'cancelledBy': 'vendor',
-        'cancellationReason': 'vendor_rejected',
-        'cancelledAt': FieldValue.serverTimestamp(),
+      final String? txError = await _firestore.runTransaction<String?>((
+        Transaction tx,
+      ) async {
+        final DocumentReference<Map<String, dynamic>> orderRef = _orders.doc(
+          orderId,
+        );
+        final DocumentSnapshot<Map<String, dynamic>> orderSnap = await tx.get(
+          orderRef,
+        );
+        if (!orderSnap.exists) {
+          return 'This order no longer exists.';
+        }
+        final Map<String, dynamic> data = orderSnap.data() ?? <String, dynamic>{};
+        final String currentStatus =
+            (data['status'] as String?)?.trim().toLowerCase() ?? '';
+        final String fulfillmentMode =
+            (data['fulfillmentMode'] as String?)?.trim() ?? 'delivery';
+        final String assigned =
+            (data['assignedRiderId'] as String?)?.trim() ??
+            (data['riderId'] as String?)?.trim() ??
+            '';
+        if (!VendorOrderStatus.canVendorTransition(
+          from: currentStatus,
+          to: 'cancelled',
+          fulfillmentMode: fulfillmentMode,
+          hasAssignedRider: assigned.isNotEmpty,
+        )) {
+          return 'This order can no longer be rejected.';
+        }
+        tx.update(orderRef, <String, dynamic>{
+          'status': 'cancelled',
+          'openForRiders': false,
+          'cancelledBy': 'vendor',
+          'cancellationReason': 'vendor_rejected',
+          'cancelledAt': FieldValue.serverTimestamp(),
+        });
+        priorStatus = currentStatus;
+        vendorId = (data['vendorId'] as String?)?.trim() ?? '';
+        return null;
       });
-      return null;
+      if (txError == null && priorStatus == 'placed') {
+        await _clearOrderReminderNotifications(
+          vendorId: vendorId,
+          orderId: orderId,
+        );
+      }
+      return txError;
     } on FirebaseException catch (e) {
-      return e.message ?? 'Could not reject order.';
+      return userFacingError(e, fallback: 'Could not reject order.');
     } catch (e) {
-      return 'Could not reject order.';
+      return userFacingError(e, fallback: 'Could not reject order.');
     }
   }
 
@@ -301,11 +500,11 @@ class VendorOrdersRepository {
       return null;
     } on FirebaseException catch (e) {
       if (e.code == 'not-found') {
-        return 'Vendor doc missing in Firestore. Create vendors/${u.uid} or sync store ID (admin).';
+        return 'Your shop profile could not be updated. Please contact support.';
       }
-      return e.message ?? 'Could not save profile.';
+      return userFacingError(e, fallback: 'Could not save profile.');
     } catch (e) {
-      return e.toString();
+      return userFacingError(e, fallback: 'Could not save profile.');
     }
   }
 }

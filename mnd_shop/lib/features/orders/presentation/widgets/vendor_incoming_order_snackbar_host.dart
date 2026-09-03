@@ -5,9 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/vendor_notification_prefs_provider.dart';
+import 'package:mnd_shop/core/notifications/vendor_alert_audio_context.dart';
+import 'package:mnd_shop/core/notifications/vendor_alert_sound.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
+import 'package:mnd_shop/features/orders/presentation/widgets/vendor_new_order_dialog.dart';
 
 /// Listens to [vendorOrderBoardProvider] and plays a short alert sound plus an
 /// [AlertDialog] when a **new** `placed` order appears (not on first snapshot).
@@ -24,13 +27,22 @@ class _VendorIncomingOrderSnackbarHostState extends ConsumerState<VendorIncoming
   bool _hydrated = false;
   final AudioPlayer _orderAlertPlayer = AudioPlayer();
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      _orderAlertPlayer.setAudioContext(vendorAlertAudioContext()),
+    );
+  }
+
   Future<void> _playNewOrderSound() async {
     if (!ref.read(vendorOrderAlertSoundEnabledProvider)) {
       return;
     }
+    final VendorAlertSound tone = ref.read(vendorAlertToneProvider);
     try {
       await _orderAlertPlayer.stop();
-      await _orderAlertPlayer.play(AssetSource('sounds/new_order.mp3'));
+      await _orderAlertPlayer.play(AssetSource(tone.assetPath));
     } catch (_) {
       SystemSound.play(SystemSoundType.alert);
     }
@@ -62,7 +74,6 @@ class _VendorIncomingOrderSnackbarHostState extends ConsumerState<VendorIncoming
         if (!context.mounted) {
           return;
         }
-        final String money = 'Rs. ${o.total.toStringAsFixed(0)}';
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!context.mounted) {
             return;
@@ -72,68 +83,11 @@ class _VendorIncomingOrderSnackbarHostState extends ConsumerState<VendorIncoming
           if (!ref.read(vendorInAppOrderAlertsEnabledProvider)) {
             return;
           }
-          final ThemeData theme = Theme.of(context);
-          final ColorScheme cs = theme.colorScheme;
           showDialog<void>(
             context: context,
-            barrierDismissible: true,
+            barrierDismissible: false,
             useRootNavigator: true,
-            builder: (BuildContext dialogContext) {
-              return AlertDialog(
-                icon: Icon(
-                  Icons.notifications_active_rounded,
-                  color: cs.primary,
-                  size: 36,
-                ),
-                title: const Text('New order'),
-                content: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        money,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        o.referenceForDisplay,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                      if (o.customerPhone.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 4),
-                        Text(
-                          o.customerPhone,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                      if (o.itemsSummary.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 8),
-                        Text(
-                          o.itemsSummary,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                actions: <Widget>[
-                  FilledButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: const Text('OK'),
-                  ),
-                ],
-              );
-            },
+            builder: (BuildContext dialogContext) => VendorNewOrderDialog(order: o),
           );
         });
       }

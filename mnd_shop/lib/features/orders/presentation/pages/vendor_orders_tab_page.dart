@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
+import 'package:mnd_shop/features/create_order/presentation/pages/vendor_create_order_page.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
 import 'package:mnd_shop/features/incoming_orders/presentation/pages/incoming_vendor_order_page.dart';
@@ -102,21 +104,30 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
     );
   }
 
+  Future<void> _openCreateOrder() async {
+    HapticFeedback.selectionClick();
+    final bool? created = await VendorCreateOrderPage.open(context);
+    if (created == true && mounted) {
+      ref.invalidate(vendorOrderBoardProvider);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final AsyncValue<VendorOrderBoard> board = ref.watch(
       vendorOrderBoardProvider,
     );
     final String storeId = ref.watch(vendorEffectiveStoreIdProvider).trim();
+    final bool isGrocery = ref.watch(isGroceryShopProvider);
 
     final double topInset = MediaQuery.paddingOf(context).top;
     final double gutter = vendorResponsiveHorizontalPadding(context);
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final ColorScheme cs = Theme.of(context).colorScheme;
 
-    return Material(
-      color: VendorOrdersTheme.canvas(context),
-      child: VendorResponsiveContent(
+    return Scaffold(
+      backgroundColor: VendorOrdersTheme.canvas(context),
+      body: VendorResponsiveContent(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -125,14 +136,31 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
               child: VendorPageHeader(
                 title: _vTxt(context, en: 'Orders', si: 'ඇණවුම්'),
                 titleColor: isDark ? cs.onSurface : null,
-                trailing: IconButton.filledTonal(
-                  tooltip: _vTxt(
-                    context,
-                    en: 'Order history',
-                    si: 'Order history',
-                  ),
-                  onPressed: _openHistory,
-                  icon: const Icon(Icons.history_rounded),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    IconButton.filledTonal(
+                      tooltip: _vTxt(
+                        context,
+                        en: 'Order history',
+                        si: 'Order history',
+                      ),
+                      onPressed: _openHistory,
+                      icon: const Icon(Icons.history_rounded),
+                    ),
+                    if (storeId.isNotEmpty) ...<Widget>[
+                      const SizedBox(width: 8),
+                      _CreateOrderActionButton(
+                        compact: true,
+                        onPressed: _openCreateOrder,
+                        tooltip: _vTxt(
+                          context,
+                          en: 'New order',
+                          si: 'නව ඇණවුම',
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -150,6 +178,7 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                     activeCount: b.activeCount,
                     selectedFilter: _filter,
                     onFilterSelected: _selectFilter,
+                    kitchenLabel: isGrocery ? 'Preparing' : 'Kitchen',
                   ),
                 );
               },
@@ -172,7 +201,15 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                     ),
                   ),
                   error: (Object e, StackTrace _) =>
-                      _OrdersScrollBody(child: _OrdersErrorPane(message: '$e')),
+                      _OrdersScrollBody(
+                        child: _OrdersErrorPane(
+                          message: userFacingError(
+                            e,
+                            fallback:
+                                'Please check your connection and try again.',
+                          ),
+                        ),
+                      ),
                   data: (VendorOrderBoard b) {
                     if (storeId.isEmpty) {
                       return _OrdersScrollBody(
@@ -203,8 +240,10 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                           ),
                           subtitle: _vTxt(
                             context,
-                            en: 'New orders show up here instantly when customers place them.',
-                            si: 'පාරිභෝගිකයන් ඇණවුම් කළ විගස ඒවා මෙහි පෙනේ.',
+                            en:
+                                'Create a phone order or wait for customers to place one.',
+                            si:
+                                'Phone order එකක් සාදන්න හෝ පාරිභෝගික ඇණවුම් එනතුරු රැඳෙන්න.',
                           ),
                         ),
                       );
@@ -303,11 +342,13 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                       listChildren.addAll(<Widget>[
                         const SizedBox(height: 22),
                         VendorOrdersSectionHeader(
-                          icon: Icons.restaurant_rounded,
+                          icon: isGrocery
+                              ? Icons.inventory_2_rounded
+                              : Icons.restaurant_rounded,
                           label: _vTxt(
                             context,
-                            en: 'In kitchen',
-                            si: 'මුළුතැන්ගෙයි',
+                            en: isGrocery ? 'Preparing' : 'In kitchen',
+                            si: isGrocery ? 'සකස් කරමින්' : 'මුළුතැන්ගෙයි',
                           ),
                           count: b.kitchen.length,
                           accent: VendorOrdersStageColors.kitchen,
@@ -323,8 +364,7 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                                 order: o,
                                 stage: VendorOrderCardStage.progress,
                                 amountLabel: _money(o.shopTotal),
-                                onOpen: () =>
-                                    _openIncomingDetail(context, ref, o),
+                                onOpen: () {},
                                 onPrimary: () async {
                                   final String? err = await ref
                                       .read(vendorOrdersRepositoryProvider)
@@ -366,6 +406,7 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                         const SizedBox(height: 12),
                         ...b.readyForPickup.map((VendorPendingOrder o) {
                           final int i = cardIndex++;
+                          final bool canComplete = o.isSelfPickup;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: VendorOrdersFadeIn(
@@ -374,30 +415,64 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                                 order: o,
                                 stage: VendorOrderCardStage.ready,
                                 amountLabel: _money(o.shopTotal),
-                                onOpen: () =>
-                                    _openIncomingDetail(context, ref, o),
-                                onPrimary: () async {
-                                  final String? err = await ref
-                                      .read(vendorOrdersRepositoryProvider)
-                                      .updateOrderStatus(
-                                        orderId: o.id,
-                                        nextStatus: 'completed',
-                                      );
-                                  if (context.mounted && err != null) {
-                                    _snack(context, err, error: true);
-                                  }
-                                },
-                                primaryLabel: o.isSelfPickup
+                                onOpen: () {},
+                                onPrimary: canComplete
+                                    ? () async {
+                                        final String? err = await ref
+                                            .read(vendorOrdersRepositoryProvider)
+                                            .updateOrderStatus(
+                                              orderId: o.id,
+                                              nextStatus: 'completed',
+                                            );
+                                        if (context.mounted && err != null) {
+                                          _snack(context, err, error: true);
+                                        }
+                                      }
+                                    : null,
+                                primaryLabel: canComplete
                                     ? _vTxt(
                                         context,
                                         en: 'Mark collected',
                                         si: 'රැගෙන ගිය ලෙස සලකුණු කරන්න',
                                       )
-                                    : _vTxt(
-                                        context,
-                                        en: 'Complete',
-                                        si: 'සම්පූර්ණ කරන්න',
-                                      ),
+                                    : '',
+                                onSecondary: null,
+                                secondaryLabel: null,
+                              ),
+                            ),
+                          );
+                        }),
+                      ]);
+                    }
+
+                    if (showAll && b.outForDelivery.isNotEmpty) {
+                      listChildren.addAll(<Widget>[
+                        const SizedBox(height: 22),
+                        VendorOrdersSectionHeader(
+                          icon: Icons.delivery_dining_rounded,
+                          label: _vTxt(
+                            context,
+                            en: 'With rider',
+                            si: 'Rider සමඟ',
+                          ),
+                          count: b.outForDelivery.length,
+                          accent: VendorOrdersStageColors.kitchen,
+                        ),
+                        const SizedBox(height: 12),
+                        ...b.outForDelivery.map((VendorPendingOrder o) {
+                          final int i = cardIndex++;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: VendorOrdersFadeIn(
+                              index: i,
+                              child: VendorOrderListCard(
+                                order: o,
+                                stage: VendorOrderCardStage.progress,
+                                amountLabel: _money(o.shopTotal),
+                                onOpen: () =>
+                                    _openIncomingDetail(context, ref, o),
+                                onPrimary: null,
+                                primaryLabel: '',
                                 onSecondary: null,
                                 secondaryLabel: null,
                               ),
@@ -411,9 +486,17 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                       listChildren.addAll(<Widget>[
                         const SizedBox(height: 28),
                         _EmptyOrdersMessage(
-                          icon: _filterEmptyIcon(_filter),
-                          title: _filterEmptyTitle(context, _filter),
-                          subtitle: _filterEmptySubtitle(context, _filter),
+                          icon: _filterEmptyIcon(_filter, isGrocery: isGrocery),
+                          title: _filterEmptyTitle(
+                            context,
+                            _filter,
+                            isGrocery: isGrocery,
+                          ),
+                          subtitle: _filterEmptySubtitle(
+                            context,
+                            _filter,
+                            isGrocery: isGrocery,
+                          ),
                         ),
                       ]);
                     }
@@ -468,10 +551,14 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
     };
   }
 
-  static IconData _filterEmptyIcon(VendorOrderPipelineFilter filter) {
+  static IconData _filterEmptyIcon(
+    VendorOrderPipelineFilter filter, {
+    bool isGrocery = false,
+  }) {
     return switch (filter) {
       VendorOrderPipelineFilter.newOrders => Icons.notifications_none_rounded,
-      VendorOrderPipelineFilter.kitchen => Icons.restaurant_outlined,
+      VendorOrderPipelineFilter.kitchen =>
+        isGrocery ? Icons.inventory_2_outlined : Icons.restaurant_outlined,
       VendorOrderPipelineFilter.ready => Icons.takeout_dining_outlined,
       VendorOrderPipelineFilter.active => Icons.receipt_long_rounded,
     };
@@ -479,8 +566,9 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
 
   static String _filterEmptyTitle(
     BuildContext context,
-    VendorOrderPipelineFilter filter,
-  ) {
+    VendorOrderPipelineFilter filter, {
+    bool isGrocery = false,
+  }) {
     return switch (filter) {
       VendorOrderPipelineFilter.newOrders => _vTxt(
         context,
@@ -489,8 +577,8 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
       ),
       VendorOrderPipelineFilter.kitchen => _vTxt(
         context,
-        en: 'Nothing in kitchen',
-        si: 'මුළුතැන්ගෙයි ඇණවුම් නැත',
+        en: isGrocery ? 'Nothing preparing' : 'Nothing in kitchen',
+        si: isGrocery ? 'සකස් වන ඇණවුම් නැත' : 'මුළුතැන්ගෙයි ඇණවුම් නැත',
       ),
       VendorOrderPipelineFilter.ready => _vTxt(
         context,
@@ -507,8 +595,9 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
 
   static String _filterEmptySubtitle(
     BuildContext context,
-    VendorOrderPipelineFilter filter,
-  ) {
+    VendorOrderPipelineFilter filter, {
+    bool isGrocery = false,
+  }) {
     return switch (filter) {
       VendorOrderPipelineFilter.newOrders => _vTxt(
         context,
@@ -517,13 +606,21 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
       ),
       VendorOrderPipelineFilter.kitchen => _vTxt(
         context,
-        en: 'Accepted orders move here while you prep.',
-        si: 'ඔබ සකස් කරන අතරතුර පිළිගත් ඇණවුම් මෙතැනට එයි.',
+        en: isGrocery
+            ? 'Accepted orders move here while you pack.'
+            : 'Accepted orders move here while you prep.',
+        si: isGrocery
+            ? 'ඔබ pack කරන අතරතුර පිළිගත් ඇණවුම් මෙතැනට එයි.'
+            : 'ඔබ සකස් කරන අතරතුර පිළිගත් ඇණවුම් මෙතැනට එයි.',
       ),
       VendorOrderPipelineFilter.ready => _vTxt(
         context,
-        en: 'Mark kitchen orders ready and they will show here.',
-        si: 'Kitchen ඇණවුම් ready ලෙස සලකුණු කළ විට මෙහි පෙනේ.',
+        en: isGrocery
+            ? 'Mark packing orders ready and they will show here.'
+            : 'Mark kitchen orders ready and they will show here.',
+        si: isGrocery
+            ? 'Packing ඇණවුම් ready ලෙස සලකුණු කළ විට මෙහි පෙනේ.'
+            : 'Kitchen ඇණවුම් ready ලෙස සලකුණු කළ විට මෙහි පෙනේ.',
       ),
       VendorOrderPipelineFilter.active => _vTxt(
         context,
@@ -666,6 +763,62 @@ class _EmptyOrdersMessage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Brand gradient add button for manual order creation.
+class _CreateOrderActionButton extends StatelessWidget {
+  const _CreateOrderActionButton({
+    required this.onPressed,
+    required this.tooltip,
+    this.compact = false,
+  });
+
+  final VoidCallback onPressed;
+  final String tooltip;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final double size = compact ? 40 : 52;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(compact ? 14 : 16),
+          child: Ink(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(compact ? 14 : 16),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: AppColors.heroGradient,
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: AppColors.heroShadow.withValues(
+                    alpha: isDark ? 0.35 : 0.28,
+                  ),
+                  blurRadius: compact ? 12 : 18,
+                  offset: Offset(0, compact ? 4 : 8),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.add_rounded,
+              size: compact ? 22 : 26,
+              color: Colors.white,
+            ),
+          ),
+        ),
       ),
     );
   }

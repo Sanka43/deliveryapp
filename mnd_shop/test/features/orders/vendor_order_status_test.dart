@@ -52,8 +52,20 @@ void main() {
         isTrue,
       );
       expect(
-        VendorOrderStatus.canVendorTransition(from: 'ready', to: 'completed'),
+        VendorOrderStatus.canVendorTransition(
+          from: 'ready',
+          to: 'completed',
+          fulfillmentMode: 'selfPickup',
+        ),
         isTrue,
+      );
+      expect(
+        VendorOrderStatus.canVendorTransition(
+          from: 'ready',
+          to: 'completed',
+          fulfillmentMode: 'delivery',
+        ),
+        isFalse,
       );
       expect(
         VendorOrderStatus.canVendorTransition(from: 'ready', to: 'confirmed'),
@@ -70,6 +82,38 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test('only allows cancel on a still-new (placed) order', () {
+      expect(
+        VendorOrderStatus.canVendorTransition(from: 'placed', to: 'cancelled'),
+        isTrue,
+      );
+      expect(
+        VendorOrderStatus.canVendorTransition(
+          from: 'confirmed',
+          to: 'cancelled',
+        ),
+        isFalse,
+      );
+      expect(
+        VendorOrderStatus.canVendorTransition(
+          from: 'preparing',
+          to: 'cancelled',
+        ),
+        isFalse,
+      );
+      expect(
+        VendorOrderStatus.canVendorTransition(from: 'ready', to: 'cancelled'),
+        isFalse,
+      );
+    });
+
+    test('buckets rider-in-progress statuses as with-rider', () {
+      expect(VendorOrderStatus.isWithRider('out_for_delivery'), isTrue);
+      expect(VendorOrderStatus.isWithRider('picked_up'), isTrue);
+      expect(VendorOrderStatus.isWithRider('on_the_way'), isTrue);
+      expect(VendorOrderStatus.isWithRider('ready'), isFalse);
     });
   });
 }
