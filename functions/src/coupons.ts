@@ -22,6 +22,53 @@ export function normalizeCouponCode(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
+// A popular coupon code applied by many concurrent orders used to increment
+// a single `usedCount` field on the coupon doc itself — a hot document, same
+// class of problem as the order tracking-number sequence. Usage is instead
+// spread across shard sub-documents; `coupon.usedCount` is no longer written
+// and is only an artifact of older data.
+const COUPON_USAGE_SHARDS = 20;
+
+function randomCouponUsageShardRef(
+  couponRef: FirebaseFirestore.DocumentReference,
+): FirebaseFirestore.DocumentReference {
+  const shardId = Math.floor(Math.random() * COUPON_USAGE_SHARDS);
+  return couponRef.collection("usage_shards").doc(String(shardId));
+}
+
+/** Sums usage shards for an accurate count — only needed when a coupon has
+ * a `maxUses` limit to enforce; skip this read otherwise. */
+export async function sumCouponUsageShards(
+  couponRef: FirebaseFirestore.DocumentReference,
+  tx?: FirebaseFirestore.Transaction,
+): Promise<number> {
+  const query = couponRef.collection("usage_shards");
+  const snap = tx ? await tx.get(query) : await query.get();
+  return snap.docs.reduce((sum, d) => sum + Number(d.data().count ?? 0), 0);
+}
+
+/** Call inside a transaction, after all of that transaction's reads. */
+export function incrementCouponUsageTx(
+  tx: FirebaseFirestore.Transaction,
+  couponRef: FirebaseFirestore.DocumentReference,
+): void {
+  tx.set(
+    randomCouponUsageShardRef(couponRef),
+    {count: FieldValue.increment(1)},
+    {merge: true},
+  );
+}
+
+/** Standalone (non-transactional) version, for callers outside a transaction. */
+export async function incrementCouponUsage(
+  couponRef: FirebaseFirestore.DocumentReference,
+): Promise<void> {
+  await randomCouponUsageShardRef(couponRef).set(
+    {count: FieldValue.increment(1)},
+    {merge: true},
+  );
+}
+
 export function computeDiscountLkr(
   coupon: CouponDoc,
   subtotalLkr: number,
@@ -161,13 +208,7 @@ export const onOrderCreatedValidateCoupon = onDocumentCreated(
       patch.couponRejected = true;
     } else {
       patch.couponVerified = true;
-      await getFirestore()
-        .collection("coupons")
-        .doc(code)
-        .set(
-          {usedCount: FieldValue.increment(1)},
-          {merge: true},
-        );
+      await incrementCouponUsage(getFirestore().collection("coupons").doc(code));
     }
 
     if (Object.keys(patch).length > 0) {

@@ -7,7 +7,9 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {
   computeDiscountLkr,
   CouponDoc,
+  incrementCouponUsageTx,
   normalizeCouponCode,
+  sumCouponUsageShards,
 } from "./coupons";
 import {
   clampTraveledKmToPlausibleRange,
@@ -116,10 +118,15 @@ function vendorCoords(vendor: Record<string, unknown>): {
   return null;
 }
 
-function buildTrackingNumber(placedAt: Date, sequence: number): string {
+function buildTrackingNumber(
+  placedAt: Date,
+  shardId: number,
+  sequence: number,
+): string {
   const yy = String(placedAt.getFullYear() % 100).padStart(2, "0");
+  const shard = String(shardId).padStart(2, "0");
   const seq = String(sequence).padStart(5, "0");
-  return `MND${yy}${seq}`;
+  return `MND${yy}${shard}${seq}`;
 }
 
 function normalizeLineQuantity(raw: unknown, index: number): number {
@@ -559,11 +566,21 @@ async function prepareCustomerOrder(
   };
 }
 
+// Sharded so concurrent order placement doesn't serialize on one hot
+// document: every order used to read+write the single "system/order_sequence"
+// doc, which under concurrent load caused Firestore transaction contention
+// (aborts/retries surfacing as INTERNAL errors, with multi-second latency).
+// Each shard keeps its own independent counter — the shard id is embedded in
+// the tracking number, so uniqueness only depends on that one shard's own
+// transaction and needs no cross-shard read.
+const TRACKING_SEQUENCE_SHARDS = 50;
+
 async function reserveTrackingNumber(
   tx: FirebaseFirestore.Transaction,
 ): Promise<string> {
   const db = getFirestore();
-  const seqRef = db.collection("system").doc("order_sequence");
+  const shardId = Math.floor(Math.random() * TRACKING_SEQUENCE_SHARDS);
+  const seqRef = db.collection("system").doc(`order_sequence_shard_${shardId}`);
   const seqSnap = await tx.get(seqRef);
   let currentSeq = 0;
   if (seqSnap.exists) {
@@ -571,7 +588,7 @@ async function reserveTrackingNumber(
   }
   const nextSeq = currentSeq + 1;
   tx.set(seqRef, {value: nextSeq});
-  return buildTrackingNumber(new Date(), nextSeq);
+  return buildTrackingNumber(new Date(), shardId, nextSeq);
 }
 
 async function loadAndPriceCoupon(
@@ -594,10 +611,12 @@ async function loadAndPriceCoupon(
       "This coupon cannot be applied to your cart.",
     );
   }
-  const usedCount = Number(coupon.usedCount ?? 0);
   const maxUses = coupon.maxUses;
-  if (maxUses != null && usedCount >= maxUses) {
-    throw new HttpsError("failed-precondition", "Coupon usage limit reached.");
+  if (maxUses != null) {
+    const usedCount = await sumCouponUsageShards(couponRef, tx);
+    if (usedCount >= maxUses) {
+      throw new HttpsError("failed-precondition", "Coupon usage limit reached.");
+    }
   }
   return {code, couponRef, discount};
 }
@@ -610,17 +629,21 @@ async function consumeCouponAndSequence(
 ): Promise<{discount: number; couponCode: string | undefined; trackingNumber: string}> {
   let discount = 0;
   let couponCode: string | undefined;
+  let couponRef: FirebaseFirestore.DocumentReference | undefined;
   if (couponRaw) {
-    const {code, couponRef, discount: d} = await loadAndPriceCoupon(
-      tx,
-      couponRaw,
-      subtotal,
-    );
-    tx.set(couponRef, {usedCount: FieldValue.increment(1)}, {merge: true});
-    discount = d;
-    couponCode = code;
+    const loaded = await loadAndPriceCoupon(tx, couponRaw, subtotal);
+    couponRef = loaded.couponRef;
+    discount = loaded.discount;
+    couponCode = loaded.code;
   }
+  // reserveTrackingNumber() does its own read-then-write on the sequence
+  // shard doc — it must run before the coupon-usage write below, because a
+  // Firestore transaction can't issue a read (which reserveTrackingNumber
+  // does) after any write has already been queued on it.
   const trackingNumber = await reserveTrackingNumber(tx);
+  if (couponRef) {
+    incrementCouponUsageTx(tx, couponRef);
+  }
   return {discount, couponCode, trackingNumber};
 }
 
@@ -1094,14 +1117,11 @@ export async function markOrderPaidAndPlace(
       const couponSnap = await tx.get(couponRef);
       if (couponSnap.exists) {
         const coupon = couponSnap.data() as CouponDoc;
-        const usedCount = Number(coupon.usedCount ?? 0);
         const maxUses = coupon.maxUses;
+        const usedCount =
+          maxUses != null ? await sumCouponUsageShards(couponRef, tx) : 0;
         if (maxUses == null || usedCount < maxUses) {
-          tx.set(
-            couponRef,
-            {usedCount: FieldValue.increment(1)},
-            {merge: true},
-          );
+          incrementCouponUsageTx(tx, couponRef);
         }
       }
     }
@@ -1540,20 +1560,10 @@ export const placeVendorManualOrder = onCall(
       : Math.max(0, subtotal - discount + serviceCharge);
 
     const db = getFirestore();
-    const placedAt = new Date();
     const orderRef = db.collection("orders").doc();
-    const seqRef = db.collection("system").doc("order_sequence");
 
     const result = await db.runTransaction(async (tx) => {
-      const seqSnap = await tx.get(seqRef);
-      let currentSeq = 0;
-      if (seqSnap.exists) {
-        currentSeq = Math.floor(Number(seqSnap.data()?.value ?? 0));
-      }
-      const nextSeq = currentSeq + 1;
-      tx.set(seqRef, {value: nextSeq});
-
-      const trackingNumber = buildTrackingNumber(placedAt, nextSeq);
+      const trackingNumber = await reserveTrackingNumber(tx);
       const payload: Record<string, unknown> = {
         trackingNumber,
         customerId: resolvedCustomer.customerId,
