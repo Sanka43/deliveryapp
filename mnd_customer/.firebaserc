@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "mnd-masterndelivery"
-  }
+  },
+  "targets": {
+    "mnd-masterndelivery": {
+      "hosting": {
+        "web": [
+          "mnd-customer"
+        ],
+        "legal": [
+          "mnd-customer-legal"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

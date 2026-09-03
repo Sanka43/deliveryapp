@@ -1,0 +1,8 @@
+# MND Delivery
+
+> Master N Delivery — food, groceries, rides, and jobs in Badulla, Sri Lanka.
+
+## Links
+
+- [Home](https://mnd.lk/)
+- [Customer web app](https://mnd.lk/)

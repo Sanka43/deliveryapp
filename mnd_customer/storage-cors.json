@@ -1,0 +1,21 @@
+[
+  {
+    "origin": [
+      "https://mnd.lk",
+      "https://www.mnd.lk",
+      "https://mnd-customer.web.app",
+      "https://mnd-customer.firebaseapp.com",
+      "http://localhost",
+      "http://127.0.0.1"
+    ],
+    "method": ["GET", "HEAD", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Disposition",
+      "Authorization",
+      "x-goog-resumable"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

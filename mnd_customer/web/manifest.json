@@ -1,11 +1,11 @@
 {
-    "name": "mnd_delivery_app",
-    "short_name": "mnd_delivery_app",
+    "name": "MND Delivery",
+    "short_name": "MND",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1463FF",
+    "theme_color": "#1463FF",
+    "description": "Master N Delivery — food, groceries, rides, and jobs in Badulla.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

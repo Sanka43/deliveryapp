@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "mnd_customer (dev)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": ["--dart-define-from-file=dart_defines.json"]
+    },
+    {
+      "name": "mnd_customer (dev, profile)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "profile",
+      "args": ["--dart-define-from-file=dart_defines.json"]
+    },
+    {
+      "name": "mnd_customer (dev, Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "args": ["--dart-define-from-file=dart_defines.json"]
+    },
+    {
+      "name": "mnd_customer (staging)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": [
+        "--dart-define-from-file=dart_defines.json",
+        "--dart-define=APP_ENV=staging"
+      ]
+    }
+  ]
+}
