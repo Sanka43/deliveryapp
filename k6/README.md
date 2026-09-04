@@ -59,6 +59,14 @@ emulator and mints ID tokens for them, so no real phone OTP/SMS is involved.
    *real* Google Maps API even via the emulator, so it stays capped at a
    handful of requests (`-e ITERATIONS=5` to change the count).
 
+   Don't try to fake this out for free with a shell-exported
+   `GOOGLE_MAPS_KEY` override before starting the emulator — the emulator's
+   own `.env` loading takes priority over it, so the real key gets used
+   regardless (confirmed directly: it still returned a real, billed route).
+   The only real zero-cost option is an env-gated mock branch inside
+   `functions/src/mapsProxy.ts` itself — a source change, not something
+   this test harness can route around on its own.
+
 ## Scripts
 
 | Script | Covers | Notes |

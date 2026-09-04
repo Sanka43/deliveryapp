@@ -6,6 +6,14 @@
 // even against the local Firebase emulator, a call here reaches Google and
 // burns real quota/billing (GOOGLE_MAPS_KEY from functions/.env). Keep this
 // at a small, fixed request count; do not ramp VUs on this script.
+//
+// A shell-exported GOOGLE_MAPS_KEY override does NOT work to fake this out
+// for free — the emulator's own .env loading takes priority over it and the
+// real key gets used regardless (confirmed the hard way: one real, billed
+// Directions API call). The only real way to load-test this endpoint at
+// zero cost is an env-gated mock branch inside functions/src/mapsProxy.ts
+// itself, which is a source change and needs its own explicit go-ahead —
+// not implemented here.
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { BASE_URL } from '../config.js';
