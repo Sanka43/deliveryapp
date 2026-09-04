@@ -97,9 +97,24 @@ async function seedCustomers() {
     const uid = `k6-customer-${i}`;
     await ensureUser(uid);
     const idToken = await mintIdToken(uid);
+
+    // createJobPost requires a customers/{uid} doc to exist, with a real
+    // jobPostCredits balance (each post consumes one) — seeded very high so
+    // job_postings.js can sustain a full load-test ramp, same reasoning as
+    // the rider wallet balance below.
+    await db.collection('customers').doc(uid).set(
+      {
+        uid,
+        displayName: `K6 Customer ${i}`,
+        jobsBlocked: false,
+        jobPostCredits: 1_000_000,
+      },
+      { merge: true },
+    );
+
     customers.push({ uid, idToken });
   }
-  console.log(`Seeded ${customers.length} customer users.`);
+  console.log(`Seeded ${customers.length} customer users (each with a job-post credit balance).`);
   return customers;
 }
 
