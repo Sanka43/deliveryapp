@@ -28,6 +28,16 @@ export function vendorInfo() {
   return pool.vendor;
 }
 
+// A vendor-owner account (its own active vendors/{uid} store) — distinct
+// from vendorInfo(), which is the single seeded store customers order from.
+export function vendorOwnerFor(vu) {
+  const vendorOwners = pool.vendorOwners;
+  if (!vendorOwners || vendorOwners.length === 0) {
+    throw new Error('No seeded vendor owners found in .tokens.json — run the seed script first.');
+  }
+  return vendorOwners[(vu - 1) % vendorOwners.length];
+}
+
 export function couponCode() {
   return pool.couponCode;
 }

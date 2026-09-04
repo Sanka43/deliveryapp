@@ -89,6 +89,7 @@ emulator and mints ID tokens for them, so no real phone OTP/SMS is involved.
 | `scripts/place_order.js` | `placeCashOnDeliveryOrder` | uses `fulfillmentMode: "selfPickup"` to avoid the real Google Maps distance lookup a delivery order would trigger |
 | `scripts/rider_payouts.js` | `requestRiderWithdrawal`, `riderRequestCashSettlement` | withdrawal is the sustained load; settlement only succeeds once per rider until an admin confirms it, so it only runs once per rider in `setup()` |
 | `scripts/driving_route.js` | `getDrivingRoute` | smoke-only against the real key; ramps freely with `-e MAX_VUS=...` if the emulator was started with `MAPS_API_MOCK=true` |
+| `scripts/vendor_manual_order.js` | `lookupVendorOrderCustomer`, `placeVendorManualOrder` | the vendor-side phone/walk-in order flow — a regression check that the shared, sharded `reserveTrackingNumber()` fix holds on this code path too. Every seeded test phone is an unregistered guest, so each call hits `getAuth().getUserByPhoneNumber()` for a miss (twice — once per callable); the local Auth emulator's negative-phone-lookup latency grows with concurrency (p95 rises from ~1s at 10 VUs to ~15s at 50), which is a local-emulator characteristic, not application code — real Firebase Auth is a distributed service, not a single local process. Functional correctness stays 100% throughout. |
 
 ## Tuning the seed data
 
@@ -96,6 +97,7 @@ Env vars for `npm run seed` (all optional):
 
 - `K6_NUM_CUSTOMERS` (default 20)
 - `K6_NUM_RIDERS` (default 10)
+- `K6_NUM_VENDOR_OWNERS` (default 20 — each gets its own active store, for `vendor_manual_order.js`)
 - `K6_LEDGER_ENTRIES_PER_RIDER` (default 5)
 - `K6_WALLET_BALANCE_LKR` (default 5,000,000 — keep this high so
   `rider_payouts.js` can run its full ramp without hitting

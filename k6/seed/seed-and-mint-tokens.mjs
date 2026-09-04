@@ -200,6 +200,34 @@ async function seedVendor() {
   return { vendorId: VENDOR_ID, productIds };
 }
 
+async function seedVendorOwners() {
+  const count = Number(process.env.K6_NUM_VENDOR_OWNERS ?? 20);
+  const vendorOwners = [];
+  for (let i = 1; i <= count; i++) {
+    const uid = `k6-vendor-owner-${i}`;
+    await ensureUser(uid);
+    const idToken = await mintIdToken(uid);
+
+    // A vendors/{uid} doc where the doc id IS the caller's own uid is the
+    // simplest path resolveCallerVendorStore() accepts (see placeOrder.ts) —
+    // no separate customers/{uid}.vendorStoreId link needed.
+    await db.collection('vendors').doc(uid).set(
+      {
+        uid,
+        name: `K6 Vendor Owner ${i}`,
+        active: true,
+        addressLine: '1 Load Test Road',
+        city: 'Colombo',
+      },
+      { merge: true },
+    );
+
+    vendorOwners.push({ uid, idToken });
+  }
+  console.log(`Seeded ${vendorOwners.length} vendor-owner users (each their own active store).`);
+  return vendorOwners;
+}
+
 async function seedCoupon() {
   await db.collection('coupons').doc(COUPON_CODE).set(
     {
@@ -220,9 +248,10 @@ async function main() {
   console.log(`  Auth:      ${AUTH_EMULATOR_HOST}`);
   console.log(`  Firestore: ${FIRESTORE_EMULATOR_HOST}`);
 
-  const [customers, riders, vendor, couponCode] = [
+  const [customers, riders, vendorOwners, vendor, couponCode] = [
     await seedCustomers(),
     await seedRiders(),
+    await seedVendorOwners(),
     await seedVendor(),
     await seedCoupon(),
   ];
@@ -230,7 +259,11 @@ async function main() {
   const outPath = join(__dirname, '..', '.tokens.json');
   writeFileSync(
     outPath,
-    JSON.stringify({ projectId: PROJECT_ID, customers, riders, vendor, couponCode }, null, 2),
+    JSON.stringify(
+      { projectId: PROJECT_ID, customers, riders, vendorOwners, vendor, couponCode },
+      null,
+      2,
+    ),
   );
   console.log(`Wrote ${outPath}`);
 }
