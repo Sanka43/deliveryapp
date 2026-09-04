@@ -55,17 +55,30 @@ emulator and mints ID tokens for them, so no real phone OTP/SMS is involved.
    k6 run k6/scripts/rider_payouts.js
    ```
    Override the ramp target with `-e MAX_VUS=100`.
-5. `driving_route.js` is a smoke check, not a load test — it proxies the
-   *real* Google Maps API even via the emulator, so it stays capped at a
-   handful of requests (`-e ITERATIONS=5` to change the count).
+5. `driving_route.js` defaults to a 5-request smoke check because
+   `getDrivingRoute` proxies the *real* Google Maps API — against the real
+   `GOOGLE_MAPS_KEY` from `functions/.env`, every request is billed, so
+   never pass `-e MAX_VUS=...` to it in that mode.
 
-   Don't try to fake this out for free with a shell-exported
-   `GOOGLE_MAPS_KEY` override before starting the emulator — the emulator's
-   own `.env` loading takes priority over it, so the real key gets used
-   regardless (confirmed directly: it still returned a real, billed route).
-   The only real zero-cost option is an env-gated mock branch inside
-   `functions/src/mapsProxy.ts` itself — a source change, not something
-   this test harness can route around on its own.
+   To actually load-test it for free, start the emulator with
+   `MAPS_API_MOCK=true` exported first:
+   ```bash
+   MAPS_API_MOCK=true firebase --config k6/firebase.emulators.json emulators:start --only functions,firestore,auth --project mnd-masterndelivery
+   ```
+   `functions/src/mapsProxy.ts` checks that flag and returns a synthetic
+   response before ever calling Google — confirmed to genuinely make zero
+   real API calls. Then:
+   ```bash
+   k6 run -e MAX_VUS=100 k6/scripts/driving_route.js
+   ```
+   This only tests the function's own routing/concurrency behavior, not
+   Google's real route data — that's not mnd's code to test anyway. Do
+   **not** try to fake this out by exporting a bogus `GOOGLE_MAPS_KEY`
+   instead — the emulator's own `.env` loading takes priority over a shell
+   override regardless, so the real key gets used and a real, billed
+   request goes out (confirmed the hard way). `MAPS_API_MOCK` is the only
+   env var that actually works, is never set in any deployed environment,
+   and stays inert outside a local emulator run.
 
 ## Scripts
 
@@ -75,7 +88,7 @@ emulator and mints ID tokens for them, so no real phone OTP/SMS is involved.
 | `scripts/ride_quote_and_book.js` | `quoteRideFares` → `confirmCashRide` | the ride-booking hot path |
 | `scripts/place_order.js` | `placeCashOnDeliveryOrder` | uses `fulfillmentMode: "selfPickup"` to avoid the real Google Maps distance lookup a delivery order would trigger |
 | `scripts/rider_payouts.js` | `requestRiderWithdrawal`, `riderRequestCashSettlement` | withdrawal is the sustained load; settlement only succeeds once per rider until an admin confirms it, so it only runs once per rider in `setup()` |
-| `scripts/driving_route.js` | `getDrivingRoute` | smoke-only, real Google Maps billing |
+| `scripts/driving_route.js` | `getDrivingRoute` | smoke-only against the real key; ramps freely with `-e MAX_VUS=...` if the emulator was started with `MAPS_API_MOCK=true` |
 
 ## Tuning the seed data
 

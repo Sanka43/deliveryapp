@@ -9,6 +9,16 @@ function mapsKey(): string {
   return key;
 }
 
+// Load-testing escape hatch: with MAPS_API_MOCK=true, skip the real Google
+// Maps call entirely and return a synthetic response instead. Never set in
+// any deployed environment — it only ever gets exported in a local shell
+// before starting the emulator, so this stays inert in production. Exists
+// because getDrivingRoute/geocodePlace can't otherwise be load-tested
+// without incurring real, billed Google Maps traffic.
+function mapsApiMocked(): boolean {
+  return process.env.MAPS_API_MOCK === "true";
+}
+
 interface DrivingRouteResult {
   status: string;
   points: string;
@@ -22,6 +32,17 @@ async function fetchDrivingRoute(
   destination: string,
   waypoints: string[],
 ): Promise<DrivingRouteResult> {
+  if (mapsApiMocked()) {
+    return {
+      status: "OK",
+      points: "mock_polyline",
+      distanceMeters: 12_000,
+      durationSeconds: 1_500,
+      summary: `Mock route: ${origin} -> ${destination}` +
+        (waypoints.length ? ` via ${waypoints.length} stop(s)` : ""),
+    };
+  }
+
   const params = new URLSearchParams({
     origin,
     destination,
@@ -132,6 +153,22 @@ export const geocodePlace = onCall(
     const lat = request.data?.lat;
     const lng = request.data?.lng;
 
+    if (!query && !(typeof lat === "number" && typeof lng === "number")) {
+      throw new HttpsError("invalid-argument", "query or lat/lng is required.");
+    }
+
+    if (mapsApiMocked()) {
+      return {
+        results: [
+          {
+            label: query || `Mock location near ${lat},${lng}`,
+            lat: typeof lat === "number" ? lat : 6.9271,
+            lng: typeof lng === "number" ? lng : 79.8612,
+          },
+        ],
+      };
+    }
+
     const params = new URLSearchParams({
       key: mapsKey(),
       region: "lk",
@@ -141,10 +178,8 @@ export const geocodePlace = onCall(
         "address",
         query.toLowerCase().includes("sri lanka") ? query : `${query}, Sri Lanka`,
       );
-    } else if (typeof lat === "number" && typeof lng === "number") {
-      params.set("latlng", `${lat},${lng}`);
     } else {
-      throw new HttpsError("invalid-argument", "query or lat/lng is required.");
+      params.set("latlng", `${lat},${lng}`);
     }
 
     let response: Response;

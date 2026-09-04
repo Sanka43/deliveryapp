@@ -1,31 +1,55 @@
-// Smoke check (NOT a load test) for getDrivingRoute.
+// Load test (or smoke check) for getDrivingRoute.
 //
-//   k6 run k6/scripts/driving_route.js
+//   k6 run k6/scripts/driving_route.js                  # smoke: 1 VU, 5 requests
+//   k6 run -e MAX_VUS=100 k6/scripts/driving_route.js    # ramped load
 //
-// This endpoint proxies the REAL Google Maps Directions API server-side —
-// even against the local Firebase emulator, a call here reaches Google and
-// burns real quota/billing (GOOGLE_MAPS_KEY from functions/.env). Keep this
-// at a small, fixed request count; do not ramp VUs on this script.
+// getDrivingRoute proxies the REAL Google Maps Directions API — a real,
+// billed call every time, even against the local emulator. Never ramp this
+// against the real GOOGLE_MAPS_KEY from functions/.env.
 //
-// A shell-exported GOOGLE_MAPS_KEY override does NOT work to fake this out
-// for free — the emulator's own .env loading takes priority over it and the
-// real key gets used regardless (confirmed the hard way: one real, billed
-// Directions API call). The only real way to load-test this endpoint at
-// zero cost is an env-gated mock branch inside functions/src/mapsProxy.ts
-// itself, which is a source change and needs its own explicit go-ahead —
-// not implemented here.
+// To load-test for free, start the emulator with MAPS_API_MOCK=true
+// exported first (never edit functions/.env itself):
+//   MAPS_API_MOCK=true firebase --config k6/firebase.emulators.json \
+//     emulators:start --only functions,firestore,auth --project mnd-masterndelivery
+// functions/src/mapsProxy.ts checks that flag and returns a synthetic
+// response before ever calling Google, so this is genuinely zero-cost —
+// unlike faking the API key itself, which does NOT work (the emulator's own
+// .env loading overrides a shell-exported key regardless).
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { BASE_URL } from '../config.js';
 
-export const options = {
-  vus: 1,
-  iterations: Number(__ENV.ITERATIONS || 5),
-};
+const MAX_VUS = Number(__ENV.MAX_VUS || 0);
+
+export const options = MAX_VUS > 0
+  ? {
+    scenarios: {
+      driving_route: {
+        executor: 'ramping-vus',
+        startVUs: 0,
+        stages: [
+          { duration: '30s', target: Math.ceil(MAX_VUS * 0.2) },
+          { duration: '2m', target: MAX_VUS },
+          { duration: '30s', target: 0 },
+        ],
+        gracefulRampDown: '10s',
+      },
+    },
+    thresholds: {
+      http_req_duration: ['p(95)<800'],
+      checks: ['rate>0.95'],
+    },
+  }
+  : {
+    vus: 1,
+    iterations: Number(__ENV.ITERATIONS || 5),
+  };
 
 const ROUTES = [
   { origin: '6.9271,79.8612', destination: '6.9147,79.9724' },
   { origin: '6.9319,79.8478', destination: '6.8905,79.8558' },
+  { origin: '6.9147,79.9724', destination: '6.8905,79.8558' },
+  { origin: '7.2906,80.6337', destination: '6.9271,79.8612' },
 ];
 
 export default function () {
