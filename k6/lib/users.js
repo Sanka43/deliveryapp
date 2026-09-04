@@ -41,3 +41,13 @@ export function vendorOwnerFor(vu) {
 export function couponCode() {
   return pool.couponCode;
 }
+
+// The single seeded admin account (customers/{uid}.role === "admin").
+// One is enough — admin actions here are the low-frequency side of a
+// rider-request/admin-approve pipeline, not the sustained load themselves.
+export function adminUser() {
+  if (!pool.admin) {
+    throw new Error('No seeded admin found in .tokens.json — run the seed script first.');
+  }
+  return pool.admin;
+}

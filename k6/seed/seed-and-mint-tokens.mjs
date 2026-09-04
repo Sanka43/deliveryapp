@@ -228,6 +228,24 @@ async function seedVendorOwners() {
   return vendorOwners;
 }
 
+async function seedAdmin() {
+  const uid = 'k6-admin';
+  await ensureUser(uid);
+  const idToken = await mintIdToken(uid);
+
+  // assertAdmin() has two independent implementations in this codebase
+  // (adminAuth.ts checks users/{uid}.role OR customers/{uid}.role;
+  // jobs.ts's own copy checks only customers/{uid}.role) — a customers/{uid}
+  // doc with role:"admin" satisfies both.
+  await db.collection('customers').doc(uid).set(
+    { uid, displayName: 'K6 Admin', role: 'admin' },
+    { merge: true },
+  );
+
+  console.log(`Seeded admin user ${uid}.`);
+  return { uid, idToken };
+}
+
 async function seedCoupon() {
   await db.collection('coupons').doc(COUPON_CODE).set(
     {
@@ -248,10 +266,11 @@ async function main() {
   console.log(`  Auth:      ${AUTH_EMULATOR_HOST}`);
   console.log(`  Firestore: ${FIRESTORE_EMULATOR_HOST}`);
 
-  const [customers, riders, vendorOwners, vendor, couponCode] = [
+  const [customers, riders, vendorOwners, admin, vendor, couponCode] = [
     await seedCustomers(),
     await seedRiders(),
     await seedVendorOwners(),
+    await seedAdmin(),
     await seedVendor(),
     await seedCoupon(),
   ];
@@ -260,7 +279,7 @@ async function main() {
   writeFileSync(
     outPath,
     JSON.stringify(
-      { projectId: PROJECT_ID, customers, riders, vendorOwners, vendor, couponCode },
+      { projectId: PROJECT_ID, customers, riders, vendorOwners, admin, vendor, couponCode },
       null,
       2,
     ),
