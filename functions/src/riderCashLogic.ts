@@ -66,6 +66,17 @@ export type CashEntryAmounts = {
 
 export type CashSettlementAction = "confirmed" | "rejected";
 
+/** One open ledger entry as seen by entry selection — just enough to budget against. */
+export type SettlementEntryForSelection = {
+  id: string;
+  owedLkr: number;
+};
+
+export type EntrySelectionResult = {
+  selectedIds: string[];
+  amountLkr: number;
+};
+
 function toWholeLkr(value: unknown): number {
   const n = Math.round(Number(value));
   return Number.isFinite(n) ? n : 0;
@@ -205,6 +216,42 @@ export function applyCashEntry(args: {
       maxCashInHandLkr: args.maxCashInHandLkr,
     }),
   };
+}
+
+/**
+ * Chooses which open ledger entries (already ordered oldest-first, as
+ * `riderRequestCashSettlement` queries them) a handover covers.
+ *
+ * `budgetLkr` of `null` means "everything" — every entry is taken, matching
+ * the original all-or-nothing behavior. Given a budget (a rider declaring
+ * they can only bring part of what they owe), entries are taken oldest-first
+ * up to that budget, stopping *before* an entry that would exceed it — a
+ * settlement only ever covers whole jobs, never a partial slice of one, so
+ * each entry's later order/trip status transition on confirm stays
+ * unambiguous. If the budget can't cover even the oldest entry, nothing is
+ * selected; the caller rejects the request rather than forcing a rider to
+ * hand over more than they declared they have.
+ */
+export function selectEntriesForSettlement(
+  entries: SettlementEntryForSelection[],
+  budgetLkr: number | null,
+): EntrySelectionResult {
+  if (budgetLkr == null) {
+    return {
+      selectedIds: entries.map((e) => e.id),
+      amountLkr: entries.reduce((sum, e) => sum + e.owedLkr, 0),
+    };
+  }
+  const selectedIds: string[] = [];
+  let amountLkr = 0;
+  for (const entry of entries) {
+    if (amountLkr + entry.owedLkr > budgetLkr) {
+      break;
+    }
+    selectedIds.push(entry.id);
+    amountLkr += entry.owedLkr;
+  }
+  return {selectedIds, amountLkr};
 }
 
 /**

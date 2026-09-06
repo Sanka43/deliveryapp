@@ -61,6 +61,22 @@ class FirebaseStorageService {
     );
   }
 
+  /// Proof of a cash handover (e.g. a bank deposit slip) attached when the
+  /// rider requests a settlement. Timestamped rather than overwriting a
+  /// fixed filename — unlike the profile/compliance photos above, a rider
+  /// hands over cash repeatedly and each handover's evidence should survive
+  /// the next one.
+  Future<String> uploadRiderCashSettlementReference({
+    required String riderId,
+    required Uint8List bytes,
+  }) async {
+    return _uploadImage(
+      path:
+          'riders/$riderId/cash_settlements/${DateTime.now().millisecondsSinceEpoch}.jpg',
+      bytes: bytes,
+    );
+  }
+
   Future<String> _uploadImage({
     required String path,
     required Uint8List bytes,

@@ -44,5 +44,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Play Store upload signing — never commit the key or its passwords.
+/android/key.properties
+/android/*.jks
+/android/*.keystore
+
 # Local manual/e2e QA screenshots (not build output, just not source)
 /e2e_*.png

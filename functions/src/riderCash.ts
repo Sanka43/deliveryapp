@@ -18,7 +18,35 @@ import {
   CashSettlementAction,
   MAX_SETTLEMENT_ENTRIES,
   RiderCashCounters,
+  selectEntriesForSettlement,
 } from "./riderCashLogic";
+
+/** Reference-photo URLs must come from this rider's own Storage folder. */
+const STORAGE_URL_PREFIX = "https://firebasestorage.googleapis.com/";
+
+/**
+ * Rejects anything that isn't a Firebase Storage download URL rooted at this
+ * rider's own `cash_settlements` folder — the settlement doc's
+ * `referenceImageUrl` gets rendered straight into an `<img>` in the admin
+ * panel, so it must not become a place to smuggle an arbitrary external URL.
+ */
+function validateReferenceImageUrl(raw: unknown, riderId: string): string | null {
+  const url = String(raw ?? "").trim();
+  if (!url) {
+    return null;
+  }
+  const expectedPathFragment = encodeURIComponent(
+    `riders/${riderId}/cash_settlements/`,
+  );
+  if (
+    url.length > 600 ||
+    !url.startsWith(STORAGE_URL_PREFIX) ||
+    !url.includes(expectedPathFragment)
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid reference photo.");
+  }
+  return url;
+}
 
 const REGION = "asia-south1";
 
@@ -159,6 +187,20 @@ export const riderRequestCashSettlement = onCall(
       .toLowerCase();
     const method = methodRaw === "cash" ? "cash" : "bank";
     const reference = String(request.data?.reference ?? "").trim().slice(0, 200);
+    const referenceImageUrl = validateReferenceImageUrl(
+      request.data?.referenceImageUrl,
+      riderId,
+    );
+
+    // A rider who can't bring the full amount owed may declare a smaller
+    // budget — omitted/null means "as much as there is", same as before this
+    // existed. Never trusted as the final settled amount on its own: it only
+    // decides which whole open entries (oldest first) get covered.
+    const rawAmount = request.data?.amountLkr;
+    const declaredAmountLkr = rawAmount == null ? null : toWholeLkr(rawAmount);
+    if (declaredAmountLkr != null && declaredAmountLkr <= 0) {
+      throw new HttpsError("invalid-argument", "Enter a valid amount.");
+    }
 
     const db = getFirestore();
     const riderRef = db.collection("riders").doc(riderId);
@@ -193,6 +235,23 @@ export const riderRequestCashSettlement = onCall(
         );
       }
 
+      const selection = selectEntriesForSettlement(
+        entries.docs.map((doc) => ({
+          id: doc.id,
+          owedLkr: toWholeLkr(doc.data().owedLkr),
+        })),
+        declaredAmountLkr,
+      );
+      if (selection.selectedIds.length === 0) {
+        const oldestOwed = toWholeLkr(entries.docs[0].data().owedLkr);
+        throw new HttpsError(
+          "invalid-argument",
+          `Enter at least Rs. ${oldestOwed} to cover your oldest job.`,
+        );
+      }
+      const selectedIds = new Set(selection.selectedIds);
+      const selectedDocs = entries.docs.filter((doc) => selectedIds.has(doc.id));
+
       let amountLkr = 0;
       let cashCoveredLkr = 0;
       let productCashLkr = 0;
@@ -202,7 +261,7 @@ export const riderRequestCashSettlement = onCall(
       const orderIds: string[] = [];
       const tripIds: string[] = [];
 
-      for (const doc of entries.docs) {
+      for (const doc of selectedDocs) {
         const d = doc.data();
         const owed = toWholeLkr(d.owedLkr);
         amountLkr += owed;
@@ -236,7 +295,7 @@ export const riderRequestCashSettlement = onCall(
         }
       }
 
-      for (const doc of entries.docs) {
+      for (const doc of selectedDocs) {
         tx.update(doc.ref, {
           status: "pending_settlement",
           settlementId: settlementRef.id,
@@ -246,7 +305,13 @@ export const riderRequestCashSettlement = onCall(
       tx.set(settlementRef, {
         riderId,
         amountLkr,
+        // The rider's own declared budget, kept alongside the actual settled
+        // amount (`amountLkr`, sum of the whole entries it covered) so the
+        // admin panel can show both when they differ — never used as the
+        // settled amount on its own.
+        ...(declaredAmountLkr != null ? {declaredAmountLkr} : {}),
         cashCoveredLkr,
+        ...(referenceImageUrl ? {referenceImageUrl} : {}),
         breakdown: {productCashLkr, serviceChargeLkr, rideCommissionLkr},
         entryIds,
         orderIds,

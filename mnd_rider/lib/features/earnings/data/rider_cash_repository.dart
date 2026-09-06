@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/app/providers/firebase_providers.dart';
 import 'package:mnd_rider/core/constants/firebase_collections.dart';
+import 'package:mnd_rider/core/services/firebase/firebase_storage_service.dart';
 import 'package:mnd_rider/core/utils/user_facing_error.dart';
 
 /// Default mirrored from `DEFAULT_MAX_CASH_IN_HAND_LKR` in
@@ -17,6 +20,7 @@ final Provider<RiderCashRepository> riderCashRepositoryProvider =
     firestore: ref.watch(firestoreProvider),
     auth: ref.watch(firebaseAuthProvider),
     functions: ref.watch(firebaseFunctionsProvider),
+    storage: ref.watch(firebaseStorageServiceProvider),
   );
 });
 
@@ -113,10 +117,15 @@ class RiderCashSettlement {
     required this.status,
     required this.method,
     this.reference,
+    this.referenceImageUrl,
+    this.declaredAmountLkr,
     this.requestedAt,
   });
 
   final String id;
+
+  /// What this settlement actually covers — the sum of the whole ledger
+  /// entries it locked in, always <= [declaredAmountLkr] when that was set.
   final int amountLkr;
   final int cashCoveredLkr;
   final int productCashLkr;
@@ -127,11 +136,20 @@ class RiderCashSettlement {
   final String status;
   final String method;
   final String? reference;
+
+  /// Photo evidence (e.g. a bank deposit slip) the rider attached, if any.
+  final String? referenceImageUrl;
+
+  /// What the rider typed as the amount they're bringing, before the backend
+  /// rounded it down to whole covered jobs. Null when they left it at the
+  /// full owed amount.
+  final int? declaredAmountLkr;
   final DateTime? requestedAt;
 
   factory RiderCashSettlement.fromDoc(String id, Map<String, dynamic> data) {
     final dynamic requested = data['requestedAt'];
     final String? ref = (data['reference'] as String?)?.trim();
+    final String? refImage = (data['referenceImageUrl'] as String?)?.trim();
     final Map<String, dynamic> breakdown =
         (data['breakdown'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
     return RiderCashSettlement(
@@ -144,6 +162,8 @@ class RiderCashSettlement {
       status: (data['status'] as String?)?.trim() ?? '',
       method: (data['method'] as String?)?.trim() ?? 'bank',
       reference: (ref == null || ref.isEmpty) ? null : ref,
+      referenceImageUrl: (refImage == null || refImage.isEmpty) ? null : refImage,
+      declaredAmountLkr: (data['declaredAmountLkr'] as num?)?.round(),
       requestedAt: requested is Timestamp ? requested.toDate() : null,
     );
   }
@@ -154,13 +174,16 @@ class RiderCashRepository {
     required FirebaseFirestore firestore,
     required FirebaseAuth auth,
     required FirebaseFunctions functions,
+    required FirebaseStorageService storage,
   })  : _firestore = firestore,
         _auth = auth,
-        _functions = functions;
+        _functions = functions,
+        _storage = storage;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final FirebaseFunctions _functions;
+  final FirebaseStorageService _storage;
 
   CollectionReference<Map<String, dynamic>>? _ledger() {
     final User? u = _auth.currentUser;
@@ -238,11 +261,42 @@ class RiderCashRepository {
     });
   }
 
+  /// Uploads a handover reference photo (e.g. a bank deposit slip) to this
+  /// rider's own Storage folder. Returns the download URL, or an error
+  /// message on failure.
+  Future<({String? error, String? url})> uploadReferenceImage(
+    Uint8List bytes,
+  ) async {
+    final User? u = _auth.currentUser;
+    if (u == null) {
+      return (error: 'Not signed in.', url: null);
+    }
+    try {
+      final String url = await _storage.uploadRiderCashSettlementReference(
+        riderId: u.uid,
+        bytes: bytes,
+      );
+      return (error: null, url: url);
+    } catch (e) {
+      return (
+        error: userFacingError(e, fallback: 'Could not upload the photo.'),
+        url: null,
+      );
+    }
+  }
+
   /// Tells admin the rider is handing the cash over. Returns an error message,
   /// or null on success. The hold only lifts once admin confirms receipt.
+  ///
+  /// [amountLkr] is the rider's declared budget — omit it (or pass null) to
+  /// hand over everything owed, same as before this existed. The backend
+  /// only ever settles whole ledger entries, so the amount actually locked
+  /// in may end up a little under what was typed.
   Future<String?> requestSettlement({
     required String method,
     String reference = '',
+    int? amountLkr,
+    String? referenceImageUrl,
   }) async {
     if (_auth.currentUser == null) {
       return 'Not signed in.';
@@ -253,6 +307,9 @@ class RiderCashRepository {
           .call<dynamic>(<String, dynamic>{
         'method': method,
         'reference': reference.trim(),
+        if (amountLkr != null) 'amountLkr': amountLkr,
+        if (referenceImageUrl != null && referenceImageUrl.isNotEmpty)
+          'referenceImageUrl': referenceImageUrl,
       });
       return null;
     } on FirebaseFunctionsException catch (e) {

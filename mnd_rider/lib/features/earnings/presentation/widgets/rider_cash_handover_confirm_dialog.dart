@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mnd_rider/core/constants/app_colors.dart';
 import 'package:mnd_rider/core/constants/app_spacing.dart';
 import 'package:mnd_rider/core/utils/lkr_format.dart';
+import 'package:mnd_rider/features/auth/presentation/widgets/rider_photo_picker_tile.dart';
 
 /// One line of the owed-amount breakdown shown before a rider hands cash
 /// over — kept local to this feature rather than importing the similarly
@@ -14,12 +16,30 @@ class RiderCashBreakdownLine {
   final int amountLkr;
 }
 
+/// What the rider actually asked for when confirming the dialog.
+class RiderCashHandoverResult {
+  const RiderCashHandoverResult({
+    required this.amountLkr,
+    this.referenceImageBytes,
+  });
+
+  /// The amount the rider typed — may be less than the full owed balance
+  /// (a partial handover); the backend decides which whole jobs that covers.
+  final int amountLkr;
+
+  /// Photo evidence (e.g. a bank deposit slip) picked in the dialog, if any.
+  final Uint8List? referenceImageBytes;
+}
+
 /// Confirms a cash handover request, itemizing what's owed and — just as
-/// prominently — what the rider keeps. Mirrors the established pattern in
-/// `RiderDeliveryConfirmDialog` (a custom `Dialog`, not `showRiderConfirmDialog`,
-/// since that helper only renders one flat text string and three itemized
-/// amounts plus a kept-earning figure don't fit in a sentence).
-class RiderCashHandoverConfirmDialog extends StatelessWidget {
+/// prominently — what the rider keeps. Lets the rider declare a smaller
+/// amount than the full balance (a partial handover, when they can't bring
+/// everything right now) and attach photo evidence such as a bank deposit
+/// slip. Mirrors the established pattern in `RiderDeliveryConfirmDialog` (a
+/// custom `Dialog`, not `showRiderConfirmDialog`, since that helper only
+/// renders one flat text string and this needs an editable field, an
+/// itemized breakdown, and a photo picker).
+class RiderCashHandoverConfirmDialog extends StatefulWidget {
   const RiderCashHandoverConfirmDialog({
     super.key,
     required this.owedLkr,
@@ -35,12 +55,47 @@ class RiderCashHandoverConfirmDialog extends StatelessWidget {
   /// rare rounding/legacy-entry mismatch never shows numbers that don't add up.
   final List<RiderCashBreakdownLine> breakdown;
 
+  @override
+  State<RiderCashHandoverConfirmDialog> createState() =>
+      _RiderCashHandoverConfirmDialogState();
+}
+
+class _RiderCashHandoverConfirmDialogState
+    extends State<RiderCashHandoverConfirmDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  late final TextEditingController _amount = TextEditingController(
+    text: widget.owedLkr.toString(),
+  );
+  Uint8List? _referenceBytes;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    super.dispose();
+  }
+
   bool get _breakdownReconciles {
-    if (breakdown.isEmpty) {
+    if (widget.breakdown.isEmpty) {
       return false;
     }
-    final int sum = breakdown.fold(0, (int s, RiderCashBreakdownLine l) => s + l.amountLkr);
-    return sum == owedLkr;
+    final int sum = widget.breakdown.fold(
+      0,
+      (int s, RiderCashBreakdownLine l) => s + l.amountLkr,
+    );
+    return sum == widget.owedLkr;
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    final int amount = int.parse(_amount.text.trim());
+    Navigator.of(context).pop(
+      RiderCashHandoverResult(
+        amountLkr: amount,
+        referenceImageBytes: _referenceBytes,
+      ),
+    );
   }
 
   @override
@@ -60,58 +115,110 @@ class RiderCashHandoverConfirmDialog extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 400),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              _Header(),
-              const SizedBox(height: AppSpacing.md),
-              _OwedCard(
-                owedLkr: owedLkr,
-                breakdown: _breakdownReconciles ? breakdown : const <RiderCashBreakdownLine>[],
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              _KeepBand(yourEarningLkr: yourEarningLkr),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'This stays outstanding until Admin confirms they received it.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _Header(),
+                const SizedBox(height: AppSpacing.md),
+                _OwedCard(
+                  owedLkr: widget.owedLkr,
+                  breakdown: _breakdownReconciles
+                      ? widget.breakdown
+                      : const <RiderCashBreakdownLine>[],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Amount you\'re bringing',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Lower this if you can\'t hand over the full amount right '
+                  'now — the rest stays outstanding for next time.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _amount,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (LKR)',
+                    prefixText: 'Rs. ',
+                  ),
+                  validator: (String? v) {
+                    final int? n = int.tryParse(v?.trim() ?? '');
+                    if (n == null || n <= 0) {
+                      return 'Enter an amount';
+                    }
+                    if (n > widget.owedLkr) {
+                      return 'Can\'t exceed the amount owed';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: AppSpacing.md),
+                RiderPhotoPickerTile(
+                  label: 'Reference photo (optional)',
+                  hint: 'e.g. bank deposit slip',
+                  icon: Icons.receipt_long_outlined,
+                  bytes: _referenceBytes,
+                  onPicked: (Uint8List bytes) {
+                    setState(() => _referenceBytes = bytes);
+                  },
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _KeepBand(yourEarningLkr: widget.yourEarningLkr),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'This stays outstanding until Admin confirms they received it.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).pop(null),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        onPressed: _submit,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+                          ),
+                        ),
+                        child: const Text(
+                          'Request confirm',
+                          style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
-                      child: const Text(
-                        'Request confirm',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -274,14 +381,15 @@ class _KeepBand extends StatelessWidget {
   }
 }
 
-/// Shows [RiderCashHandoverConfirmDialog]; resolves false when dismissed.
-Future<bool> showRiderCashHandoverConfirmDialog(
+/// Shows [RiderCashHandoverConfirmDialog]; resolves null when cancelled or
+/// dismissed.
+Future<RiderCashHandoverResult?> showRiderCashHandoverConfirmDialog(
   BuildContext context, {
   required int owedLkr,
   required int yourEarningLkr,
   List<RiderCashBreakdownLine> breakdown = const <RiderCashBreakdownLine>[],
-}) async {
-  final bool? result = await showDialog<bool>(
+}) {
+  return showDialog<RiderCashHandoverResult>(
     context: context,
     builder: (BuildContext ctx) => RiderCashHandoverConfirmDialog(
       owedLkr: owedLkr,
@@ -289,5 +397,4 @@ Future<bool> showRiderCashHandoverConfirmDialog(
       breakdown: breakdown,
     ),
   );
-  return result ?? false;
 }

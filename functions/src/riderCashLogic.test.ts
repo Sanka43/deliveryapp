@@ -7,6 +7,7 @@ import {
   cashEntryForTrip,
   evaluateCashHold,
   readLkrConfig,
+  selectEntriesForSettlement,
   DEFAULT_MAX_CASH_IN_HAND_LKR,
 } from "./riderCashLogic";
 
@@ -294,6 +295,57 @@ describe("applyCashEntry", () => {
     });
     assert.equal(result.counters.cashInHandLkr, 300);
     assert.equal(result.holdActive, false);
+  });
+});
+
+describe("selectEntriesForSettlement", () => {
+  const entries = [
+    {id: "a", owedLkr: 300},
+    {id: "b", owedLkr: 500},
+    {id: "c", owedLkr: 200},
+  ];
+
+  it("takes everything when there is no budget", () => {
+    assert.deepEqual(selectEntriesForSettlement(entries, null), {
+      selectedIds: ["a", "b", "c"],
+      amountLkr: 1000,
+    });
+  });
+
+  it("takes everything when the budget covers the full total", () => {
+    assert.deepEqual(selectEntriesForSettlement(entries, 1000), {
+      selectedIds: ["a", "b", "c"],
+      amountLkr: 1000,
+    });
+  });
+
+  it("takes oldest-first whole entries up to the budget", () => {
+    // 300 fits, 300+500=800 fits, 800+200=1000 exceeds 900 -> stop at b.
+    assert.deepEqual(selectEntriesForSettlement(entries, 900), {
+      selectedIds: ["a", "b"],
+      amountLkr: 800,
+    });
+  });
+
+  it("takes a single entry that exactly matches the budget", () => {
+    assert.deepEqual(selectEntriesForSettlement(entries, 300), {
+      selectedIds: ["a"],
+      amountLkr: 300,
+    });
+  });
+
+  it("selects nothing when the budget can't cover even the oldest entry", () => {
+    assert.deepEqual(selectEntriesForSettlement(entries, 100), {
+      selectedIds: [],
+      amountLkr: 0,
+    });
+  });
+
+  it("selects nothing for an empty ledger regardless of budget", () => {
+    assert.deepEqual(selectEntriesForSettlement([], 5000), {
+      selectedIds: [],
+      amountLkr: 0,
+    });
   });
 });
 

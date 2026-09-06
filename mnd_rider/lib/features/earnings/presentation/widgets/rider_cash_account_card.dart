@@ -30,19 +30,39 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
     int yourEarningLkr,
     List<RiderCashBreakdownLine> breakdown,
   ) async {
-    final bool ok = await showRiderCashHandoverConfirmDialog(
+    final RiderCashHandoverResult? result =
+        await showRiderCashHandoverConfirmDialog(
       context,
       owedLkr: owedLkr,
       yourEarningLkr: yourEarningLkr,
       breakdown: breakdown,
     );
-    if (!ok) {
+    if (result == null) {
       return;
     }
     setState(() => _busy = true);
-    final String? err = await ref
-        .read(riderCashRepositoryProvider)
-        .requestSettlement(method: 'bank');
+
+    final RiderCashRepository repo = ref.read(riderCashRepositoryProvider);
+    String? referenceImageUrl;
+    if (result.referenceImageBytes != null) {
+      final ({String? error, String? url}) uploaded =
+          await repo.uploadReferenceImage(result.referenceImageBytes!);
+      if (uploaded.error != null) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _busy = false);
+        showRiderSnackBar(context, uploaded.error!);
+        return;
+      }
+      referenceImageUrl = uploaded.url;
+    }
+
+    final String? err = await repo.requestSettlement(
+      method: 'bank',
+      amountLkr: result.amountLkr,
+      referenceImageUrl: referenceImageUrl,
+    );
     if (!mounted) {
       return;
     }

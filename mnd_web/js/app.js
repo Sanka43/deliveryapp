@@ -6103,6 +6103,8 @@
               const rider = cache.riders.find((r) => r.id === s.riderDocId);
               const name = rider ? riderDisplayName(rider) : s.riderDocId || "Unknown rider";
               const b = s.breakdown || {};
+              const declaredDiffers =
+                s.declaredAmountLkr != null && Number(s.declaredAmountLkr) !== Number(s.amountLkr);
               return `<tr>
         <td>
           ${escapeHtml(name)}
@@ -6110,10 +6112,16 @@
             Shops ${escapeHtml(fmtMoney(b.productCashLkr))} · Service ${escapeHtml(fmtMoney(b.serviceChargeLkr))} · Commission ${escapeHtml(fmtMoney(b.rideCommissionLkr))}
           </div>
         </td>
-        <td><strong>${escapeHtml(fmtMoney(s.amountLkr))}</strong></td>
+        <td>
+          <strong>${escapeHtml(fmtMoney(s.amountLkr))}</strong>
+          ${declaredDiffers ? `<div style="color:var(--muted);font-size:12px">Rider declared ${escapeHtml(fmtMoney(s.declaredAmountLkr))}</div>` : ""}
+        </td>
         <td>${escapeHtml(fmtMoney(s.cashCoveredLkr))}</td>
         <td>${escapeHtml(String(s.entryCount ?? (s.entryIds || []).length))}</td>
-        <td>${escapeHtml(s.method || "bank")}${s.reference ? ` · ${escapeHtml(s.reference)}` : ""}</td>
+        <td>
+          ${escapeHtml(s.method || "bank")}${s.reference ? ` · ${escapeHtml(s.reference)}` : ""}
+          ${s.referenceImageUrl ? `<div><a href="${escapeHtml(s.referenceImageUrl)}" target="_blank" rel="noopener noreferrer">View photo</a></div>` : ""}
+        </td>
         <td>${escapeHtml(fmtTs(s.requestedAt))}</td>
         <td class="row-actions">
           <button type="button" class="btn btn-primary btn-sm" data-confirm-cash="${escapeHtml(s.id)}" data-rider="${escapeHtml(s.riderDocId)}">Confirm received</button>
