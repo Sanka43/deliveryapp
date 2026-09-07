@@ -44,7 +44,8 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
 
   RiderVehicleType? _vehicleType;
   Uint8List? _profilePhotoBytes;
-  Uint8List? _licensePhotoBytes;
+  Uint8List? _licensePhotoFrontBytes;
+  Uint8List? _licensePhotoBackBytes;
   final Map<RiderVehiclePhotoSide, Uint8List> _vehiclePhotos =
       <RiderVehiclePhotoSide, Uint8List>{};
   Uint8List? _insurancePhotoBytes;
@@ -92,7 +93,8 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
     _city.text = draft.city;
     _vehicleType = draft.vehicleType;
     _profilePhotoBytes = draft.profilePhotoBytes;
-    _licensePhotoBytes = draft.licensePhotoBytes;
+    _licensePhotoFrontBytes = draft.licensePhotoFrontBytes;
+    _licensePhotoBackBytes = draft.licensePhotoBackBytes;
     _licenseExpiresAt = draft.licenseExpiresAt;
     _insurancePhotoBytes = draft.insurancePhotoBytes;
     _revenueLicensePhotoBytes = draft.revenueLicensePhotoBytes;
@@ -152,7 +154,8 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
       vehicleNumber: _vehicleNumber.text,
       city: _city.text,
       profilePhotoBytes: _profilePhotoBytes,
-      licensePhotoBytes: _licensePhotoBytes,
+      licensePhotoFrontBytes: _licensePhotoFrontBytes,
+      licensePhotoBackBytes: _licensePhotoBackBytes,
       licenseExpiresAt: _licenseExpiresAt,
       vehiclePhotoFrontBytes: _vehiclePhotos[RiderVehiclePhotoSide.front],
       vehiclePhotoBackBytes: _vehiclePhotos[RiderVehiclePhotoSide.back],
@@ -547,12 +550,23 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
         ),
         _gap(14),
         RiderPhotoPickerTile(
-          label: 'Driving license',
+          label: 'Driving license (front)',
           hint: 'Front of license',
-          bytes: _licensePhotoBytes,
-          errorText: _fieldError('licensePhoto'),
+          bytes: _licensePhotoFrontBytes,
+          errorText: _fieldError('licensePhotoFront'),
           icon: Icons.badge_outlined,
-          onPicked: (Uint8List data) => setState(() => _licensePhotoBytes = data),
+          onPicked: (Uint8List data) =>
+              setState(() => _licensePhotoFrontBytes = data),
+        ),
+        _gap(14),
+        RiderPhotoPickerTile(
+          label: 'Driving license (back)',
+          hint: 'Back of license',
+          bytes: _licensePhotoBackBytes,
+          errorText: _fieldError('licensePhotoBack'),
+          icon: Icons.badge_outlined,
+          onPicked: (Uint8List data) =>
+              setState(() => _licensePhotoBackBytes = data),
         ),
       ],
     );

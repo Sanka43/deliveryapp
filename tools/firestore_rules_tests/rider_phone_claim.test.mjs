@@ -51,6 +51,7 @@ function riderDoc(uid, phone) {
     nicNumber: '123456789V',
     profilePhotoUrl: 'https://example.com/p.jpg',
     licensePhotoUrl: 'https://example.com/l.jpg',
+    licensePhotoBackUrl: 'https://example.com/l-back.jpg',
     licenseExpiresAt: Timestamp.fromDate(new Date('2030-01-01')),
     vehiclePhotoUrl: 'https://example.com/v.jpg',
     insurancePhotoUrl: 'https://example.com/i.jpg',

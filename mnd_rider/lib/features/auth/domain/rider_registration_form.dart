@@ -50,7 +50,8 @@ class RiderRegistrationForm {
     this.vehicleNumber = '',
     this.city = '',
     this.profilePhotoBytes,
-    this.licensePhotoBytes,
+    this.licensePhotoFrontBytes,
+    this.licensePhotoBackBytes,
     this.licenseExpiresAt,
     this.vehiclePhotoFrontBytes,
     this.vehiclePhotoBackBytes,
@@ -69,7 +70,8 @@ class RiderRegistrationForm {
   final String vehicleNumber;
   final String city;
   final Uint8List? profilePhotoBytes;
-  final Uint8List? licensePhotoBytes;
+  final Uint8List? licensePhotoFrontBytes;
+  final Uint8List? licensePhotoBackBytes;
   final DateTime? licenseExpiresAt;
   final Uint8List? vehiclePhotoFrontBytes;
   final Uint8List? vehiclePhotoBackBytes;
@@ -108,7 +110,8 @@ class RiderRegistrationForm {
     String? vehicleNumber,
     String? city,
     Uint8List? profilePhotoBytes,
-    Uint8List? licensePhotoBytes,
+    Uint8List? licensePhotoFrontBytes,
+    Uint8List? licensePhotoBackBytes,
     DateTime? licenseExpiresAt,
     Uint8List? vehiclePhotoFrontBytes,
     Uint8List? vehiclePhotoBackBytes,
@@ -119,7 +122,8 @@ class RiderRegistrationForm {
     Uint8List? revenueLicensePhotoBytes,
     DateTime? revenueLicenseExpiresAt,
     bool clearProfilePhoto = false,
-    bool clearLicensePhoto = false,
+    bool clearLicensePhotoFront = false,
+    bool clearLicensePhotoBack = false,
     bool clearLicenseExpiresAt = false,
     bool clearVehiclePhotoFront = false,
     bool clearVehiclePhotoBack = false,
@@ -139,8 +143,12 @@ class RiderRegistrationForm {
       city: city ?? this.city,
       profilePhotoBytes:
           clearProfilePhoto ? null : (profilePhotoBytes ?? this.profilePhotoBytes),
-      licensePhotoBytes:
-          clearLicensePhoto ? null : (licensePhotoBytes ?? this.licensePhotoBytes),
+      licensePhotoFrontBytes: clearLicensePhotoFront
+          ? null
+          : (licensePhotoFrontBytes ?? this.licensePhotoFrontBytes),
+      licensePhotoBackBytes: clearLicensePhotoBack
+          ? null
+          : (licensePhotoBackBytes ?? this.licensePhotoBackBytes),
       licenseExpiresAt: clearLicenseExpiresAt
           ? null
           : (licenseExpiresAt ?? this.licenseExpiresAt),

@@ -21,9 +21,12 @@ class FirebaseStorageService {
   Future<String> uploadRiderLicensePhoto({
     required String riderId,
     required Uint8List bytes,
+    String side = 'front',
   }) async {
+    final String fileName =
+        side == 'front' ? 'license.jpg' : 'license_$side.jpg';
     return _uploadImage(
-      path: 'riders/$riderId/license.jpg',
+      path: 'riders/$riderId/$fileName',
       bytes: bytes,
     );
   }

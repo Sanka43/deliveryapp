@@ -26,7 +26,7 @@ class RiderRegistrationValidator {
 
   static const List<Set<String>> stepFieldKeys = <Set<String>>[
     <String>{'fullName', 'phone', 'nicNumber', 'city'},
-    <String>{'profilePhoto', 'licensePhoto'},
+    <String>{'profilePhoto', 'licensePhotoFront', 'licensePhotoBack'},
     <String>{
       'vehicleType',
       'vehicleNumber',
@@ -93,8 +93,16 @@ class RiderRegistrationValidator {
       errors['profilePhoto'] = 'Add a profile photo.';
     }
 
-    if (form.licensePhotoBytes == null || form.licensePhotoBytes!.isEmpty) {
-      errors['licensePhoto'] = 'Add a photo of your driving license.';
+    if (form.licensePhotoFrontBytes == null ||
+        form.licensePhotoFrontBytes!.isEmpty) {
+      errors['licensePhotoFront'] =
+          'Add a photo of the front of your driving license.';
+    }
+
+    if (form.licensePhotoBackBytes == null ||
+        form.licensePhotoBackBytes!.isEmpty) {
+      errors['licensePhotoBack'] =
+          'Add a photo of the back of your driving license.';
     }
 
     for (final RiderVehiclePhotoSide side in RiderVehiclePhotoSide.values) {

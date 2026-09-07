@@ -184,9 +184,15 @@ class RiderAuthRepository {
       riderId: user.uid,
       bytes: form.profilePhotoBytes!,
     );
-    final String licenseUrl = await _storage.uploadRiderLicensePhoto(
+    final String licenseFrontUrl = await _storage.uploadRiderLicensePhoto(
       riderId: user.uid,
-      bytes: form.licensePhotoBytes!,
+      bytes: form.licensePhotoFrontBytes!,
+      side: 'front',
+    );
+    final String licenseBackUrl = await _storage.uploadRiderLicensePhoto(
+      riderId: user.uid,
+      bytes: form.licensePhotoBackBytes!,
+      side: 'back',
     );
     final Map<String, String> vehiclePhotoUrls = <String, String>{};
     for (final RiderVehiclePhotoSide side in RiderVehiclePhotoSide.values) {
@@ -216,7 +222,8 @@ class RiderAuthRepository {
       'phone': e164,
       'nicNumber': form.nicNumber.trim().toUpperCase(),
       'profilePhotoUrl': profileUrl,
-      'licensePhotoUrl': licenseUrl,
+      'licensePhotoUrl': licenseFrontUrl,
+      'licensePhotoBackUrl': licenseBackUrl,
       'licenseExpiresAt': Timestamp.fromDate(
         DateTime(
           form.licenseExpiresAt!.year,

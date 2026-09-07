@@ -14,6 +14,7 @@ class RiderProfileDocument {
     required this.registrationComplete,
     this.profilePhotoUrl,
     this.licensePhotoUrl,
+    this.licensePhotoBackUrl,
     this.licenseExpiresAt,
     this.email,
     this.status = 'pending',
@@ -32,6 +33,7 @@ class RiderProfileDocument {
   final bool registrationComplete;
   final String? profilePhotoUrl;
   final String? licensePhotoUrl;
+  final String? licensePhotoBackUrl;
   final DateTime? licenseExpiresAt;
   final String? email;
   final String status;
@@ -101,6 +103,7 @@ class RiderProfileDocument {
       registrationComplete: data['registrationComplete'] == true,
       profilePhotoUrl: (data['profilePhotoUrl'] as String?)?.trim(),
       licensePhotoUrl: (data['licensePhotoUrl'] as String?)?.trim(),
+      licensePhotoBackUrl: (data['licensePhotoBackUrl'] as String?)?.trim(),
       licenseExpiresAt: _readDate(data['licenseExpiresAt']),
       email: (data['email'] as String?)?.trim(),
       status: (data['status'] as String?)?.trim() ?? 'pending',

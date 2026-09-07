@@ -581,7 +581,7 @@ service cloud.firestore {
         return riderPhoneClaimMatches(d)
           && d.keys().hasOnly([
             'uid', 'fullName', 'phone', 'nicNumber',
-            'profilePhotoUrl', 'licensePhotoUrl', 'licenseExpiresAt', 'vehiclePhotoUrl',
+            'profilePhotoUrl', 'licensePhotoUrl', 'licensePhotoBackUrl', 'licenseExpiresAt', 'vehiclePhotoUrl',
             'vehiclePhotos',
             'insurancePhotoUrl', 'insuranceExpiresAt',
             'revenueLicensePhotoUrl', 'revenueLicenseExpiresAt',
@@ -615,6 +615,7 @@ service cloud.firestore {
           && (!('email' in d) || (d.email is string && d.email.size() <= 200))
           && d.profilePhotoUrl is string
           && d.licensePhotoUrl is string
+          && d.licensePhotoBackUrl is string
           && d.licenseExpiresAt is timestamp
           && d.vehiclePhotoUrl is string
           && (!('vehiclePhotos' in d) || (
@@ -636,7 +637,7 @@ service cloud.firestore {
       // silently keeping an 'approved'/'active' status on unverified data.
       function riderComplianceKeys() {
         return [
-          'vehicleType', 'vehicleNumber', 'licensePhotoUrl', 'licenseExpiresAt',
+          'vehicleType', 'vehicleNumber', 'licensePhotoUrl', 'licensePhotoBackUrl', 'licenseExpiresAt',
           'vehiclePhotoUrl',
           'vehiclePhotos', 'insurancePhotoUrl', 'insuranceExpiresAt',
           'revenueLicensePhotoUrl', 'revenueLicenseExpiresAt'
@@ -653,7 +654,7 @@ service cloud.firestore {
         // Phone / registrationComplete / email are not client-editable.
         return c.hasOnly([
             'fullName', 'nicNumber', 'city', 'vehicleType', 'vehicleNumber',
-            'profilePhotoUrl', 'licensePhotoUrl', 'licenseExpiresAt', 'vehiclePhotoUrl',
+            'profilePhotoUrl', 'licensePhotoUrl', 'licensePhotoBackUrl', 'licenseExpiresAt', 'vehiclePhotoUrl',
             'vehiclePhotos',
             'insurancePhotoUrl', 'insuranceExpiresAt',
             'revenueLicensePhotoUrl', 'revenueLicenseExpiresAt', 'updatedAt',

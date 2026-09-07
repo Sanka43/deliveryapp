@@ -14,6 +14,7 @@ class RiderProfile {
     required this.vehicleNumber,
     this.profilePhotoUrl,
     this.licensePhotoUrl,
+    this.licensePhotoBackUrl,
     this.licenseExpiresAt,
     this.insurancePhotoUrl,
     this.revenueLicensePhotoUrl,
@@ -42,6 +43,7 @@ class RiderProfile {
         vehicleNumber = '',
         profilePhotoUrl = null,
         licensePhotoUrl = null,
+        licensePhotoBackUrl = null,
         licenseExpiresAt = null,
         insurancePhotoUrl = null,
         revenueLicensePhotoUrl = null,
@@ -68,6 +70,7 @@ class RiderProfile {
   final String vehicleNumber;
   final String? profilePhotoUrl;
   final String? licensePhotoUrl;
+  final String? licensePhotoBackUrl;
   final DateTime? licenseExpiresAt;
   final String? insurancePhotoUrl;
   final String? revenueLicensePhotoUrl;
@@ -162,6 +165,7 @@ class RiderProfile {
       vehicleNumber: (data['vehicleNumber'] as String?)?.trim() ?? '',
       profilePhotoUrl: (data['profilePhotoUrl'] as String?)?.trim(),
       licensePhotoUrl: (data['licensePhotoUrl'] as String?)?.trim(),
+      licensePhotoBackUrl: (data['licensePhotoBackUrl'] as String?)?.trim(),
       licenseExpiresAt: _asDateTime(data['licenseExpiresAt']),
       insurancePhotoUrl: (data['insurancePhotoUrl'] as String?)?.trim(),
       revenueLicensePhotoUrl:
