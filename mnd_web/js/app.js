@@ -1624,8 +1624,19 @@
   }
 
   async function loadRiders() {
-    const snap = await db.collection(COL.riders).limit(200).get(FS_GET_SERVER);
-    cache.riders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // Plain `.limit(200)` with no `where`/`orderBy` can silently exclude a
+    // brand-new pending rider once the collection has grown past 200 docs
+    // (Firestore's return order for an unfiltered query isn't newest-first).
+    // Fetch pending riders via a dedicated server-side filter and merge them
+    // in so approvals never go missing from this list.
+    const [allSnap, pendingSnap] = await Promise.all([
+      db.collection(COL.riders).limit(200).get(FS_GET_SERVER),
+      db.collection(COL.riders).where("status", "==", "pending").get(FS_GET_SERVER),
+    ]);
+    const byId = new Map();
+    allSnap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
+    pendingSnap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
+    cache.riders = Array.from(byId.values());
     updateAllApprovalBadges();
   }
 
