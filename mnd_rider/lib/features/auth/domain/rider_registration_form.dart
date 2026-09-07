@@ -82,6 +82,19 @@ class RiderRegistrationForm {
   final Uint8List? revenueLicensePhotoBytes;
   final DateTime? revenueLicenseExpiresAt;
 
+  /// True when this looks like a never-filled-in / freshly reset draft
+  /// rather than a partially-filled one — e.g. the app process was killed
+  /// (low memory) while the rider was on the OTP screen reading their SMS,
+  /// wiping the in-memory registration provider. Used to show a clear
+  /// "please fill the form again" message instead of a vague submit error.
+  bool get isBlank =>
+      fullName.trim().isEmpty &&
+      phone.trim().isEmpty &&
+      nicNumber.trim().isEmpty &&
+      vehicleNumber.trim().isEmpty &&
+      profilePhotoBytes == null &&
+      licensePhotoFrontBytes == null;
+
   Uint8List? vehiclePhotoBytesFor(RiderVehiclePhotoSide side) {
     switch (side) {
       case RiderVehiclePhotoSide.front:

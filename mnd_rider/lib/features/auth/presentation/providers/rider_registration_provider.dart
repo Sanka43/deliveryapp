@@ -105,6 +105,21 @@ class RiderRegistrationController extends StateNotifier<RiderRegistrationSubmitS
   }
 
   Future<bool> submit() async {
+    if (_ref.read(riderRegistrationFormProvider).isBlank) {
+      // The app process was very likely killed and restarted (e.g. the
+      // rider switched away to read the OTP SMS) between filling the form
+      // and this final submit, wiping the in-memory draft. OTP verification
+      // itself doesn't depend on this draft, so it can still succeed while
+      // leaving nothing to actually register — surface that plainly instead
+      // of a generic "check your details" message.
+      state = state.copyWith(
+        errorMessage: 'Your registration details were lost — this can happen '
+            'if the app restarts while you are entering the OTP code. Please '
+            'fill in your details and photos again.',
+        fieldErrors: const <String, String>{},
+      );
+      return false;
+    }
     if (!validateOnly()) {
       return false;
     }
