@@ -440,15 +440,29 @@
   }
 
   function riderLicense(r) {
-    return riderNestedObject(r, "license");
+    const nested = riderNestedObject(r, "license");
+    return {
+      number: nested.number,
+      expiry: nested.expiry || r?.licenseExpiresAt,
+      frontUrl: nested.frontUrl || r?.licensePhotoUrl,
+      backUrl: nested.backUrl || r?.licensePhotoBackUrl,
+    };
   }
 
   function riderInsurance(r) {
-    return riderNestedObject(r, "insurance");
+    const nested = riderNestedObject(r, "insurance");
+    return {
+      expiry: nested.expiry || r?.insuranceExpiresAt,
+      photoUrl: nested.photoUrl || r?.insurancePhotoUrl,
+    };
   }
 
   function riderRevenueLicence(r) {
-    return riderNestedObject(r, "revenueLicence");
+    const nested = riderNestedObject(r, "revenueLicence");
+    return {
+      expiry: nested.expiry || r?.revenueLicenseExpiresAt,
+      photoUrl: nested.photoUrl || r?.revenueLicensePhotoUrl,
+    };
   }
 
   function riderOwnership(r) {
@@ -518,7 +532,7 @@
     const items = [
       riderPhotoThumb(r.profilePhotoUrl, "Profile"),
       riderPhotoThumb(r.nicPhotoUrl, "NIC"),
-      riderPhotoThumb(license.frontUrl || r.licensePhotoUrl, "License (front)"),
+      riderPhotoThumb(license.frontUrl, "License (front)"),
       riderPhotoThumb(license.backUrl, "License (back)"),
       riderPhotoThumb(riderInsurance(r).photoUrl, "Insurance"),
       riderPhotoThumb(riderRevenueLicence(r).photoUrl, "Revenue licence"),
@@ -4864,7 +4878,7 @@
               ${orderDetailLine("Insurance expiry", fmtDate(insurance.expiry))}
               ${orderDetailLine("Revenue licence expiry", fmtDate(revenue.expiry))}
               <div class="rider-doc-links">
-                ${riderDocLink(license.frontUrl || r.licensePhotoUrl, "License (front)")}
+                ${riderDocLink(license.frontUrl, "License (front)")}
                 ${license.backUrl ? " · " + riderDocLink(license.backUrl, "License (back)") : ""}
                 ${insurance.photoUrl ? " · " + riderDocLink(insurance.photoUrl, "Insurance") : ""}
                 ${revenue.photoUrl ? " · " + riderDocLink(revenue.photoUrl, "Revenue licence") : ""}
@@ -4901,8 +4915,10 @@
               <h5>Account</h5>
               ${orderDetailLine("Rider ID", r.id)}
               ${orderDetailLine("UID", r.uid || r.id)}
+              ${orderDetailLine("Role", r.role || "rider")}
               ${orderDetailLine("Status", approval)}
               ${orderDetailLine("Online", r.online === true ? "Yes" : "No")}
+              ${orderDetailLine("Phone verified", r.phoneVerified === true ? "Yes" : "No")}
               ${orderDetailLine("Approved", fmtTs(r.approvedAt))}
               ${orderDetailLine("Updated", fmtTs(r.updatedAt))}
               ${orderDetailLine("Location", locationLabel)}
