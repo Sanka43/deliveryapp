@@ -82,8 +82,24 @@ function readPurpose(raw: unknown): string {
   return purpose;
 }
 
+// Statuses `requestRiderAccountDeletion` (riderAccountDeletion.ts) leaves on
+// a rider doc it does NOT delete (earnings/cash-ledger history is kept for
+// audit). A doc in one of these statuses had its Auth user removed, so it
+// must not count as an active registration for the guards below — otherwise
+// the phone number is permanently "already registered" and can never sign
+// in or register again.
+const DELETED_RIDER_STATUSES = new Set(["auth_deleted", "completed"]);
+
+function isDeletedRiderDoc(data: DocumentData): boolean {
+  const status =
+    typeof data.accountDeletionStatus === "string"
+      ? data.accountDeletionStatus.trim().toLowerCase()
+      : "";
+  return DELETED_RIDER_STATUSES.has(status);
+}
+
 function isCompleteRiderDoc(data: DocumentData | undefined): boolean {
-  if (!data) {
+  if (!data || isDeletedRiderDoc(data)) {
     return false;
   }
   if (data.registrationComplete === true) {
@@ -106,16 +122,35 @@ function isCompleteRiderDoc(data: DocumentData | undefined): boolean {
 }
 
 /**
+ * First rider doc for this phone that isn't a closed (self-deleted) account
+ * — a phone can have at most one *active* rider doc, but a deleted one may
+ * still be sitting around under its old uid, so a bare `.limit(1)` query
+ * could otherwise return the wrong doc.
+ */
+async function findActiveRiderDocByPhone(
+  e164: string,
+): Promise<DocumentData | undefined> {
+  const db = getFirestore();
+  const snap = await db
+    .collection("riders")
+    .where("phone", "==", e164)
+    .limit(5)
+    .get();
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    if (!isDeletedRiderDoc(data)) {
+      return data;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Sign-in OTP is only for phones that already have a complete rider profile.
  */
 async function assertRegisteredRiderForLogin(e164: string): Promise<void> {
-  const db = getFirestore();
-  const ridersSnap = await db
-    .collection("riders")
-    .where("phone", "==", e164)
-    .limit(1)
-    .get();
-  if (ridersSnap.empty || !isCompleteRiderDoc(ridersSnap.docs[0].data())) {
+  const data = await findActiveRiderDocByPhone(e164);
+  if (!isCompleteRiderDoc(data)) {
     throw new HttpsError("not-found", "Still not registered");
   }
 }
@@ -124,13 +159,8 @@ async function assertRegisteredRiderForLogin(e164: string): Promise<void> {
  * Register OTP must not be issued for a phone that already has a complete rider.
  */
 async function assertPhoneAvailableForRegister(e164: string): Promise<void> {
-  const db = getFirestore();
-  const ridersSnap = await db
-    .collection("riders")
-    .where("phone", "==", e164)
-    .limit(1)
-    .get();
-  if (!ridersSnap.empty && isCompleteRiderDoc(ridersSnap.docs[0].data())) {
+  const data = await findActiveRiderDocByPhone(e164);
+  if (isCompleteRiderDoc(data)) {
     throw new HttpsError(
       "already-exists",
       "This number is already registered. Sign in instead.",
