@@ -89,3 +89,24 @@ class ServiceChargePricing {
     return (subtotalLkr * pct / 100).floor();
   }
 }
+
+/// Client-side mirror of the backend's IPG (payment-gateway) processing fee
+/// — added to the total only when paying online, since PayHere charges MND
+/// a percentage of every card transaction. Preview only; the server
+/// recomputes the authoritative value when the order is actually placed.
+class IpgFeePricing {
+  IpgFeePricing._();
+
+  static const num percent = 3.3;
+
+  /// [percentOverride] lets callers plug in the admin-tunable
+  /// `ipgFeePercent` from `platform_config/fees`
+  /// (see [PlatformFeeConfig]) instead of the code default above.
+  static int ipgFeeLkr(int amountLkr, {num? percentOverride}) {
+    if (amountLkr <= 0) {
+      return 0;
+    }
+    final num pct = percentOverride ?? percent;
+    return (amountLkr * pct / 100).floor();
+  }
+}

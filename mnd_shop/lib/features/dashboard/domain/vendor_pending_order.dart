@@ -29,6 +29,8 @@ class VendorPendingOrder {
     this.deliveryAddressLabel = '',
     this.productCashStatus = '',
     this.productCashLkr = 0,
+    this.paymentMethod = 'cashOnDelivery',
+    this.paymentStatus = '',
   });
 
   final String id;
@@ -86,7 +88,18 @@ class VendorPendingOrder {
   final String productCashStatus;
   final double productCashLkr;
 
+  /// `cashOnDelivery` or `payhere` from Firestore.
+  final String paymentMethod;
+
+  /// `pending` | `paid` | `refunded` from Firestore (empty for COD orders,
+  /// which never get this field until online-paid at all).
+  final String paymentStatus;
+
   bool get isSelfPickup => fulfillmentMode == 'selfPickup';
+
+  /// True once the customer has already paid online (PayHere) — the shop
+  /// doesn't need to collect cash on delivery/pickup for this order.
+  bool get isPaid => paymentStatus == 'paid';
 
   bool get hasProductCashLedger =>
       productCashStatus == 'owed' ||
@@ -192,6 +205,12 @@ class VendorPendingOrder {
       productCashStatus:
           (data['productCashStatus'] as String?)?.trim().toLowerCase() ?? '',
       productCashLkr: _readDouble(data['productCashLkr']),
+      paymentMethod:
+          (data['paymentMethod'] as String?)?.trim().isNotEmpty == true
+          ? (data['paymentMethod'] as String).trim()
+          : 'cashOnDelivery',
+      paymentStatus:
+          (data['paymentStatus'] as String?)?.trim().toLowerCase() ?? '',
     );
   }
 

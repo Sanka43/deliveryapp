@@ -397,18 +397,32 @@ class _Header extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        order.isSelfPickup
-                            ? _vTxt(
-                                context,
-                                en: 'Self pickup',
-                                si: 'තමන්ම රැගෙන යාම',
-                              )
-                            : _vTxt(context, en: 'Delivery', si: 'බෙදාහැරීම'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: <Widget>[
+                          Text(
+                            order.isSelfPickup
+                                ? _vTxt(
+                                    context,
+                                    en: 'Self pickup',
+                                    si: 'තමන්ම රැගෙන යාම',
+                                  )
+                                : _vTxt(
+                                    context,
+                                    en: 'Delivery',
+                                    si: 'බෙදාහැරීම',
+                                  ),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (order.isPaid) ...<Widget>[
+                            const SizedBox(width: 8),
+                            _PaidBadge(
+                              text: _vTxt(context, en: 'Paid', si: 'ගෙවා ඇත'),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
@@ -561,6 +575,34 @@ class _HeaderChip extends StatelessWidget {
           fontWeight: FontWeight.w700,
           fontSize: 12,
           fontFamily: monospace ? 'monospace' : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// Small green "Paid" pill shown when the customer already paid online, so
+/// the shop knows not to collect cash for this order.
+class _PaidBadge extends StatelessWidget {
+  const _PaidBadge({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.openGreen,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 10,
+          letterSpacing: 0.4,
         ),
       ),
     );

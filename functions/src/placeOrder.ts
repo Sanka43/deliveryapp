@@ -22,6 +22,7 @@ import {
 import {fetchDrivingDistanceKm} from "./drivingDistance";
 import {loadPlatformFeeConfig} from "./platformConfig";
 import {computeServiceChargeLkr} from "./serviceCharge";
+import {computeIpgFeeLkr} from "./ipgFee";
 import {
   guestCustomerIdFromPhone,
   normalizeCustomerPhoneE164,
@@ -427,6 +428,7 @@ type PreparedCustomerOrder = {
   dropLat: number | null;
   dropLng: number | null;
   isSelfPickup: boolean;
+  ipgFeePercent: number;
 };
 
 /**
@@ -563,6 +565,7 @@ async function prepareCustomerOrder(
     dropLat,
     dropLng,
     isSelfPickup,
+    ipgFeePercent: platformFees.ipgFeePercent,
   };
 }
 
@@ -824,9 +827,17 @@ export const createPayHereCheckoutForOrder = onCall(
         subtotal,
         prepared.serviceChargePercent,
       );
+      // Only orders paid via PayHere carry this — PayHere charges MND a
+      // percentage of the card transaction, so it's passed on to the
+      // customer here rather than absorbed. Computed on everything else in
+      // the total so it isn't itself charged the gateway's own cut.
+      const ipgFee = computeIpgFeeLkr(
+        subtotal - discount + prepared.deliveryFee + serviceCharge,
+        prepared.ipgFeePercent,
+      );
       const total = Math.max(
         0,
-        subtotal - discount + prepared.deliveryFee + serviceCharge,
+        subtotal - discount + prepared.deliveryFee + serviceCharge + ipgFee,
       );
       const payload: Record<string, unknown> = {
         trackingNumber,
@@ -846,6 +857,7 @@ export const createPayHereCheckoutForOrder = onCall(
         discount,
         deliveryFee: prepared.deliveryFee,
         serviceCharge,
+        ipgFeeLkr: ipgFee,
         total,
         deliveryAddress: prepared.deliveryAddress,
         deliveryNote: prepared.deliveryNote,

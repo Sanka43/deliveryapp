@@ -9,16 +9,19 @@ class PlatformFeeConfig {
     required this.minimumFeeLkr,
     required this.perKmAfterIncludedLkr,
     required this.serviceChargePercent,
+    required this.ipgFeePercent,
   });
 
   const PlatformFeeConfig.defaults()
       : minimumFeeLkr = DeliveryPricing.minimumFeeLkr,
         perKmAfterIncludedLkr = DeliveryPricing.perKmAfterIncludedLkr,
-        serviceChargePercent = ServiceChargePricing.percent;
+        serviceChargePercent = ServiceChargePricing.percent,
+        ipgFeePercent = IpgFeePricing.percent;
 
   final int minimumFeeLkr;
   final int perKmAfterIncludedLkr;
   final num serviceChargePercent;
+  final num ipgFeePercent;
 
   /// Builds from the `platform_config/fees` doc, falling back field-by-field
   /// to code defaults when the doc, or an individual field, is missing or
@@ -30,6 +33,7 @@ class PlatformFeeConfig {
     final num? minFee = data['minDeliveryFeeLkr'] as num?;
     final num? perKm = data['pricePerKmLkr'] as num?;
     final num? pct = data['serviceChargePercent'] as num?;
+    final num? ipgPct = data['ipgFeePercent'] as num?;
     return PlatformFeeConfig(
       minimumFeeLkr: (minFee != null && minFee > 0)
           ? minFee.round()
@@ -40,6 +44,9 @@ class PlatformFeeConfig {
       serviceChargePercent: (pct != null && pct >= 0 && pct <= 100)
           ? pct
           : ServiceChargePricing.percent,
+      ipgFeePercent: (ipgPct != null && ipgPct >= 0 && ipgPct <= 100)
+          ? ipgPct
+          : IpgFeePricing.percent,
     );
   }
 
@@ -47,4 +54,9 @@ class PlatformFeeConfig {
   String get serviceChargePercentLabel => serviceChargePercent % 1 == 0
       ? serviceChargePercent.toStringAsFixed(0)
       : serviceChargePercent.toStringAsFixed(1);
+
+  /// e.g. "3.3" for the IPG processing fee percent.
+  String get ipgFeePercentLabel => ipgFeePercent % 1 == 0
+      ? ipgFeePercent.toStringAsFixed(0)
+      : ipgFeePercent.toStringAsFixed(1);
 }

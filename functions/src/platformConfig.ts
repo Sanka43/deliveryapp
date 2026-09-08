@@ -8,6 +8,7 @@ import {
   readLkrConfig,
 } from "./riderCashLogic";
 import {SERVICE_CHARGE_PERCENT} from "./serviceCharge";
+import {IPG_FEE_PERCENT} from "./ipgFee";
 
 /**
  * Admin-editable knobs from the "Fees & commissions" page in mnd_web
@@ -18,7 +19,8 @@ import {SERVICE_CHARGE_PERCENT} from "./serviceCharge";
  * keeps per completed passenger ride, `orderRiderCommissionLkr` is the flat
  * cut the platform keeps out of the delivery fee per delivered food order,
  * and `maxRiderCashInHandLkr` is how much cash a rider may hold before new
- * jobs stop being claimable.
+ * jobs stop being claimable. `ipgFeePercent` is the payment-gateway
+ * processing fee added to the total only when paying online via PayHere.
  * includedKm / maxFee / flatFallback aren't exposed
  * there and stay fixed at their code defaults. Missing doc, missing fields,
  * or a read error all fall back to the hardcoded defaults so checkout never
@@ -30,6 +32,7 @@ export type PlatformFeeConfig = {
   rideCommissionLkr: number;
   orderRiderCommissionLkr: number;
   maxRiderCashInHandLkr: number;
+  ipgFeePercent: number;
 };
 
 const DEFAULT_PLATFORM_FEE_CONFIG: PlatformFeeConfig = {
@@ -38,6 +41,7 @@ const DEFAULT_PLATFORM_FEE_CONFIG: PlatformFeeConfig = {
   rideCommissionLkr: DEFAULT_RIDE_COMMISSION_LKR,
   orderRiderCommissionLkr: DEFAULT_ORDER_RIDER_COMMISSION_LKR,
   maxRiderCashInHandLkr: DEFAULT_MAX_CASH_IN_HAND_LKR,
+  ipgFeePercent: IPG_FEE_PERCENT,
 };
 
 export async function loadPlatformFeeConfig(): Promise<PlatformFeeConfig> {
@@ -53,6 +57,7 @@ export async function loadPlatformFeeConfig(): Promise<PlatformFeeConfig> {
     const minimumFeeLkr = Number(d.minDeliveryFeeLkr);
     const perKmAfterIncludedLkr = Number(d.pricePerKmLkr);
     const serviceChargePercent = Number(d.serviceChargePercent);
+    const ipgFeePercent = Number(d.ipgFeePercent);
     return {
       delivery: {
         ...DEFAULT_DELIVERY_FEE_CONFIG,
@@ -83,6 +88,12 @@ export async function loadPlatformFeeConfig(): Promise<PlatformFeeConfig> {
         d.maxRiderCashInHandLkr,
         DEFAULT_MAX_CASH_IN_HAND_LKR,
       ),
+      ipgFeePercent:
+        Number.isFinite(ipgFeePercent) &&
+        ipgFeePercent >= 0 &&
+        ipgFeePercent <= 100
+          ? ipgFeePercent
+          : IPG_FEE_PERCENT,
     };
   } catch (err) {
     logger.warn("loadPlatformFeeConfig failed, using defaults", err);

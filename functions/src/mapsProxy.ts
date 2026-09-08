@@ -1,5 +1,6 @@
 import {HttpsError, onCall, onRequest} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
+import {haversineKm} from "./deliveryFee";
 
 function mapsKey(): string {
   const key = (process.env.GOOGLE_MAPS_KEY ?? "").trim();
@@ -207,6 +208,272 @@ export const geocodePlace = onCall(
           lng: Number(location.lng ?? 0),
         };
       }),
+    };
+  },
+);
+
+/**
+ * Server-side proxy for Places API (New) Nearby Search. Used when confirming
+ * a dropped map pin: if there's a named business/landmark right where the
+ * customer pinned (e.g. "Pizza Hut - Badulla"), showing that beats a generic
+ * street address or, worse, a bare Plus Code in areas with sparse address
+ * data — same as what Google Maps' own pin label shows. Called from every
+ * platform: mobile's `geocoding` plugin only reverse-geocodes, it has no POI
+ * search of its own.
+ */
+export const findNearestPlace = onCall(
+  {region: "asia-south1"},
+  async (request) => {
+    const lat = request.data?.lat;
+    const lng = request.data?.lng;
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      throw new HttpsError("invalid-argument", "lat and lng are required.");
+    }
+
+    if (mapsApiMocked()) {
+      return {result: null};
+    }
+
+    const body = {
+      maxResultCount: 1,
+      rankPreference: "DISTANCE",
+      excludedTypes: ["route"],
+      locationRestriction: {
+        circle: {
+          center: {latitude: lat, longitude: lng},
+          radius: 60,
+        },
+      },
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(
+        "https://places.googleapis.com/v1/places:searchNearby",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": mapsKey(),
+            "X-Goog-FieldMask":
+              "places.displayName,places.formattedAddress,places.location",
+          },
+          body: JSON.stringify(body),
+        },
+      );
+    } catch (e) {
+      logger.error("findNearestPlace: network error", e);
+      return {result: null};
+    }
+    const data = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) {
+      logger.warn("findNearestPlace: non-OK response", {
+        status: response.status,
+        error: data,
+      });
+      return {result: null};
+    }
+    const places = (data.places as Record<string, unknown>[]) ?? [];
+    if (places.length === 0) {
+      return {result: null};
+    }
+    const place = places[0];
+    const displayName = (place.displayName as Record<string, unknown>) ?? {};
+    const name = String(displayName.text ?? "").trim();
+    const formattedAddress = String(place.formattedAddress ?? "").trim();
+    const location = (place.location as Record<string, unknown>) ?? {};
+    const placeLat = Number(location.latitude ?? NaN);
+    const placeLng = Number(location.longitude ?? NaN);
+    if (!name || !Number.isFinite(placeLat) || !Number.isFinite(placeLng)) {
+      return {result: null};
+    }
+    return {
+      result: {
+        name,
+        formattedAddress,
+        lat: placeLat,
+        lng: placeLng,
+        distanceMeters: haversineKm(lat, lng, placeLat, placeLng) * 1000,
+      },
+    };
+  },
+);
+
+/**
+ * Server-side proxy for Places API (New) Autocomplete. `geocodePlace` above
+ * only resolves street addresses — typing a shop/landmark name like "Ranjan
+ * Lanka" or "Uva Wellassa University" gets nothing useful from it. This lets
+ * the rides and delivery place pickers' search boxes match business/POI
+ * names the way Google Maps' own search does. Called from every platform
+ * (not just web): no Places SDK is wired into the mobile apps, so mobile
+ * proxies through here too instead of calling Google directly.
+ */
+export const placeAutocomplete = onCall(
+  {region: "asia-south1"},
+  async (request) => {
+    const query = String(request.data?.query ?? "").trim();
+    const sessionToken = String(request.data?.sessionToken ?? "").trim();
+    const lat = request.data?.lat;
+    const lng = request.data?.lng;
+
+    if (!query) {
+      throw new HttpsError("invalid-argument", "query is required.");
+    }
+
+    if (mapsApiMocked()) {
+      return {
+        results: [
+          {
+            placeId: "mock_place_id",
+            primaryText: query,
+            secondaryText: "Mock result, Sri Lanka",
+          },
+        ],
+      };
+    }
+
+    const body: Record<string, unknown> = {
+      input: query,
+      includedRegionCodes: ["lk"],
+      locationBias: {
+        circle: {
+          center: {
+            latitude: typeof lat === "number" ? lat : 6.9271,
+            longitude: typeof lng === "number" ? lng : 79.8612,
+          },
+          radius: 50000,
+        },
+      },
+    };
+    if (sessionToken) {
+      body.sessionToken = sessionToken;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(
+        "https://places.googleapis.com/v1/places:autocomplete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": mapsKey(),
+          },
+          body: JSON.stringify(body),
+        },
+      );
+    } catch (e) {
+      logger.error("placeAutocomplete: network error", e);
+      throw new HttpsError("unavailable", "Could not reach Places API.");
+    }
+    const data = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) {
+      logger.warn("placeAutocomplete: non-OK response", {
+        status: response.status,
+        error: data,
+      });
+      return {results: []};
+    }
+    const suggestions = (data.suggestions as Record<string, unknown>[]) ?? [];
+    const results = suggestions
+      .map((s) => {
+        const prediction = (s.placePrediction as Record<string, unknown>) ?? {};
+        const structured =
+          (prediction.structuredFormat as Record<string, unknown>) ?? {};
+        const mainText = (structured.mainText as Record<string, unknown>) ?? {};
+        const secondaryText =
+          (structured.secondaryText as Record<string, unknown>) ?? {};
+        return {
+          placeId: String(prediction.placeId ?? ""),
+          primaryText: String(mainText.text ?? ""),
+          secondaryText: String(secondaryText.text ?? ""),
+        };
+      })
+      .filter((r) => r.placeId && r.primaryText)
+      .slice(0, 6);
+    return {results};
+  },
+);
+
+/**
+ * Server-side proxy for Places API (New) Place Details. Resolves a
+ * `placeId` from `placeAutocomplete` into a name, formatted address and
+ * coordinates (autocomplete predictions don't carry coordinates), and closes
+ * out the billing session `placeAutocomplete` started via `sessionToken` —
+ * Google bills a whole autocomplete-keystrokes-then-details sequence as one
+ * session when the same token is reused throughout it, instead of billing
+ * every keystroke and the details call separately.
+ */
+export const placeDetails = onCall(
+  {region: "asia-south1"},
+  async (request) => {
+    const placeId = String(request.data?.placeId ?? "").trim();
+    const sessionToken = String(request.data?.sessionToken ?? "").trim();
+    if (!placeId) {
+      throw new HttpsError("invalid-argument", "placeId is required.");
+    }
+
+    if (mapsApiMocked()) {
+      return {
+        placeId,
+        name: "Mock place",
+        label: "Mock place, Sri Lanka",
+        lat: 6.9271,
+        lng: 79.8612,
+      };
+    }
+
+    const params = new URLSearchParams();
+    if (sessionToken) {
+      params.set("sessionToken", sessionToken);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?${params.toString()}`,
+        {
+          headers: {
+            "X-Goog-Api-Key": mapsKey(),
+            "X-Goog-FieldMask": "id,displayName,formattedAddress,location",
+          },
+        },
+      );
+    } catch (e) {
+      logger.error("placeDetails: network error", e);
+      throw new HttpsError("unavailable", "Could not reach Places API.");
+    }
+    const data = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) {
+      logger.warn("placeDetails: non-OK response", {
+        status: response.status,
+        error: data,
+      });
+      throw new HttpsError("not-found", "Place not found.");
+    }
+
+    const displayName = (data.displayName as Record<string, unknown>) ?? {};
+    const name = String(displayName.text ?? "").trim();
+    const formattedAddress = String(data.formattedAddress ?? "").trim();
+    const location = (data.location as Record<string, unknown>) ?? {};
+
+    // Avoid "Ranjan Lanka, Ranjan Lanka, Peradeniya Rd" when the address
+    // already repeats the business name.
+    let label = formattedAddress || name;
+    if (
+      name &&
+      formattedAddress &&
+      !formattedAddress.toLowerCase().includes(name.toLowerCase())
+    ) {
+      label = `${name}, ${formattedAddress}`;
+    }
+
+    return {
+      placeId,
+      name,
+      label,
+      lat: Number(location.latitude ?? 0),
+      lng: Number(location.longitude ?? 0),
     };
   },
 );

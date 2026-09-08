@@ -392,6 +392,12 @@ All of the below are written only by Cloud Functions (`riderEarnings.ts`) or rea
 | `serverPlaced` | bool — `true` when created by Cloud Function |
 | `fulfillmentMode` | `'delivery'` \| `'selfPickup'` |
 
+**On create (customer, paying online via `createPayHereCheckoutForOrder`):** same fields as above (`status: 'draft_payment'`, `paymentMethod: 'payhere'`, `paymentStatus: 'pending'` until `markOrderPaidAndPlace` flips both to `'placed'`/`'paid'`), plus:
+
+| Field | Type |
+|-------|------|
+| `ipgFeeLkr` | int — payment-gateway processing fee (`platform_config/fees.ipgFeePercent`, default 3.3%) computed on `subtotal − discount + deliveryFee + serviceCharge` and folded into `total`. Never present on Cash on Delivery orders. |
+
 **On create (vendor phone / manual, via `placeVendorManualOrder`):**
 
 Same pricing fields as customer COD, plus:
@@ -464,6 +470,18 @@ Product cash admin helpers: `adminMarkProductCashRemitted` (`owed` → `remitted
 | `adminEscalated` | bool |
 | `adminEscalatedAt` | timestamp |
 | `adminEscalationReason` | `'vendor_no_response'` |
+
+Auto-refund on that same timeout, when the order was paid via PayHere (`paymentStatus == 'paid' && paymentProvider == 'payhere'`, skipped for COD — nothing was charged):
+
+| Field | Type |
+|-------|------|
+| `paymentStatus` | `'refunded'` on success |
+| `refundedAt` | timestamp |
+| `refundReason` | `'vendor_no_response'` |
+| `refundReference` | string — PayHere refund id |
+| `refundFailed` | bool — set instead of the above if the PayHere refund call failed; needs manual admin refund |
+| `refundFailedAt` | timestamp |
+| `refundError` | string |
 
 **Other fields (read by detail UI, may be set by ops/admin):**
 
@@ -648,6 +666,7 @@ Admin-editable knobs from the **Fees & commissions** page in `mnd_web`. Read ser
 | `rideCommissionLkr` | int | 0 | Flat platform cut per completed passenger ride |
 | `orderRiderCommissionLkr` | int | 0 | Flat platform cut out of the delivery fee per delivered food order |
 | `maxRiderCashInHandLkr` | int | 7000 | Cash a rider may hold before new jobs stop being claimable |
+| `ipgFeePercent` | number 0–100 | 3.3 | Payment-gateway processing fee, added to the total only on orders paid online via PayHere (never on Cash on Delivery) |
 
 `riderCommissionLkr` and `orderCommissionLkr` are legacy fields that were never read by anything; the fees page deletes both on save.
 

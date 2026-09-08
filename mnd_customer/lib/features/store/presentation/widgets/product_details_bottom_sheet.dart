@@ -83,6 +83,14 @@ Future<void> showProductDetailsBottomSheet({
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    // Callers on the home page live inside the shell's per-branch nested
+    // Navigator; without this the sheet attaches to that branch Navigator
+    // instead of the app root, so `FloatingGlassNavBar` (a Stack sibling in
+    // CustomerShellPage painted after the branch content) ends up painted
+    // over the sheet's bottom Add-to-cart bar. Root-scoping matches how
+    // this same sheet already behaves when opened from a page pushed on
+    // the root Navigator (e.g. store details, food popular section).
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (BuildContext context) {

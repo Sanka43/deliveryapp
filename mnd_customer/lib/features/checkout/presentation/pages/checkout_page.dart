@@ -248,7 +248,15 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       subtotal,
       percentOverride: feeConfig.serviceChargePercent,
     );
-    final int total = subtotal - discount + deliveryFee + serviceCharge;
+    final bool payingOnline = _payment == CheckoutPaymentMethod.payhere;
+    final int ipgFee = payingOnline
+        ? IpgFeePricing.ipgFeeLkr(
+            subtotal - discount + deliveryFee + serviceCharge,
+            percentOverride: feeConfig.ipgFeePercent,
+          )
+        : 0;
+    final int total =
+        subtotal - discount + deliveryFee + serviceCharge + ipgFee;
     final String storeName = cart.items.first.storeName.trim();
     final String storeId = cart.items.first.storeId;
 
@@ -558,6 +566,14 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                               value: MoneyFormat.lkr(serviceCharge),
                             ),
                           ],
+                          if (ipgFee > 0) ...<Widget>[
+                            const SizedBox(height: AppSpacing.xs),
+                            _SummaryRow(
+                              label:
+                                  'Bank processing fee (${feeConfig.ipgFeePercentLabel}%)',
+                              value: MoneyFormat.lkr(ipgFee),
+                            ),
+                          ],
                           const Divider(height: AppSpacing.lg),
                           _SummaryRow(
                             label: 'Total',
@@ -722,10 +738,20 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       previewCart.subtotal,
       percentOverride: previewFeeConfig.serviceChargePercent,
     );
+    final int previewIpgFee = _payment == CheckoutPaymentMethod.payhere
+        ? IpgFeePricing.ipgFeeLkr(
+            previewCart.subtotal -
+                previewCart.discount +
+                previewDeliveryFee +
+                previewServiceCharge,
+            percentOverride: previewFeeConfig.ipgFeePercent,
+          )
+        : 0;
     final int previewTotal = previewCart.subtotal -
         previewCart.discount +
         previewDeliveryFee +
-        previewServiceCharge;
+        previewServiceCharge +
+        previewIpgFee;
 
     final bool? confirm = await showDialog<bool>(
       context: context,
@@ -773,7 +799,14 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       subtotal,
       percentOverride: submitFeeConfig.serviceChargePercent,
     );
-    final int total = subtotal - discount + deliveryFee + serviceCharge;
+    final int ipgFee = _payment == CheckoutPaymentMethod.payhere
+        ? IpgFeePricing.ipgFeeLkr(
+            subtotal - discount + deliveryFee + serviceCharge,
+            percentOverride: submitFeeConfig.ipgFeePercent,
+          )
+        : 0;
+    final int total =
+        subtotal - discount + deliveryFee + serviceCharge + ipgFee;
     if (total < 0) {
       showMndSnackBar(
         context,

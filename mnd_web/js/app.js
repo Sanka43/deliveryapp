@@ -52,6 +52,10 @@
     minDeliveryFeeLkr: 120,
     pricePerKmLkr: 42,
     shopMonthlyCommissionPercent: 1,
+    // Payment-gateway processing fee, added to the order total only when
+    // paying online via PayHere. Mirrors IPG_FEE_PERCENT in
+    // functions/src/ipgFee.ts.
+    ipgFeePercent: 3.3,
   };
 
   const DEFAULT_RIDE_FARES = {
@@ -6317,6 +6321,10 @@
           d.shopMonthlyCommissionPercent == null
             ? PLATFORM_FEES_DEFAULTS.shopMonthlyCommissionPercent
             : Number(d.shopMonthlyCommissionPercent),
+        ipgFeePercent:
+          d.ipgFeePercent == null
+            ? PLATFORM_FEES_DEFAULTS.ipgFeePercent
+            : Number(d.ipgFeePercent),
       };
     } catch (e) {
       cache.platformFees = { ...PLATFORM_FEES_DEFAULTS };
@@ -6337,6 +6345,7 @@
     setVal("fee-min-delivery", f.minDeliveryFeeLkr);
     setVal("fee-per-km", f.pricePerKmLkr);
     setVal("fee-shop-monthly-pct", f.shopMonthlyCommissionPercent);
+    setVal("fee-ipg-pct", f.ipgFeePercent);
   }
 
   async function savePlatformFeesFromForm() {
@@ -6373,6 +6382,10 @@
         100,
         Math.max(0, Number(document.getElementById("fee-shop-monthly-pct").value) || 0)
       ),
+      ipgFeePercent: Math.min(
+        100,
+        Math.max(0, Number(document.getElementById("fee-ipg-pct").value) || 0)
+      ),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
     await db
@@ -6387,6 +6400,7 @@
       minDeliveryFeeLkr: payload.minDeliveryFeeLkr,
       pricePerKmLkr: payload.pricePerKmLkr,
       shopMonthlyCommissionPercent: payload.shopMonthlyCommissionPercent,
+      ipgFeePercent: payload.ipgFeePercent,
     };
     toast("Platform fees saved", "success");
   }

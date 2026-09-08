@@ -71,8 +71,15 @@ export {
   sweepStaleSearchingTrips,
 } from "./rideTrips";
 export {payHereNotify, payHereCheckoutPage} from "./payHere";
-export {getDrivingRoute, geocodePlace} from "./mapsProxy";
+export {
+  getDrivingRoute,
+  geocodePlace,
+  findNearestPlace,
+  placeAutocomplete,
+  placeDetails,
+} from "./mapsProxy";
 export {requestVendorAccountDeletion} from "./vendorAccountDeletion";
+export {requestRiderAccountDeletion} from "./riderAccountDeletion";
 export {syncVendorOpenHours} from "./vendorOpenHours";
 export {blockSyntheticRiderEmailSignup} from "./riderAuthBlocking";
 export {
