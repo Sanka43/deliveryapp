@@ -21,6 +21,23 @@ final Provider<RiderTripsRepository> riderTripsRepositoryProvider =
   );
 });
 
+/// Result of attempting to complete a passenger trip.
+class RideCompletionOutcome {
+  const RideCompletionOutcome({this.error, this.requiresCode = false});
+
+  const RideCompletionOutcome.success()
+      : error = null,
+        requiresCode = false;
+
+  final String? error;
+  bool get isSuccess => error == null;
+
+  /// True when the rider is more than 100m from the drop-off and either
+  /// hasn't entered a PIN yet, or entered the wrong one — [error] carries
+  /// the message to show while prompting for it.
+  final bool requiresCode;
+}
+
 class RiderTripStop {
   const RiderTripStop({
     required this.lat,
@@ -61,6 +78,7 @@ class RiderPassengerTrip {
     this.createdAt,
     this.paymentMethod = '',
     this.paymentStatus = '',
+    this.extraFareLkr = 0,
   });
 
   final String id;
@@ -90,6 +108,10 @@ class RiderPassengerTrip {
 
   /// `pending` | `paid` | `failed` | `refunded`.
   final String paymentStatus;
+
+  /// Extra fare already folded into [estimatedFareLkr] for a drop-off
+  /// completed farther than quoted from the pinned location.
+  final int extraFareLkr;
 
   /// PayHere rides are paid *after* the ride ends, not before — so a rider
   /// should never expect to collect cash for one of these regardless of
@@ -141,6 +163,7 @@ class RiderPassengerTrip {
       createdAt: created,
       paymentMethod: (data['paymentMethod'] as String?)?.trim() ?? '',
       paymentStatus: (data['paymentStatus'] as String?)?.trim() ?? '',
+      extraFareLkr: (data['extraFareLkr'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -402,13 +425,10 @@ class RiderTripsRepository {
       return 'Not signed in.';
     }
     final String normalized = nextStatus.trim().toLowerCase();
-    if (normalized == 'completed') {
-      return _completeTrip(tripId);
-    }
     const Map<String, Set<String>> allowed = <String, Set<String>>{
-      'accepted': <String>{'arrived', 'in_progress', 'cancelled', 'completed'},
-      'arrived': <String>{'in_progress', 'cancelled', 'completed'},
-      'in_progress': <String>{'completed', 'cancelled'},
+      'accepted': <String>{'arrived', 'in_progress', 'cancelled'},
+      'arrived': <String>{'in_progress', 'cancelled'},
+      'in_progress': <String>{'cancelled'},
     };
     try {
       final DocumentSnapshot<Map<String, dynamic>> snap =
@@ -452,16 +472,39 @@ class RiderTripsRepository {
   /// `completed` — payment is confirmed separately (see
   /// [confirmCashPayment] for cash trips; PayHere is paid online after the
   /// ride via a separate checkout flow).
-  Future<String?> _completeTrip(String tripId) async {
+  ///
+  /// [riderLat]/[riderLng] are always required — within 100m of the pinned
+  /// drop-off that's all the backend needs, but farther than that it also
+  /// requires [dropoffCode] (the passenger's in-app PIN) before it will
+  /// complete the trip, and tops up the fare for any real extra distance.
+  /// See [RideCompletionOutcome.requiresCode].
+  Future<RideCompletionOutcome> completeTrip({
+    required String tripId,
+    required double riderLat,
+    required double riderLng,
+    String? dropoffCode,
+  }) async {
     try {
-      await _functions
-          .httpsCallable('completeCashOrRideTrip')
-          .call(<String, dynamic>{'tripId': tripId.trim()});
-      return null;
+      await _functions.httpsCallable('completeCashOrRideTrip').call(
+        <String, dynamic>{
+          'tripId': tripId.trim(),
+          'riderLat': riderLat,
+          'riderLng': riderLng,
+          if (dropoffCode != null && dropoffCode.isNotEmpty)
+            'dropoffCode': dropoffCode,
+        },
+      );
+      return const RideCompletionOutcome.success();
     } on FirebaseFunctionsException catch (e) {
-      return e.message ?? 'Could not complete trip.';
+      final Object? details = e.details;
+      final bool requiresCode =
+          details is Map && details['requiresCode'] == true;
+      return RideCompletionOutcome(
+        error: e.message ?? 'Could not complete trip.',
+        requiresCode: requiresCode,
+      );
     } catch (e) {
-      return e.toString();
+      return RideCompletionOutcome(error: e.toString());
     }
   }
 

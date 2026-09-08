@@ -26,6 +26,8 @@ class RideTrip {
     this.riderRatingStars,
     this.createdAt,
     this.updatedAt,
+    this.extraFareLkr = 0,
+    this.completedOffLocation = false,
   });
 
   final String id;
@@ -55,6 +57,15 @@ class RideTrip {
   final int? riderRatingStars;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  /// Extra fare charged when the ride was completed farther from the pinned
+  /// drop-off than quoted — already folded into [estimatedFareLkr]; kept
+  /// separately so the receipt can show it as its own line.
+  final int extraFareLkr;
+
+  /// True when this ride was completed away from the pinned drop-off (needed
+  /// the passenger's PIN) rather than at it.
+  final bool completedOffLocation;
 
   String? get effectiveRiderId {
     final String? a = assignedRiderId?.trim();
@@ -151,6 +162,8 @@ class RideTrip {
       riderRatingStars: (data['riderRatingStars'] as num?)?.toInt(),
       createdAt: readTs(data['createdAt']),
       updatedAt: readTs(data['updatedAt']),
+      extraFareLkr: (data['extraFareLkr'] as num?)?.toInt() ?? 0,
+      completedOffLocation: data['completedOffLocation'] == true,
     );
   }
 }

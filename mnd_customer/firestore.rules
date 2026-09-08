@@ -1676,16 +1676,6 @@ service cloud.firestore {
             && toStatus in ['completed', 'cancelled']);
       }
 
-      // Every stop must be visited (currentStopIndex caught up to
-      // stops.size(), advanced only via validRiderStopAdvance) before a
-      // trip with intermediate stops can be marked completed.
-      function tripStopsFullyVisited() {
-        let r = resource.data;
-        return !('stops' in r)
-          || r.stops.size() == 0
-          || r.get('currentStopIndex', 0) >= r.stops.size();
-      }
-
       // Advancing past an intermediate stop, mid-leg — status stays
       // 'in_progress' so tripStatusTransitionOk() doesn't apply here.
       function validRiderStopAdvance() {
@@ -1704,6 +1694,11 @@ service cloud.firestore {
           && c.hasOnly(['currentStopIndex', 'updatedAt']);
       }
 
+      // 'completed' is deliberately excluded from the statuses this rule
+      // allows — completion must go through `completeCashOrRideTrip` (Admin
+      // SDK, bypasses these rules) so its drop-off proximity/PIN check and
+      // extra-distance fare recalculation can't be sidestepped by writing
+      // status='completed' directly from the client.
       function validRiderTripProgress() {
         let o = request.resource.data;
         let r = resource.data;
@@ -1715,11 +1710,10 @@ service cloud.firestore {
           && o.riderId == r.riderId
           && o.assignedRiderId == r.assignedRiderId
           && o.openForRiders == false
-          && o.status in ['arrived', 'in_progress', 'completed', 'cancelled']
+          && o.status in ['arrived', 'in_progress', 'cancelled']
           && tripStatusTransitionOk(r.status, o.status)
-          && (o.status != 'completed' || tripStopsFullyVisited())
           && c.hasOnly([
-            'status', 'updatedAt', 'arrivedAt', 'startedAt', 'completedAt',
+            'status', 'updatedAt', 'arrivedAt', 'startedAt',
             'cancelledAt', 'cancelReason'
           ]);
       }
@@ -1748,6 +1742,20 @@ service cloud.firestore {
         || validCustomerRateTrip();
 
       allow delete: if isAdmin();
+
+      // Drop-off verification PIN — the customer reads it in-app and reads
+      // it out to the rider when the rider completes the trip away from the
+      // pinned drop-off. Only the customer who owns this trip may read it;
+      // the assigned rider deliberately gets no read access here (only the
+      // Cloud Function verifies it, via the Admin SDK, which bypasses these
+      // rules). Written only by Cloud Functions.
+      match /dropoff_pin/{docId} {
+        allow get: if isSignedIn()
+          && get(/databases/$(database)/documents/trips/$(tripId)).data.customerId
+            == request.auth.uid;
+        allow list: if false;
+        allow write: if false;
+      }
     }
 
     // Ops alerts for missed shop orders (written by Cloud Functions).

@@ -204,6 +204,26 @@ class RidesRepository {
     );
   }
 
+  /// The 4-digit drop-off verification PIN — show it to the passenger so
+  /// they can read it out to the rider if the ride is completed away from
+  /// the pinned drop-off. Null while loading or for trips predating this
+  /// feature (no code doc yet).
+  Stream<String?> watchDropoffPin(String tripId) {
+    final String id = tripId.trim();
+    if (id.isEmpty) {
+      return Stream<String?>.value(null);
+    }
+    return _trips
+        .doc(id)
+        .collection('dropoff_pin')
+        .doc('code')
+        .snapshots()
+        .map(
+          (DocumentSnapshot<Map<String, dynamic>> snap) =>
+              (snap.data()?['code'] as String?)?.trim(),
+        );
+  }
+
   Stream<List<RideTrip>> watchMyTrips({
     required String customerUid,
     int limit = 40,

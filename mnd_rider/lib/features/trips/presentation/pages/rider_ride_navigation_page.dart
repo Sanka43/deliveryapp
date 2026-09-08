@@ -236,13 +236,63 @@ class _RiderRideNavigationPageState
       showRiderSnackBar(context, err);
       return;
     }
-    if (next == 'completed') {
+    if (next == 'cancelled') {
+      context.pop(true);
+    }
+  }
+
+  /// Completing a ride needs the rider's current position — within 100m of
+  /// the pinned drop-off that's all the backend requires; farther than that
+  /// it also needs the passenger's PIN, so this loops: try, and if the
+  /// backend says a PIN is needed (missing or wrong), prompt for one and
+  /// retry with it.
+  Future<void> _completeRide({String? dropoffCode}) async {
+    HapticFeedback.mediumImpact();
+    setState(() => _busy = true);
+    final LatLng? pos = ref.read(riderTripMapPositionProvider);
+    if (pos == null) {
+      setState(() => _busy = false);
+      showRiderSnackBar(
+        context,
+        'Could not get your current location. Try again.',
+      );
+      return;
+    }
+    final RideCompletionOutcome outcome = await ref
+        .read(riderTripsRepositoryProvider)
+        .completeTrip(
+          tripId: _trip.id,
+          riderLat: pos.latitude,
+          riderLng: pos.longitude,
+          dropoffCode: dropoffCode,
+        );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busy = false);
+    if (outcome.isSuccess) {
       // Show the cost recap + payment-confirmation sheet instead of
       // popping immediately — see RiderRideSummarySheet.
       setState(() => _showSummary = true);
-    } else if (next == 'cancelled') {
-      context.pop(true);
+      return;
     }
+    if (outcome.requiresCode) {
+      final String? code = await _promptDropoffCode(errorText: outcome.error);
+      if (code != null && code.isNotEmpty && mounted) {
+        await _completeRide(dropoffCode: code);
+      }
+      return;
+    }
+    showRiderSnackBar(context, outcome.error ?? 'Could not complete trip.');
+  }
+
+  /// Asks the rider for the passenger's drop-off PIN — shown once they're
+  /// too far from the pinned drop-off to complete without it.
+  Future<String?> _promptDropoffCode({String? errorText}) {
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => _DropoffCodeDialog(errorText: errorText),
+    );
   }
 
   Future<String?> _confirmCashPayment() {
@@ -420,7 +470,7 @@ class _RiderRideNavigationPageState
         ctaLabel = 'Complete';
         ctaColor = AppColors.onlineGreen;
         ctaIcon = Icons.check_circle_rounded;
-        ctaAction = () => _advance('completed');
+        ctaAction = () => _completeRide();
     }
 
     _measureSheetAfterFrame();
@@ -615,6 +665,129 @@ class _RiderRideNavigationPageState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Prompts the rider for the passenger's 4-digit drop-off PIN — shown when
+/// completing a ride more than 100m from the pinned drop-off. [errorText],
+/// when set, means this is a retry after a missing/incorrect PIN.
+class _DropoffCodeDialog extends StatefulWidget {
+  const _DropoffCodeDialog({this.errorText});
+
+  final String? errorText;
+
+  @override
+  State<_DropoffCodeDialog> createState() => _DropoffCodeDialogState();
+}
+
+class _DropoffCodeDialogState extends State<_DropoffCodeDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final String code = _controller.text.trim();
+    if (code.length == 4) {
+      Navigator.pop(context, code);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
+
+    return Dialog(
+      backgroundColor: cs.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSpacing.sheetRadius),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Enter drop-off PIN',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              "You're away from the pinned drop-off. Ask the passenger "
+              'for the PIN shown on their ride screen to complete this ride.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 8,
+              ),
+              decoration: InputDecoration(
+                counterText: '',
+                hintText: '••••',
+                errorText: widget.errorText,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+                ),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _controller,
+                    builder: (BuildContext context, TextEditingValue value, _) {
+                      return FilledButton(
+                        onPressed: value.text.trim().length == 4
+                            ? _submit
+                            : null,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.buttonRadius,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Complete ride'),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

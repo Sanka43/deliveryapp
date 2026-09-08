@@ -153,6 +153,8 @@ class _RidesLiveTrackingPageState extends ConsumerState<RidesLiveTrackingPage> {
   Widget build(BuildContext context) {
     final AsyncValue<RideTrip?> tripAsync =
         ref.watch(rideTripProvider(widget.tripId));
+    final String? dropoffPin =
+        ref.watch(rideDropoffPinProvider(widget.tripId)).asData?.value;
 
     return Scaffold(
       body: tripAsync.when(
@@ -352,7 +354,11 @@ class _RidesLiveTrackingPageState extends ConsumerState<RidesLiveTrackingPage> {
                                   )
                               : () => context.go(AppRoutes.customerRides),
                         )
-                      : RideInProgressCard(trip: trip, etaText: etaText),
+                      : RideInProgressCard(
+                          trip: trip,
+                          etaText: etaText,
+                          dropoffPin: dropoffPin,
+                        ),
                 ),
               ),
             ],

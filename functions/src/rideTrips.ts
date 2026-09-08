@@ -1,11 +1,35 @@
+import {randomBytes} from "crypto";
 import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
-import {loadValidQuote, payHereCheckoutHash, payHereConfig} from "./rideFare";
+import {
+  haversineKm,
+  loadFareTable,
+  loadValidQuote,
+  payHereCheckoutHash,
+  payHereConfig,
+  RideVehicleType,
+} from "./rideFare";
 
 /** How long a ride can sit unclaimed in "searching" before auto-cancelling. */
 export const SEARCH_TIMEOUT_MS = 15 * 60 * 1000;
+
+/**
+ * Beyond this distance from the pinned drop-off, completing the ride needs
+ * the customer's drop-off PIN — otherwise a rider could mark a ride
+ * "completed" from anywhere, with no proof the passenger was actually
+ * dropped off.
+ */
+const DROPOFF_PROXIMITY_KM = 0.1;
+
+/** Extra distance under this is treated as GPS noise, not a real detour. */
+const EXTRA_DISTANCE_NOISE_KM = 0.05;
+
+function generate4DigitCode(): string {
+  const n = randomBytes(2).readUInt16BE(0) % 10000;
+  return n.toString().padStart(4, "0");
+}
 
 function tripCreatedAtMillis(value: unknown): number | null {
   if (value instanceof Timestamp) {
@@ -150,6 +174,10 @@ export const confirmCashRide = onCall(
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      tx.set(tripRef.collection("dropoff_pin").doc("code"), {
+        code: generate4DigitCode(),
+        createdAt: FieldValue.serverTimestamp(),
+      });
       tx.update(quoteRef, {
         usedTripId: tripRef.id,
         usedAt: FieldValue.serverTimestamp(),
@@ -229,6 +257,10 @@ export const createPayHereCheckout = onCall(
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      tx.set(tripRef.collection("dropoff_pin").doc("code"), {
+        code: generate4DigitCode(),
+        createdAt: FieldValue.serverTimestamp(),
+      });
       tx.update(quoteRef, {
         usedTripId: tripId,
         usedAt: FieldValue.serverTimestamp(),
@@ -272,6 +304,14 @@ export const createPayHereCheckout = onCall(
  * (they may not have collected the fare yet at the moment of completion);
  * PayHere trips are left `paymentStatus: "pending"` here — the customer pays
  * online afterward via `createPayHereCheckoutForTrip` / `markTripPaidAfterCompletion`.
+ *
+ * Requires the rider's current `riderLat`/`riderLng`. Within
+ * [DROPOFF_PROXIMITY_KM] of the pinned drop-off, that's all this needs — the
+ * ride is exactly where it was quoted to end. Farther than that, the rider
+ * must also submit the customer's `dropoffCode` (shown in the customer app),
+ * so a ride can't be marked delivered with no proof the passenger was
+ * actually dropped off, and the final fare is topped up for any extra
+ * distance beyond what was quoted (never discounted for a shorter drop).
  */
 export const completeCashOrRideTrip = onCall(
   {region: "asia-south1"},
@@ -284,10 +324,33 @@ export const completeCashOrRideTrip = onCall(
     if (!tripId) {
       throw new HttpsError("invalid-argument", "tripId is required.");
     }
+    const riderLat = Number(request.data?.riderLat);
+    const riderLng = Number(request.data?.riderLng);
+    if (!Number.isFinite(riderLat) || !Number.isFinite(riderLng)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Your current location is required to complete this trip.",
+      );
+    }
+    const dropoffCode = String(request.data?.dropoffCode ?? "").trim();
 
     const tripRef = getFirestore().collection("trips").doc(tripId);
+    const pinRef = tripRef.collection("dropoff_pin").doc("code");
 
-    await getFirestore().runTransaction(async (tx) => {
+    // Fare table lookups happen outside the transaction below (they hit a
+    // different, cached document) — Firestore transactions retry on
+    // contention, and re-running an unrelated read on every retry would
+    // just be wasted work. loadFareTable() is safe to call unconditionally
+    // even on the (common) at-location path, since it's a no-op there.
+    const fareTable = await loadFareTable();
+
+    // A wrong-code attempt must still persist its attempt count even though
+    // the overall completion fails — and a thrown error inside
+    // runTransaction discards every write staged in that attempt — so this
+    // returns a result instead of throwing on a code problem, and the
+    // caller throws afterward based on that result (mirrors
+    // completeDeliveryOrder's guest-code verification).
+    const result = await getFirestore().runTransaction(async (tx) => {
       const snap = await tx.get(tripRef);
       if (!snap.exists) {
         throw new HttpsError("not-found", "Trip not found.");
@@ -295,7 +358,7 @@ export const completeCashOrRideTrip = onCall(
       const data = snap.data()!;
       const status = String(data.status ?? "").trim().toLowerCase();
       if (status === "completed") {
-        return;
+        return {ok: true} as const;
       }
       if (status !== "in_progress") {
         throw new HttpsError(
@@ -325,12 +388,104 @@ export const completeCashOrRideTrip = onCall(
         );
       }
 
-      tx.update(tripRef, {
+      const dropoff = (data.dropoff ?? {}) as Record<string, unknown>;
+      const dropoffLat = Number(dropoff.lat);
+      const dropoffLng = Number(dropoff.lng);
+      const distanceToDropoffKm =
+        Number.isFinite(dropoffLat) && Number.isFinite(dropoffLng) ?
+          haversineKm(riderLat, riderLng, dropoffLat, dropoffLng) :
+          0;
+
+      const patch: Record<string, unknown> = {
         status: "completed",
         completedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+
+      if (distanceToDropoffKm > DROPOFF_PROXIMITY_KM) {
+        const pinSnap = await tx.get(pinRef);
+        const storedCode = pinSnap.exists ?
+          String(pinSnap.data()?.code ?? "") :
+          "";
+        // Trips created before this feature shipped have no PIN doc — don't
+        // strand those in-flight rides with no way to ever complete them.
+        if (storedCode) {
+          if (!dropoffCode) {
+            return {ok: false, reason: "requires_code"} as const;
+          }
+          if (dropoffCode !== storedCode) {
+            tx.update(tripRef, {
+              dropoffCodeAttempts: FieldValue.increment(1),
+            });
+            return {ok: false, reason: "wrong_code"} as const;
+          }
+        }
+
+        // Bill for a genuinely farther drop-off — never discount a shorter
+        // one, the passenger already agreed to the quoted fare for the
+        // full trip. Compared from the last leg's own origin (the last
+        // stop, or pickup with no stops), not the whole route, since only
+        // the final leg's endpoint actually changed.
+        const lastLegOrigin = stops.length > 0 ?
+          (stops[stops.length - 1] as Record<string, unknown>) :
+          (data.pickup as Record<string, unknown>);
+        const originLat = Number(lastLegOrigin?.lat);
+        const originLng = Number(lastLegOrigin?.lng);
+        if (
+          Number.isFinite(originLat) &&
+          Number.isFinite(originLng) &&
+          Number.isFinite(dropoffLat) &&
+          Number.isFinite(dropoffLng)
+        ) {
+          const plannedLegKm = haversineKm(
+            originLat,
+            originLng,
+            dropoffLat,
+            dropoffLng,
+          );
+          const actualLegKm = haversineKm(
+            originLat,
+            originLng,
+            riderLat,
+            riderLng,
+          );
+          const extraKm = actualLegKm - plannedLegKm;
+          if (extraKm > EXTRA_DISTANCE_NOISE_KM) {
+            const vehicleType = String(data.vehicleType ?? "") as RideVehicleType;
+            const perKmLkr = fareTable[vehicleType]?.perKmLkr ?? 0;
+            const extraFareLkr = Math.ceil(extraKm * perKmLkr);
+            const baseFareLkr = Math.floor(Number(data.estimatedFareLkr ?? 0));
+            patch.estimatedFareLkr = baseFareLkr + extraFareLkr;
+            patch.extraDistanceKm = Math.round(extraKm * 100) / 100;
+            patch.extraFareLkr = extraFareLkr;
+          }
+        }
+
+        patch.completedOffLocation = true;
+        patch.actualDropoff = {lat: riderLat, lng: riderLng};
+        patch.dropoffPinVerifiedAt = FieldValue.serverTimestamp();
+      }
+
+      tx.update(tripRef, patch);
+      return {ok: true} as const;
     });
+
+    if (!result.ok) {
+      if (result.reason === "requires_code") {
+        throw new HttpsError(
+          "failed-precondition",
+          "You're more than 100m from the drop-off. Ask the passenger " +
+            "for their drop-off PIN (shown in their app) to complete " +
+            "this ride.",
+          {requiresCode: true},
+        );
+      }
+      throw new HttpsError(
+        "permission-denied",
+        "Incorrect PIN. Ask the passenger to check their ride screen.",
+        {requiresCode: true},
+      );
+    }
 
     return {tripId, status: "completed"};
   },

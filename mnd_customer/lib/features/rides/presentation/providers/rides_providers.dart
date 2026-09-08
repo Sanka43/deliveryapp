@@ -224,6 +224,11 @@ final StreamProviderFamily<RideTrip?, String> rideTripProvider =
   return ref.watch(ridesRepositoryProvider).watchTrip(tripId);
 });
 
+final StreamProviderFamily<String?, String> rideDropoffPinProvider =
+    StreamProvider.family<String?, String>((Ref ref, String tripId) {
+  return ref.watch(ridesRepositoryProvider).watchDropoffPin(tripId);
+});
+
 /// Online fleet for searching map — keyed by `vehicleType|lat|lng` (3 decimals).
 /// Requires a signed-in user (Firestore rules deny anonymous reads).
 final StreamProviderFamily<List<OnlineRideRider>, String>

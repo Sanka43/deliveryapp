@@ -17,10 +17,16 @@ class RideInProgressCard extends StatelessWidget {
     super.key,
     required this.trip,
     required this.etaText,
+    this.dropoffPin,
   });
 
   final RideTrip trip;
   final String? etaText;
+
+  /// Shown so the passenger can read it out to the rider if the ride ends
+  /// away from the pinned drop-off — null while it's still loading, or for
+  /// trips that predate this feature.
+  final String? dropoffPin;
 
   ({IconData icon, Color color}) get _statusVisual => switch (trip.status) {
         RideConstants.statusArrived => (
@@ -98,6 +104,7 @@ class RideInProgressCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (dropoffPin != null) _DropoffPinChip(pin: dropoffPin!),
             ],
           ),
           const SizedBox(height: 14),
@@ -162,6 +169,49 @@ class RideInProgressCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The passenger's drop-off verification PIN — read it out to the rider if
+/// they complete the ride away from the pinned drop-off.
+class _DropoffPinChip extends StatelessWidget {
+  const _DropoffPinChip({required this.pin});
+
+  final String pin;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(RidesSheet.buttonRadius),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Text(
+            'DROP-OFF PIN',
+            style: textTheme.labelSmall?.copyWith(
+              color: const Color(RidesColors.mutedOnNavy),
+              fontWeight: FontWeight.w800,
+              fontSize: 9,
+              letterSpacing: 0.4,
+            ),
+          ),
+          Text(
+            pin,
+            style: textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 3,
             ),
           ),
         ],

@@ -81,13 +81,26 @@ class _RiderRideSummarySheetState extends State<RiderRideSummarySheet> {
         Row(
           children: <Widget>[
             Expanded(
-              child: Text(
-                LkrFormat.money(trip.estimatedFareLkr),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface,
-                  letterSpacing: 0,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    LkrFormat.money(trip.estimatedFareLkr),
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                  if (trip.extraFareLkr > 0)
+                    Text(
+                      'Includes ${LkrFormat.money(trip.extraFareLkr)} for the '
+                      'longer drop-off',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                ],
               ),
             ),
             Container(

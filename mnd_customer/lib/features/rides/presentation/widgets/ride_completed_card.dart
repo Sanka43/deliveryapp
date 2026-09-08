@@ -252,6 +252,17 @@ class RideCompletedCard extends StatelessWidget {
                       : 'Cash to the driver',
                   style: textTheme.bodySmall?.copyWith(color: Colors.white70),
                 ),
+                if (trip.extraFareLkr > 0) ...<Widget>[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Includes ${MoneyFormat.lkr(trip.extraFareLkr, showDecimals: false)} '
+                    'for a drop-off farther than planned',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: const Color(0xFFF2B23E),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
