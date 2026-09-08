@@ -1977,3 +1977,58 @@ export const getVendorOrderRiderContact = onCall(
     return {name, phone};
   },
 );
+
+/**
+ * Lets a customer call the rider assigned to their own order. Mirrors
+ * getVendorOrderRiderContact's shape — rider docs stay locked to self/admin
+ * (PII), so this returns only {name, phone} for a rider actually assigned
+ * to an order that belongs to the calling customer.
+ */
+export const getCustomerOrderRiderContact = onCall(
+  {region: "asia-south1"},
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Sign in to view rider contact.");
+    }
+    const orderId = String(request.data?.orderId ?? "").trim();
+    if (!orderId) {
+      throw new HttpsError("invalid-argument", "orderId is required.");
+    }
+
+    const db = getFirestore();
+    const orderSnap = await db.collection("orders").doc(orderId).get();
+    if (!orderSnap.exists) {
+      throw new HttpsError("not-found", "Order not found.");
+    }
+    const order = orderSnap.data()!;
+    if (String(order.customerId ?? "").trim() !== request.auth.uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "This order does not belong to you.",
+      );
+    }
+
+    const riderId = String(order.riderId ?? order.assignedRiderId ?? "").trim();
+    if (!riderId) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No rider is assigned to this order yet.",
+      );
+    }
+
+    const riderSnap = await db.collection("riders").doc(riderId).get();
+    if (!riderSnap.exists) {
+      throw new HttpsError("not-found", "Rider profile not found.");
+    }
+    const rider = riderSnap.data()!;
+    const name =
+      String(rider.fullName ?? rider.name ?? "").trim().slice(0, 120) ||
+      "Rider";
+    const phone = String(rider.phone ?? "").trim();
+    if (!phone) {
+      throw new HttpsError("not-found", "Rider phone not available.");
+    }
+
+    return {name, phone};
+  },
+);

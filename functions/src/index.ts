@@ -12,6 +12,7 @@ export {
   onVendorApprovalStatusUpdatedNotify,
 } from "./orderNotifications";
 export {onTripStatusUpdatedNotify} from "./tripNotifications";
+export {onSupportMessageCreated} from "./supportChat";
 export {
   onOrderCreatedVendorStats,
   onOrderUpdatedVendorStats,
@@ -35,6 +36,7 @@ export {
   placeVendorManualOrder,
   completeDeliveryOrder,
   getVendorOrderRiderContact,
+  getCustomerOrderRiderContact,
 } from "./placeOrder";
 export {
   adminMarkProductCashRemitted,
@@ -69,6 +71,7 @@ export {
   completeCashOrRideTrip,
   confirmCashRidePayment,
   sweepStaleSearchingTrips,
+  getCustomerTripRiderContact,
 } from "./rideTrips";
 export {payHereNotify, payHereCheckoutPage} from "./payHere";
 export {

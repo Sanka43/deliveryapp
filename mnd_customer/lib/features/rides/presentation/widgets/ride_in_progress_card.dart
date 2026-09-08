@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/utils/money_format.dart';
+import 'package:mnd_delivery_app/core/utils/phone_call_launcher.dart';
+import 'package:mnd_delivery_app/features/rides/data/customer_trip_rider_contact_repository.dart';
 import 'package:mnd_delivery_app/features/rides/domain/entities/ride_trip.dart';
 import 'package:mnd_delivery_app/features/rides/domain/ride_constants.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/ride_status_style.dart';
@@ -12,7 +15,7 @@ import 'package:mnd_delivery_app/features/rides/presentation/rides_theme.dart';
 /// translucent tiles, and a current-destination row, so the two states read
 /// as one consistent design instead of the earlier one looking unfinished
 /// next to the other.
-class RideInProgressCard extends StatelessWidget {
+class RideInProgressCard extends ConsumerWidget {
   const RideInProgressCard({
     super.key,
     required this.trip,
@@ -48,9 +51,10 @@ class RideInProgressCard extends StatelessWidget {
       };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final TextTheme textTheme = Theme.of(context).textTheme;
     final ({IconData icon, Color color}) visual = _statusVisual;
+    final String? riderId = trip.effectiveRiderId;
 
     return Container(
       width: double.infinity,
@@ -104,6 +108,10 @@ class RideInProgressCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (riderId != null) ...<Widget>[
+                _CallRiderButton(tripId: trip.id),
+                const SizedBox(width: 8),
+              ],
               if (dropoffPin != null) _DropoffPinChip(pin: dropoffPin!),
             ],
           ),
@@ -172,6 +180,71 @@ class RideInProgressCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Fetches the assigned rider's phone on tap and opens the dialer — the
+/// rider's contact stays hidden until the passenger actually asks for it.
+class _CallRiderButton extends ConsumerStatefulWidget {
+  const _CallRiderButton({required this.tripId});
+
+  final String tripId;
+
+  @override
+  ConsumerState<_CallRiderButton> createState() => _CallRiderButtonState();
+}
+
+class _CallRiderButtonState extends ConsumerState<_CallRiderButton> {
+  bool _loading = false;
+
+  Future<void> _call() async {
+    if (_loading) {
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final CustomerTripRiderContact contact = await ref.read(
+        customerTripRiderContactProvider(widget.tripId).future,
+      );
+      if (mounted) {
+        await launchPhoneCall(context, contact.phone);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.14),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: _loading ? null : _call,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: _loading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.phone_rounded, size: 18, color: Colors.white),
+        ),
       ),
     );
   }

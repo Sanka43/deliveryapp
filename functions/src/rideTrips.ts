@@ -805,3 +805,58 @@ export const sweepStaleSearchingTrips = onSchedule(
   },
 );
 
+/**
+ * Lets a passenger call the rider assigned to their own trip. Mirrors
+ * getVendorOrderRiderContact/getCustomerOrderRiderContact — rider docs stay
+ * locked to self/admin (PII), so this returns only {name, phone} for a
+ * rider actually assigned to a trip that belongs to the calling customer.
+ */
+export const getCustomerTripRiderContact = onCall(
+  {region: "asia-south1"},
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Sign in to view rider contact.");
+    }
+    const tripId = String(request.data?.tripId ?? "").trim();
+    if (!tripId) {
+      throw new HttpsError("invalid-argument", "tripId is required.");
+    }
+
+    const db = getFirestore();
+    const tripSnap = await db.collection("trips").doc(tripId).get();
+    if (!tripSnap.exists) {
+      throw new HttpsError("not-found", "Trip not found.");
+    }
+    const trip = tripSnap.data()!;
+    if (String(trip.customerId ?? "").trim() !== request.auth.uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "This trip does not belong to you.",
+      );
+    }
+
+    const riderId = String(trip.riderId ?? trip.assignedRiderId ?? "").trim();
+    if (!riderId) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No rider is assigned to this trip yet.",
+      );
+    }
+
+    const riderSnap = await db.collection("riders").doc(riderId).get();
+    if (!riderSnap.exists) {
+      throw new HttpsError("not-found", "Rider profile not found.");
+    }
+    const rider = riderSnap.data()!;
+    const name =
+      String(rider.fullName ?? rider.name ?? "").trim().slice(0, 120) ||
+      "Rider";
+    const phone = String(rider.phone ?? "").trim();
+    if (!phone) {
+      throw new HttpsError("not-found", "Rider phone not available.");
+    }
+
+    return {name, phone};
+  },
+);
+
