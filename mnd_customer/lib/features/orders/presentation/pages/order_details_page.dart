@@ -21,6 +21,7 @@ import 'package:mnd_delivery_app/features/orders/presentation/providers/order_pl
 import 'package:mnd_delivery_app/features/orders/presentation/utils/orders_load_error.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/cancel_order_bottom_sheet.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/animated_order_status_tracker.dart';
+import 'package:mnd_delivery_app/features/orders/presentation/widgets/order_contact_actions.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/store_rating_card.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/rider_rating_card.dart';
 
@@ -95,8 +96,9 @@ class OrderDetailsPage extends ConsumerWidget {
               ),
             );
           }
-          final bool showTrackRider = detail.riderId != null &&
-              detail.riderId!.trim().isNotEmpty &&
+          final bool riderAssigned = detail.riderId != null &&
+              detail.riderId!.trim().isNotEmpty;
+          final bool showTrackRider = riderAssigned &&
               OrderTimelineLogic.isActiveForLiveRiderMap(
                 detail.statusRaw,
                 isSelfPickup: detail.isSelfPickup,
@@ -126,6 +128,19 @@ class OrderDetailsPage extends ConsumerWidget {
                 formatLkr: formatLkr,
                 showPayOnline: showPayOnline,
               ),
+              if (riderAssigned || detail.vendorId.isNotEmpty) ...<Widget>[
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: <Widget>[
+                    if (riderAssigned)
+                      OrderCallRiderChip(orderId: detail.id),
+                    if (riderAssigned && detail.vendorId.isNotEmpty)
+                      const SizedBox(width: AppSpacing.sm),
+                    if (detail.vendorId.isNotEmpty)
+                      OrderCallStoreChip(vendorId: detail.vendorId),
+                  ],
+                ),
+              ],
               if (showTrackRider) ...<Widget>[
                 const SizedBox(height: AppSpacing.sm),
                 MndPremiumCard(
@@ -375,10 +390,16 @@ class OrderDetailsPage extends ConsumerWidget {
                           ),
                           const Spacer(),
                           _PaymentChip(
-                            label: detail.isPaid ? 'Paid' : 'Payment pending',
+                            label: detail.isPaid
+                                ? 'Paid'
+                                : detail.isRefunded
+                                    ? 'Refunded'
+                                    : 'Payment pending',
                             color: detail.isPaid
                                 ? AppColors.success
-                                : AppColors.warning,
+                                : detail.isRefunded
+                                    ? AppColors.brandPrimary
+                                    : AppColors.warning,
                           ),
                         ],
                       ),
@@ -701,10 +722,18 @@ class _HeroOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? dateLabel = OrderDetailsPage.formatDate(detail.createdAt);
     final String chipLabel = detail.isOnlinePayment
-        ? (detail.isPaid ? 'Paid' : 'Payment pending')
+        ? (detail.isPaid
+            ? 'Paid'
+            : detail.isRefunded
+                ? 'Refunded'
+                : 'Payment pending')
         : OrderDetailsPage.paymentLabel(detail.paymentMethod);
     final Color chipDot = detail.isOnlinePayment
-        ? (detail.isPaid ? AppColors.success : AppColors.warning)
+        ? (detail.isPaid
+            ? AppColors.success
+            : detail.isRefunded
+                ? AppColors.brandPrimary
+                : AppColors.warning)
         : Colors.white;
 
     return Container(
