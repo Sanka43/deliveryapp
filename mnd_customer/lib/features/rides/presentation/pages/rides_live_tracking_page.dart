@@ -5,7 +5,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/services/maps/live_vehicle_markers.dart';
 import 'package:mnd_delivery_app/core/utils/payhere_launcher.dart';
-import 'package:mnd_delivery_app/core/utils/money_format.dart';
 import 'package:mnd_delivery_app/core/utils/rider_delivery_eta.dart';
 import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
@@ -20,8 +19,8 @@ import 'package:mnd_delivery_app/features/rides/presentation/providers/rides_pro
 import 'package:mnd_delivery_app/features/rides/presentation/ride_status_style.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/rides_map_markers.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/rides_map_support.dart';
-import 'package:mnd_delivery_app/features/rides/presentation/rides_theme.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/widgets/ride_completed_card.dart';
+import 'package:mnd_delivery_app/features/rides/presentation/widgets/ride_in_progress_card.dart';
 
 class RidesLiveTrackingPage extends ConsumerStatefulWidget {
   const RidesLiveTrackingPage({super.key, required this.tripId});
@@ -152,7 +151,6 @@ class _RidesLiveTrackingPageState extends ConsumerState<RidesLiveTrackingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final TextTheme textTheme = Theme.of(context).textTheme;
     final AsyncValue<RideTrip?> tripAsync =
         ref.watch(rideTripProvider(widget.tripId));
 
@@ -354,52 +352,7 @@ class _RidesLiveTrackingPageState extends ConsumerState<RidesLiveTrackingPage> {
                                   )
                               : () => context.go(AppRoutes.customerRides),
                         )
-                      : Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.all(12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(RidesColors.sheetNavy),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                _statusLabel(trip.status),
-                                style: textTheme.titleMedium?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              if (etaText != null)
-                                Text(
-                                  'ETA $etaText',
-                                  style: textTheme.bodyMedium?.copyWith(
-                                    color: const Color(RidesColors.mutedOnNavy),
-                                  ),
-                                ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${trip.vehicle?.label ?? trip.vehicleType} · '
-                                '${MoneyFormat.lkr(trip.estimatedFareLkr, showDecimals: false)} · '
-                                '${trip.distanceKm.toStringAsFixed(1)} km',
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                              Text(
-                                trip.currentLegLabel,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      : RideInProgressCard(trip: trip, etaText: etaText),
                 ),
               ),
             ],
