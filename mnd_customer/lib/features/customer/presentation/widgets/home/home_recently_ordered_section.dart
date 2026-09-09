@@ -15,6 +15,7 @@ import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/hom
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_summary.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/utils/reorder_helper.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class HomeRecentlyOrderedSection extends ConsumerWidget {
   const HomeRecentlyOrderedSection({super.key});
@@ -53,8 +54,8 @@ class HomeRecentlyOrderedSection extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               MndSectionHeader(
-                title: 'Recently Ordered',
-                actionLabel: 'See all',
+                title: AppLocalizations.of(context).homeRecentlyOrderedTitle,
+                actionLabel: AppLocalizations.of(context).actionSeeAll,
                 onActionTap: () => context.go(AppRoutes.customerOrders),
               ),
               const SizedBox(height: AppSpacing.sm),

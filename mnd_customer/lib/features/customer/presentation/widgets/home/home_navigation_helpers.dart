@@ -8,9 +8,7 @@ import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provi
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_banners_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/home_recent_searches_provider.dart';
-
-/// Shown whenever ordering is attempted while the shop is closed.
-const String kShopClosedMessage = 'This shop is closed right now.';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 void openCustomerSearch(
   BuildContext context, {
@@ -78,7 +76,11 @@ bool isStoreOpenInCatalog(WidgetRef ref, String storeId) {
 }
 
 void showShopClosedSnackBar(BuildContext context) {
-  showMndSnackBar(context, kShopClosedMessage, variant: MndSnackBarVariant.warning);
+  showMndSnackBar(
+    context,
+    AppLocalizations.of(context).shopClosedMessage,
+    variant: MndSnackBarVariant.warning,
+  );
 }
 
 /// Opens store details for browsing. Closed shops are allowed; ordering is
@@ -165,7 +167,7 @@ void openStoreMenuForProductChoice(
   if (store == null) {
     showMndSnackBar(
       context,
-      'Find this shop under Search, then open the menu to choose size and plate options.',
+      AppLocalizations.of(context).homeChooseSizeHint,
     );
     return;
   }
@@ -190,7 +192,7 @@ bool addProductToCart(BuildContext context, WidgetRef ref, SearchProduct item) {
           storeId: item.storeId,
           storeName: item.storeName,
           imageUrl: item.imageUrl,
-          selectedSize: 'Standard',
+          selectedSize: AppLocalizations.of(context).productSizeStandard,
           quantity: 1,
           basePrice: item.basePriceLkr,
           sizePriceDelta: 0,
@@ -202,7 +204,7 @@ bool addProductToCart(BuildContext context, WidgetRef ref, SearchProduct item) {
   if (!added) {
     showMndSnackBar(
       context,
-      'Cart has items from another store. Open cart and clear it first, or add from the same store.',
+      AppLocalizations.of(context).cartDifferentStoreWarning,
       variant: MndSnackBarVariant.warning,
     );
   } else {
@@ -211,6 +213,9 @@ bool addProductToCart(BuildContext context, WidgetRef ref, SearchProduct item) {
   return added;
 }
 
+// TODO(i18n-blocked): userFacingError() has no BuildContext (see
+// core/utils/user_facing_error.dart) so this fallback stays English until
+// that's refactored to return a structured error the UI layer can translate.
 String catalogLoadErrorMessage(Object error) {
   return userFacingError(
     error,

@@ -11,7 +11,9 @@ import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
 import 'package:mnd_delivery_app/core/utils/payhere_native_launcher.dart';
 import 'package:mnd_delivery_app/features/cart/domain/delivery_pricing.dart';
 import 'package:mnd_delivery_app/features/cart/domain/platform_fee_config.dart';
+import 'package:mnd_delivery_app/features/cart/data/coupon_repository.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
+import 'package:mnd_delivery_app/features/cart/presentation/providers/coupon_repository_provider.dart';
 import 'package:mnd_delivery_app/features/checkout/data/pending_checkout_store.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/delivery_fee_quote_provider.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/platform_fee_config_provider.dart';
@@ -35,6 +37,7 @@ import 'package:mnd_delivery_app/core/utils/money_format.dart';
 import 'package:mnd_delivery_app/core/utils/phone_number_utils.dart';
 import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 enum CheckoutPaymentMethod {
   cashOnDelivery,
@@ -114,7 +117,19 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     );
     cartNotifier.setFulfillmentMode(snapshot.fulfillmentMode);
     if (snapshot.couponCode != null && snapshot.couponCode!.isNotEmpty) {
-      cartNotifier.applyCouponCode(snapshot.couponCode!);
+      // Re-validate against the server rather than trusting the snapshot —
+      // the coupon may have expired or hit its usage limit since it was
+      // applied. A silent failure here just leaves it unapplied; the coupon
+      // code is still restored into the text field below for a manual retry.
+      final CouponValidationResult result = await ref
+          .read(couponRepositoryProvider)
+          .validate(
+            code: snapshot.couponCode!,
+            subtotalLkr: ref.read(cartProvider).subtotal,
+          );
+      if (result.isSuccess && mounted) {
+        cartNotifier.setCoupon(result.coupon!);
+      }
     }
     await PendingCheckoutStore.clear();
     if (!mounted) {
@@ -159,16 +174,20 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
   /// When non-null, place order must stay disabled (sign-in only).
   /// Firestore rules enforce [validOrderCreate] (including customerId == auth uid).
-  static String? _placeOrderBlockReason(AsyncValue<User?> authAsync) {
+  static String? _placeOrderBlockReason(
+    BuildContext context,
+    AsyncValue<User?> authAsync,
+  ) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     if (authAsync.isLoading) {
-      return 'Checking sign-in…';
+      return l10n.checkoutCheckingSignIn;
     }
     if (authAsync.hasError) {
-      return 'Could not load sign-in state.';
+      return l10n.checkoutSignInStateError;
     }
     final User? user = authAsync.value;
     if (user == null) {
-      return 'Sign in to place an order.';
+      return l10n.checkoutSignInRequired;
     }
     return null;
   }
@@ -212,8 +231,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AsyncValue<User?> authAsync = ref.watch(authStateUserProvider);
-    final String? placeOrderBlock = _placeOrderBlockReason(authAsync);
+    final String? placeOrderBlock = _placeOrderBlockReason(context, authAsync);
     // Rebuild when profile phone becomes available for Place order enablement.
     ref.watch(customerProfileStreamProvider);
 
@@ -227,12 +247,12 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     if (cart.isEmpty) {
       return Scaffold(
         backgroundColor: AppColors.backgroundCanvas,
-        appBar: mndPageAppBar(title: 'Checkout'),
+        appBar: mndPageAppBar(title: l10n.checkoutTitle),
         body: MndEmptyState(
           icon: Icons.shopping_bag_outlined,
-          title: 'Nothing to check out',
-          subtitle: 'Add items from a store, then come back to place your order.',
-          actionLabel: 'Order food',
+          title: l10n.checkoutEmptyTitle,
+          subtitle: l10n.checkoutEmptySubtitle,
+          actionLabel: l10n.homeHeroOrderFood,
           onAction: () => context.go(AppRoutes.customerFood),
         ),
       );
@@ -268,11 +288,11 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     final String? readinessHint = placeOrderBlock != null
         ? null
         : missingDeliveryAddress
-            ? 'Add a delivery address'
+            ? l10n.checkoutHintAddAddress
             : missingMapPin
-                ? 'Pin this address on the map for an exact delivery fee'
+                ? l10n.checkoutHintPinAddress
                 : missingPhone
-                    ? 'Add a phone on your profile or enter a contact number'
+                    ? l10n.checkoutHintAddPhone
                     : null;
     final bool placeOrderDisabled = _placingOrder ||
         placeOrderBlock != null ||
@@ -281,7 +301,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
-      appBar: mndPageAppBar(title: 'Checkout'),
+      appBar: mndPageAppBar(title: l10n.checkoutTitle),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -316,7 +336,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: <Widget>[
                                     Text(
-                                      'Picked up where you left off',
+                                      l10n.checkoutResumedTitle,
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleSmall
@@ -325,8 +345,10 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                     const SizedBox(height: 2),
                                     Text(
                                       _resumedFrom!.pendingTrackingNumber != null
-                                          ? 'Your earlier payment attempt (tracking ${_resumedFrom!.pendingTrackingNumber}) may still be processing — check My Orders before placing again, or continue below with Cash on delivery.'
-                                          : 'Your earlier payment attempt may still be processing — check My Orders before placing again, or continue below with Cash on delivery.',
+                                          ? l10n.checkoutResumedWithTrackingMessage(
+                                              _resumedFrom!.pendingTrackingNumber!,
+                                            )
+                                          : l10n.checkoutResumedMessage,
                                       style:
                                           Theme.of(context).textTheme.bodySmall,
                                     ),
@@ -342,7 +364,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                         onPressed: () => context.push(
                                           '${AppRoutes.customerOrders}/${_resumedFrom!.pendingOrderId}',
                                         ),
-                                        child: const Text('Check that order'),
+                                        child: Text(l10n.actionCheckThatOrder),
                                       ),
                                     ],
                                   ],
@@ -355,7 +377,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                     if (placeOrderBlock != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                        child: placeOrderBlock == 'Sign in to place an order.'
+                        child: placeOrderBlock == l10n.checkoutSignInRequired
                             ? const SignInRequiredBanner()
                             : MndPremiumCard(
                                 borderRadius: AppColors.cardRadiusSm,
@@ -386,7 +408,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                               ),
                       ),
                     _CheckoutHeroCard(
-                      storeName: storeName.isNotEmpty ? storeName : 'Store',
+                      storeName: storeName.isNotEmpty
+                          ? storeName
+                          : l10n.checkoutStoreFallback,
                       itemCount: cart.itemCount,
                       fulfillmentMode: cart.fulfillmentMode,
                       onFulfillmentChanged: (FulfillmentMode mode) {
@@ -434,7 +458,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                         onMapTap: _openDeliveryMapPicker,
                       ),
                     const SizedBox(height: AppSpacing.md),
-                    const MndSectionHeader(title: 'Order options'),
+                    MndSectionHeader(title: l10n.checkoutOrderOptionsHeader),
                     const SizedBox(height: AppSpacing.sm),
                     _CheckoutCouponCard(controller: _couponController),
                     const SizedBox(height: AppSpacing.sm),
@@ -449,9 +473,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       padding: const EdgeInsets.all(AppSpacing.md),
                       child: TextFormField(
                         controller: _phoneController,
-                        decoration: const InputDecoration(
-                          labelText: 'Contact phone (optional)',
-                          hintText: 'For a friend — else profile number',
+                        decoration: InputDecoration(
+                          labelText: l10n.checkoutContactPhoneLabel,
+                          hintText: l10n.checkoutContactPhoneHint,
                         ),
                         keyboardType: TextInputType.phone,
                         maxLength: 20,
@@ -469,7 +493,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    const MndSectionHeader(title: 'Payment method'),
+                    MndSectionHeader(title: l10n.checkoutPaymentMethodHeader),
                     const SizedBox(height: AppSpacing.sm),
                     MndPremiumCard(
                       borderRadius: AppColors.cardRadiusSm,
@@ -482,7 +506,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                               if (!isPickup) ...<Widget>[
                                 Expanded(
                                   child: _PaymentChip(
-                                    label: 'Cash on delivery',
+                                    label: l10n.paymentCashOnDelivery,
                                     icon: Icons.payments_outlined,
                                     selected: _payment ==
                                         CheckoutPaymentMethod.cashOnDelivery,
@@ -497,7 +521,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                               ],
                               Expanded(
                                 child: _PaymentChip(
-                                  label: 'Pay online',
+                                  label: l10n.paymentPayOnline,
                                   icon: Icons.credit_card_rounded,
                                   selected:
                                       _payment == CheckoutPaymentMethod.payhere,
@@ -513,10 +537,10 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                           const SizedBox(height: AppSpacing.xs),
                           Text(
                             isPickup
-                                ? 'Pay online to confirm your pickup order'
+                                ? l10n.checkoutPayOnlinePickupNote
                                 : _payment == CheckoutPaymentMethod.payhere
-                                    ? 'Pay now by card via PayHere'
-                                    : 'Pay cash to the rider on delivery',
+                                    ? l10n.checkoutPayNowNote
+                                    : l10n.checkoutPayCashNote,
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: AppColors.textSecondary,
@@ -527,7 +551,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    const MndSectionHeader(title: 'Your order'),
+                    MndSectionHeader(title: l10n.checkoutYourOrderHeader),
                     const SizedBox(height: AppSpacing.sm),
                     MndPremiumCard(
                       borderRadius: AppColors.cardRadiusSm,
@@ -536,47 +560,51 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           _SummaryRow(
-                            label: 'Subtotal',
+                            label: l10n.summarySubtotal,
                             value: MoneyFormat.lkr(subtotal),
                           ),
                           if (discount > 0) ...<Widget>[
                             const SizedBox(height: AppSpacing.xs),
                             _SummaryRow(
-                              label: 'Discount',
+                              label: l10n.summaryDiscount,
                               value: '- ${MoneyFormat.lkr(discount)}',
                               valueColor: AppColors.success,
                             ),
                           ],
                           const SizedBox(height: AppSpacing.xs),
                           _SummaryRow(
-                            label: isPickup ? 'Pickup' : 'Delivery',
+                            label: isPickup
+                                ? l10n.checkoutPickupLabel
+                                : l10n.fulfillmentDelivery,
                             value: MoneyFormat.lkr(deliveryFee),
                             detail: isPickup
                                 ? deliveryQuote.detail
                                 : hasMapPin
                                     ? deliveryQuote.detail
                                     : (deliveryQuote.detail ??
-                                        'Estimated · pin on map for exact fee'),
+                                        l10n.checkoutEstimatedFeeDetail),
                           ),
                           if (serviceCharge > 0) ...<Widget>[
                             const SizedBox(height: AppSpacing.xs),
                             _SummaryRow(
-                              label:
-                                  'Service charge (${feeConfig.serviceChargePercentLabel}%)',
+                              label: l10n.checkoutServiceChargeLabel(
+                                feeConfig.serviceChargePercentLabel,
+                              ),
                               value: MoneyFormat.lkr(serviceCharge),
                             ),
                           ],
                           if (ipgFee > 0) ...<Widget>[
                             const SizedBox(height: AppSpacing.xs),
                             _SummaryRow(
-                              label:
-                                  'Bank processing fee (${feeConfig.ipgFeePercentLabel}%)',
+                              label: l10n.checkoutBankFeeLabel(
+                                feeConfig.ipgFeePercentLabel,
+                              ),
                               value: MoneyFormat.lkr(ipgFee),
                             ),
                           ],
                           const Divider(height: AppSpacing.lg),
                           _SummaryRow(
-                            label: 'Total',
+                            label: l10n.cartTotalLabel,
                             value: MoneyFormat.lkr(total),
                             emphasize: true,
                           ),
@@ -593,8 +621,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
             totalLabel: MoneyFormat.lkr(total),
             isPlacingOrder: _placingOrder,
             blockedHint: placeOrderBlock ?? readinessHint,
-            needsSignIn: placeOrderBlock == 'Sign in to place an order.',
-            onSignIn: placeOrderBlock == 'Sign in to place an order.'
+            needsSignIn: placeOrderBlock == l10n.checkoutSignInRequired,
+            onSignIn: placeOrderBlock == l10n.checkoutSignInRequired
                 ? () => navigateToSignInForCheckout(ref, context)
                 : null,
             onPlaceOrder: placeOrderDisabled
@@ -654,7 +682,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   }
 
   Future<void> _onPlaceOrderInner(BuildContext context) async {
-    final String? block = _placeOrderBlockReason(ref.read(authStateUserProvider));
+    final String? block =
+        _placeOrderBlockReason(context, ref.read(authStateUserProvider));
     if (block != null) {
       if (!context.mounted) {
         return;
@@ -676,7 +705,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       }
       showMndSnackBar(
         context,
-        'Pick on map or choose a saved address',
+        AppLocalizations.of(context).checkoutPickAddressWarning,
         variant: MndSnackBarVariant.warning,
       );
       return;
@@ -693,7 +722,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       }
       showMndSnackBar(
         context,
-        'Add a phone on your profile or enter a contact number',
+        AppLocalizations.of(context).checkoutHintAddPhone,
         variant: MndSnackBarVariant.warning,
       );
       return;
@@ -771,7 +800,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     if (cart.isEmpty) {
       showMndSnackBar(
         context,
-        'Your cart is empty. Add items and try again.',
+        AppLocalizations.of(context).checkoutCartEmptyWarning,
         variant: MndSnackBarVariant.warning,
       );
       return;
@@ -810,7 +839,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     if (total < 0) {
       showMndSnackBar(
         context,
-        'Invalid order total. Please refresh the cart.',
+        AppLocalizations.of(context).checkoutInvalidTotalError,
         variant: MndSnackBarVariant.error,
       );
       return;
@@ -822,6 +851,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
     if (cart.isSelfPickup) {
       final String storeId = cart.items.first.storeId;
+      // Not localized: this becomes the order's stored addressLine1/city,
+      // read by the rider and admin apps (not localized), not just displayed
+      // here.
       final String fallbackStoreName = cart.items.first.storeName.trim().isNotEmpty
           ? cart.items.first.storeName.trim()
           : 'Store';
@@ -874,7 +906,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       if (!result.isSuccess) {
         showMndSnackBar(
           context,
-          result.errorMessage ?? 'Order failed.',
+          result.errorMessage ??
+              AppLocalizations.of(context).checkoutOrderFailedFallback,
           variant: MndSnackBarVariant.error,
         );
         return;
@@ -896,7 +929,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       } else {
         showMndSnackBar(
           context,
-          'Order placed — thank you!',
+          AppLocalizations.of(context).checkoutOrderPlacedSuccess,
           variant: MndSnackBarVariant.success,
         );
         context.go(AppRoutes.customerOrders);
@@ -972,7 +1005,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
           ref.read(cartProvider.notifier).clear();
           showMndSnackBar(
             context,
-            'Payment successful — tracking ${checkout.trackingNumber}.',
+            AppLocalizations.of(context)
+                .checkoutPaymentSuccessMessage(checkout.trackingNumber),
             variant: MndSnackBarVariant.success,
           );
           context.go('${AppRoutes.customerOrders}/${checkout.orderId}');
@@ -988,7 +1022,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
           // rather than looking like the order already went through.
           showMndSnackBar(
             context,
-            'Redirecting to payment — tracking ${checkout.trackingNumber}.',
+            AppLocalizations.of(context)
+                .checkoutRedirectingPaymentMessage(checkout.trackingNumber),
             variant: MndSnackBarVariant.success,
           );
           break;
@@ -996,7 +1031,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
           await PendingCheckoutStore.clear();
           showMndSnackBar(
             context,
-            'Payment cancelled.',
+            AppLocalizations.of(context).checkoutPaymentCancelledMessage,
             variant: MndSnackBarVariant.warning,
           );
           break;
@@ -1007,7 +1042,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
           await PendingCheckoutStore.clear();
           showMndSnackBar(
             context,
-            result.errorMessage ?? 'Payment failed.',
+            result.errorMessage ??
+                AppLocalizations.of(context).checkoutPaymentFailedFallback,
             variant: MndSnackBarVariant.error,
           );
           break;
@@ -1016,7 +1052,10 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       if (context.mounted) {
         showMndSnackBar(
           context,
-          userFacingError(e, fallback: 'Could not start payment.'),
+          userFacingError(
+            e,
+            fallback: AppLocalizations.of(context).checkoutStartPaymentError,
+          ),
           variant: MndSnackBarVariant.error,
         );
       }
@@ -1037,12 +1076,13 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final bool isOnline = payment == CheckoutPaymentMethod.payhere;
     final String description = isOnline
-        ? 'You\'ll pay $totalLabel now via PayHere.'
+        ? l10n.checkoutConfirmPayOnline(totalLabel)
         : isPickup
-            ? 'You\'ll pay $totalLabel at the store on pickup.'
-            : 'You\'ll pay $totalLabel in cash on delivery.';
+            ? l10n.checkoutConfirmPayPickup(totalLabel)
+            : l10n.checkoutConfirmPayCash(totalLabel);
 
     return Dialog(
       backgroundColor: AppColors.surfaceElevated,
@@ -1074,7 +1114,7 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Place order?',
+              l10n.checkoutConfirmTitle,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -1111,7 +1151,7 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
                       side: BorderSide(color: Colors.black.withValues(alpha: 0.12)),
                       foregroundColor: AppColors.textPrimary,
                     ),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.actionCancel),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
@@ -1125,7 +1165,7 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
                         borderRadius: BorderRadius.circular(AppColors.buttonRadius),
                       ),
                     ),
-                    child: const Text('Confirm'),
+                    child: Text(l10n.actionConfirm),
                   ),
                 ),
               ],
@@ -1189,7 +1229,8 @@ class _CheckoutHeroCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      itemCount == 1 ? '1 item' : '$itemCount items',
+                      AppLocalizations.of(context)
+                          .checkoutItemCountLabel(itemCount),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -1231,7 +1272,7 @@ class _FulfillmentModeSegment extends StatelessWidget {
         children: <Widget>[
           Expanded(
             child: _SegmentChip(
-              label: 'Delivery',
+              label: AppLocalizations.of(context).fulfillmentDelivery,
               icon: Icons.delivery_dining_rounded,
               selected: mode == FulfillmentMode.delivery,
               onTap: () => onChanged(FulfillmentMode.delivery),
@@ -1239,7 +1280,7 @@ class _FulfillmentModeSegment extends StatelessWidget {
           ),
           Expanded(
             child: _SegmentChip(
-              label: 'Self pickup',
+              label: AppLocalizations.of(context).fulfillmentSelfPickup,
               icon: Icons.storefront_rounded,
               selected: mode == FulfillmentMode.selfPickup,
               onTap: () => onChanged(FulfillmentMode.selfPickup),
@@ -1357,20 +1398,61 @@ class _SavedAddressChip extends StatelessWidget {
   }
 }
 
-class _CheckoutCouponCard extends ConsumerWidget {
+class _CheckoutCouponCard extends ConsumerStatefulWidget {
   const _CheckoutCouponCard({required this.controller});
 
   final TextEditingController controller;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CheckoutCouponCard> createState() => _CheckoutCouponCardState();
+}
+
+class _CheckoutCouponCardState extends ConsumerState<_CheckoutCouponCard> {
+  bool _validating = false;
+
+  Future<void> _applyCoupon() async {
+    final String code = widget.controller.text.trim();
+    if (code.isEmpty || _validating) {
+      return;
+    }
+    setState(() => _validating = true);
+    final CartState cart = ref.read(cartProvider);
+    final CouponValidationResult result = await ref
+        .read(couponRepositoryProvider)
+        .validate(code: code, subtotalLkr: cart.subtotal);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _validating = false);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    if (result.isSuccess) {
+      ref.read(cartProvider.notifier).setCoupon(result.coupon!);
+      showMndSnackBar(
+        context,
+        l10n.checkoutCouponAppliedMessage(result.coupon!.code),
+        variant: MndSnackBarVariant.success,
+      );
+    } else {
+      showMndSnackBar(
+        context,
+        result.errorMessage ?? l10n.checkoutCouponInvalidMessage,
+        variant: MndSnackBarVariant.error,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final CartState cart = ref.watch(cartProvider);
     final CartNotifier cartNotifier = ref.read(cartProvider.notifier);
     final CartCoupon? applied = cart.appliedCoupon;
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
     return MndExpandableCard(
       icon: Icons.local_offer_outlined,
-      title: applied != null ? 'Promo code applied' : 'Have a promo code?',
+      title: applied != null
+          ? l10n.checkoutPromoAppliedTitle
+          : l10n.checkoutPromoPromptTitle,
       summary: applied?.code,
       summaryColor: AppColors.success,
       initiallyExpanded: applied != null,
@@ -1382,7 +1464,7 @@ class _CheckoutCouponCard extends ConsumerWidget {
               const SizedBox(width: AppSpacing.xs),
               Expanded(
                 child: Text(
-                  '${applied.code} applied to this order',
+                  l10n.checkoutPromoAppliedMessage(applied.code),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.success,
                         fontWeight: FontWeight.w600,
@@ -1391,7 +1473,7 @@ class _CheckoutCouponCard extends ConsumerWidget {
               ),
               TextButton(
                 onPressed: cartNotifier.removeCoupon,
-                child: const Text('Remove'),
+                child: Text(l10n.actionRemove),
               ),
             ],
           );
@@ -1400,31 +1482,24 @@ class _CheckoutCouponCard extends ConsumerWidget {
           children: <Widget>[
             Expanded(
               child: TextField(
-                controller: controller,
+                controller: widget.controller,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  hintText: 'Enter promo code',
+                enabled: !_validating,
+                decoration: InputDecoration(
+                  hintText: l10n.checkoutPromoHint,
                 ),
               ),
             ),
             const SizedBox(width: AppSpacing.xs),
             FilledButton(
-              onPressed: () {
-                final String code = controller.text.trim();
-                if (code.isEmpty) {
-                  return;
-                }
-                final bool success = cartNotifier.applyCouponCode(code);
-                showMndSnackBar(
-                  context,
-                  success
-                      ? 'Coupon applied: ${code.toUpperCase()}'
-                      : 'Invalid coupon code',
-                  variant:
-                      success ? MndSnackBarVariant.success : MndSnackBarVariant.error,
-                );
-              },
-              child: const Text('Apply'),
+              onPressed: _validating ? null : _applyCoupon,
+              child: _validating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(l10n.actionApply),
             ),
           ],
         );
@@ -1453,9 +1528,10 @@ class _CheckoutDeliveryInstructionsCard extends StatelessWidget {
             ? note
             : (instructions.isNotEmpty ? instructions : '');
 
+        final AppLocalizations l10n = AppLocalizations.of(context);
         return MndExpandableCard(
           icon: Icons.note_alt_outlined,
-          title: 'Delivery & instructions',
+          title: l10n.checkoutInstructionsTitle,
           summary: preview.isEmpty ? null : preview,
           initiallyExpanded: note.isNotEmpty || instructions.isNotEmpty,
           builder: (BuildContext context) {
@@ -1463,21 +1539,21 @@ class _CheckoutDeliveryInstructionsCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  'Delivery note',
+                  l10n.checkoutDeliveryNoteLabel,
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 TextField(
                   controller: deliveryNoteController,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. Leave at front door',
+                  decoration: InputDecoration(
+                    hintText: l10n.checkoutDeliveryNoteHint,
                   ),
                   onChanged: cartNotifier.setDeliveryNote,
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Special instructions',
+                  l10n.checkoutSpecialInstructionsLabel,
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const SizedBox(height: AppSpacing.xs),
@@ -1485,8 +1561,8 @@ class _CheckoutDeliveryInstructionsCard extends StatelessWidget {
                   controller: specialInstructionController,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. No onions, call before arrival',
+                  decoration: InputDecoration(
+                    hintText: l10n.checkoutSpecialInstructionsHint,
                   ),
                   onChanged: cartNotifier.setSpecialInstructions,
                 ),
@@ -1526,12 +1602,13 @@ class _DeliveryFulfillmentSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         MndSectionHeader(
-          title: 'Delivery address',
-          actionLabel: 'Manage',
+          title: l10n.checkoutDeliveryAddressHeader,
+          actionLabel: l10n.actionManage,
           onActionTap: onManageTap,
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -1572,7 +1649,7 @@ class _DeliveryFulfillmentSection extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              'Use saved',
+                              l10n.checkoutUseSavedLabel,
                               style: Theme.of(context)
                                   .textTheme
                                   .titleSmall
@@ -1607,7 +1684,7 @@ class _DeliveryFulfillmentSection extends StatelessWidget {
                         bottom: AppSpacing.sm,
                       ),
                       child: Text(
-                        'Could not load saved addresses.',
+                        l10n.checkoutSavedAddressesError,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.error,
                             ),
@@ -1618,7 +1695,7 @@ class _DeliveryFulfillmentSection extends StatelessWidget {
               ),
               if (!hasSelectedAddress) ...<Widget>[
                 Text(
-                  'Save addresses under Manage',
+                  l10n.checkoutSaveAddressesHint,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
                         fontWeight: FontWeight.w600,
@@ -1677,7 +1754,7 @@ class _MapPickCta extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        'Pick on map',
+                        AppLocalizations.of(context).checkoutPickOnMapTitle,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w800,
                               color: AppColors.textPrimary,
@@ -1685,7 +1762,7 @@ class _MapPickCta extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Pin your drop-off for an accurate delivery fee',
+                        AppLocalizations.of(context).checkoutPickOnMapSubtitle,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -1718,10 +1795,11 @@ class _PickupFulfillmentSection extends ConsumerWidget {
     final AsyncValue<StorePickupInfo?> pickupAsync =
         ref.watch(storePickupInfoByStoreIdProvider(storeId));
 
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const MndSectionHeader(title: 'Pickup details'),
+        MndSectionHeader(title: l10n.checkoutPickupDetailsHeader),
         const SizedBox(height: AppSpacing.sm),
         MndPremiumCard(
           borderRadius: AppColors.cardRadiusSm,
@@ -1733,7 +1811,7 @@ class _PickupFulfillmentSection extends ConsumerWidget {
                 data: (StorePickupInfo? info) {
                   if (info == null) {
                     return Text(
-                      'Could not load store pickup details.',
+                      l10n.checkoutPickupDetailsError,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Theme.of(context).colorScheme.error,
                           ),
@@ -1746,7 +1824,7 @@ class _PickupFulfillmentSection extends ConsumerWidget {
                   child: LinearProgressIndicator(),
                 ),
                 error: (Object err, _) => Text(
-                  'Could not load store pickup details.',
+                  l10n.checkoutPickupDetailsError,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.error,
                       ),
@@ -1892,7 +1970,7 @@ class _SelectedAddressBanner extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: <Widget>[
                         Text(
-                          'Delivering to',
+                          AppLocalizations.of(context).checkoutDeliveringToLabel,
                           style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                 color: AppColors.primaryBlue,
                                 fontWeight: FontWeight.w700,
@@ -1907,7 +1985,7 @@ class _SelectedAddressBanner extends StatelessWidget {
                           ),
                           const SizedBox(width: 2),
                           Text(
-                            'Pinned',
+                            AppLocalizations.of(context).checkoutPinnedLabel,
                             style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                   color: AppColors.success,
                                   fontWeight: FontWeight.w700,
@@ -2096,6 +2174,7 @@ class _CheckoutBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: Material(
@@ -2129,7 +2208,7 @@ class _CheckoutBottomBar extends StatelessWidget {
                 Row(
                   children: <Widget>[
                     Text(
-                      'Total',
+                      l10n.cartTotalLabel,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
@@ -2169,7 +2248,11 @@ class _CheckoutBottomBar extends StatelessWidget {
                             color: Colors.white,
                           ),
                         )
-                      : Text(needsSignIn ? 'Sign in to place order' : 'Place order'),
+                      : Text(
+                          needsSignIn
+                              ? l10n.checkoutSignInToPlaceOrder
+                              : l10n.checkoutPlaceOrderButton,
+                        ),
                 ),
               ],
             ),

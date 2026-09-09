@@ -13,6 +13,7 @@ import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/phone_auth_controller.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_profile_provider.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 enum _LoginStep { phone, otp }
 
@@ -34,9 +35,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   static const int _otpLength = 6;
   static const int _resendSeconds = 30;
-  static const String _smsHelpHint =
-      "Didn't get a code? Check mobile signal, tap Resend, "
-      'or try again later. Some networks deliver SMS slower than others.';
 
   // ── Phone step ──
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -297,7 +295,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
     try {
       final String code = _otpCode.replaceAll(RegExp(r'\D'), '');
       if (code.length != _otpLength) {
-        setState(() => _otpError = 'Enter the full 6-digit code');
+        setState(
+          () => _otpError = AppLocalizations.of(context).loginOtpIncomplete,
+        );
         return;
       }
 
@@ -365,7 +365,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
     _clearOtpBoxes();
     _otpDigitFocusNodes.first.requestFocus();
     _startOtpCountdown();
-    _showSnack('OTP code resent successfully.');
+    _showSnack(AppLocalizations.of(context).loginOtpResentSuccess);
   }
 
   @override
@@ -499,7 +499,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Everything You Need, One App',
+                AppLocalizations.of(context).loginTagline,
                 textAlign: TextAlign.left,
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
                       color: Colors.white,
@@ -510,8 +510,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Sign in to order food, shop for groceries, book a ride, '
-                'or find your next job.',
+                AppLocalizations.of(context).loginSubtitle,
                 textAlign: TextAlign.left,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Colors.white.withValues(alpha: 0.78),
@@ -565,7 +564,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                         }
                       },
                       decoration: InputDecoration(
-                        hintText: 'Phone number',
+                        hintText: AppLocalizations.of(context).loginPhoneHint,
                         hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: _muted.withValues(alpha: 0.6),
                               fontWeight: FontWeight.w400,
@@ -654,7 +653,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[
                             Text(
-                              'Continue',
+                              AppLocalizations.of(context).actionContinue,
                               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.3,
@@ -680,7 +679,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                     ),
                   ),
                   child: Text(
-                    'Browse as guest',
+                    AppLocalizations.of(context).loginGuestContinue,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Colors.white.withValues(alpha: 0.9),
                           fontWeight: FontWeight.w600,
@@ -694,8 +693,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
               if (kIsWeb) ...<Widget>[
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'This site is protected by reCAPTCHA and the Google '
-                  'Privacy Policy and Terms of Service apply.',
+                  AppLocalizations.of(context).loginRecaptchaNotice,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.white.withValues(alpha: 0.65),
@@ -758,7 +756,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'VERIFY',
+                    AppLocalizations.of(context).loginVerifyLabel,
                     textAlign: TextAlign.left,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: AppColors.brandPrimary,
@@ -768,7 +766,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Enter your code',
+                    AppLocalizations.of(context).loginEnterCodeTitle,
                     textAlign: TextAlign.left,
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
                           color: Colors.white,
@@ -779,7 +777,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   ),
                   const SizedBox(height: AppSpacing.md),
                   Text(
-                    'Enter the 6-digit code sent to $_verifiedPhoneNumber',
+                    AppLocalizations.of(context)
+                        .loginEnterCodeSubtitle(_verifiedPhoneNumber),
                     textAlign: TextAlign.left,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Colors.white.withValues(alpha: 0.78),
@@ -808,7 +807,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   if (_secondsRemaining == 0 || _resendAttempts >= 1) ...<Widget>[
                     const SizedBox(height: AppSpacing.md),
                     Text(
-                      _smsHelpHint,
+                      AppLocalizations.of(context).loginSmsHelpHint,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.white.withValues(alpha: 0.65),
                             height: 1.4,
@@ -845,7 +844,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: <Widget>[
                                 Text(
-                                  'Verify & continue',
+                                  AppLocalizations.of(context)
+                                      .loginVerifyAndContinue,
                                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                         fontWeight: FontWeight.w700,
                                         letterSpacing: 0.3,
@@ -863,8 +863,10 @@ class _LoginPageState extends ConsumerState<LoginPage>
                       children: <Widget>[
                         Text(
                           _secondsRemaining > 0
-                              ? 'Resend in ${_secondsRemaining}s'
-                              : "Didn't get the code?",
+                              ? AppLocalizations.of(context)
+                                  .loginResendCountdown(_secondsRemaining)
+                              : AppLocalizations.of(context)
+                                  .loginDidNotGetCode,
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.75),
@@ -884,7 +886,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                             ),
                           ),
                           child: Text(
-                            'Resend',
+                            AppLocalizations.of(context).actionResend,
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,

@@ -9,6 +9,7 @@ import 'package:mnd_delivery_app/core/widgets/home/mnd_section_header.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/mnd_shop_card.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 const int _kMaxHomeShops = 6;
 
@@ -27,8 +28,8 @@ class HomeNearbyShopsSection extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             MndSectionHeader(
-              title: 'Popular Near You',
-              actionLabel: 'See all',
+              title: AppLocalizations.of(context).homeNearbyShopsTitle,
+              actionLabel: AppLocalizations.of(context).actionSeeAll,
               onActionTap: () => context.push(AppRoutes.customerShops),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -62,8 +63,8 @@ class HomeNearbyShopsSection extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             MndSectionHeader(
-              title: 'Popular Near You',
-              actionLabel: 'See all',
+              title: AppLocalizations.of(context).homeNearbyShopsTitle,
+              actionLabel: AppLocalizations.of(context).actionSeeAll,
               onActionTap: () => context.push(AppRoutes.customerShops),
             ),
             const SizedBox(height: AppSpacing.sm),

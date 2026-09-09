@@ -15,6 +15,7 @@ import 'package:mnd_delivery_app/core/widgets/home/mnd_section_header.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class CartPage extends ConsumerStatefulWidget {
   const CartPage({super.key});
@@ -40,26 +41,27 @@ class _CartPageState extends ConsumerState<CartPage> {
     final String storeName =
         cart.isEmpty ? '' : cart.items.first.storeName.trim();
 
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
       appBar: mndPageAppBar(
-        title: 'Your Cart',
+        title: l10n.cartTitle,
         actions: <Widget>[
           if (!cart.isEmpty)
             TextButton(
               onPressed: () async {
                 final bool ok = await MndConfirmDialog.show(
                   context,
-                  title: 'Clear cart?',
-                  message: 'Remove all items from your cart.',
+                  title: l10n.cartClearTitle,
+                  message: l10n.cartClearMessage,
                   icon: Icons.delete_outline_rounded,
-                  confirmLabel: 'Clear',
+                  confirmLabel: l10n.actionClear,
                 );
                 if (ok) {
                   cartNotifier.clear();
                 }
               },
-              child: const Text('Clear'),
+              child: Text(l10n.actionClear),
             ),
         ],
       ),
@@ -86,7 +88,9 @@ class _CartPageState extends ConsumerState<CartPage> {
                         ),
                         const SizedBox(height: AppSpacing.md),
                       ],
-                      MndSectionHeader(title: 'Items (${cart.itemCount})'),
+                      MndSectionHeader(
+                        title: l10n.cartItemsHeader(cart.itemCount),
+                      ),
                       const SizedBox(height: AppSpacing.sm),
                       ...cart.items.map(
                         (CartItem item) => Padding(
@@ -177,9 +181,8 @@ class _CartHeroCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      itemCount == 1
-                          ? '1 item · ${MoneyFormat.lkr(subtotal)}'
-                          : '$itemCount items · ${MoneyFormat.lkr(subtotal)}',
+                      AppLocalizations.of(context)
+                          .cartItemCountSummary(itemCount, MoneyFormat.lkr(subtotal)),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -218,7 +221,7 @@ class _FulfillmentModeSegment extends StatelessWidget {
         children: <Widget>[
           Expanded(
             child: _SegmentChip(
-              label: 'Delivery',
+              label: AppLocalizations.of(context).fulfillmentDelivery,
               icon: Icons.delivery_dining_rounded,
               selected: mode == FulfillmentMode.delivery,
               onTap: () => onChanged(FulfillmentMode.delivery),
@@ -226,7 +229,7 @@ class _FulfillmentModeSegment extends StatelessWidget {
           ),
           Expanded(
             child: _SegmentChip(
-              label: 'Self pickup',
+              label: AppLocalizations.of(context).fulfillmentSelfPickup,
               icon: Icons.storefront_rounded,
               selected: mode == FulfillmentMode.selfPickup,
               onTap: () => onChanged(FulfillmentMode.selfPickup),
@@ -355,7 +358,8 @@ class _CartItemCard extends ConsumerWidget {
                 if (item.selectedSize.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 2),
                   Text(
-                    'Size: ${item.selectedSize}',
+                    AppLocalizations.of(context)
+                        .cartItemSizeLabel(item.selectedSize),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -488,6 +492,7 @@ class _CartBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: Material(
@@ -519,14 +524,16 @@ class _CartBottomBar extends StatelessWidget {
                 ),
                 if (discount > 0) ...<Widget>[
                   _PriceRow(
-                    label: 'Discount (${couponCode ?? 'COUPON'})',
+                    label: l10n.cartDiscountLabel(
+                      couponCode ?? l10n.cartGenericCouponLabel,
+                    ),
                     value: '- ${MoneyFormat.lkr(discount)}',
                   ),
                   const SizedBox(height: AppSpacing.xs),
                 ],
                 const Divider(height: AppSpacing.lg),
                 _PriceRow(
-                  label: 'Total',
+                  label: l10n.cartTotalLabel,
                   value: MoneyFormat.lkr(total),
                   emphasize: true,
                 ),
@@ -536,7 +543,9 @@ class _CartBottomBar extends StatelessWidget {
                   child: FilledButton(
                     onPressed: onProceedToCheckout,
                     child: Text(
-                      needsSignIn ? 'Sign in to checkout' : 'Proceed to checkout',
+                      needsSignIn
+                          ? l10n.cartSignInToCheckout
+                          : l10n.cartProceedToCheckout,
                     ),
                   ),
                 ),
@@ -587,11 +596,12 @@ class _EmptyCartView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return MndEmptyState(
       icon: Icons.shopping_cart_outlined,
-      title: 'Your cart is empty',
-      subtitle: 'Browse nearby stores and add items to get started.',
-      actionLabel: 'Order food',
+      title: l10n.cartEmptyTitle,
+      subtitle: l10n.cartEmptySubtitle,
+      actionLabel: l10n.homeHeroOrderFood,
       onAction: () => context.go(AppRoutes.customerFood),
     );
   }

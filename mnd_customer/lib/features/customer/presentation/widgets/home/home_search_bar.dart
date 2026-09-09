@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 /// Tappable search field that opens customer search.
 class HomeSearchBar extends ConsumerWidget {
@@ -37,7 +38,7 @@ class HomeSearchBar extends ConsumerWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Search foods, restaurants...',
+                AppLocalizations.of(context).homeSearchHint,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(

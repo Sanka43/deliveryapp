@@ -10,6 +10,7 @@ import 'package:mnd_delivery_app/features/jobs/presentation/providers/jobs_provi
 import 'package:mnd_delivery_app/features/rides/presentation/providers/rides_providers.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/rides_map_markers.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/rides_map_support.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 enum _CategoryAction { food, groceries, ride, jobs }
 
@@ -17,36 +18,44 @@ class _CategoryItem {
   const _CategoryItem({
     required this.assetPath,
     required this.action,
-    required this.name,
   });
 
-  final String name;
   final String assetPath;
   final _CategoryAction action;
 }
 
 const List<_CategoryItem> _kCategories = <_CategoryItem>[
   _CategoryItem(
-    name: 'Food',
     assetPath: CategoryAssets.food,
     action: _CategoryAction.food,
   ),
   _CategoryItem(
-    name: 'Groceries',
     assetPath: CategoryAssets.groceries,
     action: _CategoryAction.groceries,
   ),
   _CategoryItem(
-    name: 'Rides',
     assetPath: CategoryAssets.ride,
     action: _CategoryAction.ride,
   ),
   _CategoryItem(
-    name: 'Jobs',
     assetPath: CategoryAssets.jobs,
     action: _CategoryAction.jobs,
   ),
 ];
+
+String _categoryLabel(BuildContext context, _CategoryAction action) {
+  final AppLocalizations l10n = AppLocalizations.of(context);
+  switch (action) {
+    case _CategoryAction.food:
+      return l10n.categoryFood;
+    case _CategoryAction.groceries:
+      return l10n.categoryGroceries;
+    case _CategoryAction.ride:
+      return l10n.categoryRides;
+    case _CategoryAction.jobs:
+      return l10n.categoryJobs;
+  }
+}
 
 void _onCategoryTap(BuildContext context, WidgetRef ref, _CategoryItem item) {
   switch (item.action) {
@@ -114,6 +123,7 @@ class _ServiceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String label = _categoryLabel(context, item.action);
     return MndPressable(
       onTap: onTap,
       scale: 0.96,
@@ -131,13 +141,13 @@ class _ServiceTile extends StatelessWidget {
               child: Image.asset(
                 item.assetPath,
                 fit: BoxFit.contain,
-                semanticLabel: item.name,
+                semanticLabel: label,
               ),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            item.name,
+            label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,

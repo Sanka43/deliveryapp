@@ -11,6 +11,7 @@ import 'package:mnd_delivery_app/features/customer/presentation/providers/home_r
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/product_card.dart';
 import 'package:mnd_delivery_app/features/store/presentation/widgets/product_details_bottom_sheet.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class HomeRecommendedSection extends ConsumerWidget {
   const HomeRecommendedSection({super.key});
@@ -29,8 +30,8 @@ class HomeRecommendedSection extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             MndSectionHeader(
-              title: 'Recommended for you',
-              actionLabel: 'See all',
+              title: AppLocalizations.of(context).homeRecommendedTitle,
+              actionLabel: AppLocalizations.of(context).actionSeeAll,
               onActionTap: () => context.push(AppRoutes.customerFood),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -60,8 +61,8 @@ class HomeRecommendedSection extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             MndSectionHeader(
-              title: 'Recommended for you',
-              actionLabel: 'See all',
+              title: AppLocalizations.of(context).homeRecommendedTitle,
+              actionLabel: AppLocalizations.of(context).actionSeeAll,
               onActionTap: () => context.push(AppRoutes.customerFood),
             ),
             const SizedBox(height: AppSpacing.sm),

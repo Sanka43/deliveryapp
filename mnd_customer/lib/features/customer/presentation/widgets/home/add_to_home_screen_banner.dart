@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/services/pwa_install_service.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 /// Compact "Add to Home Screen" prompt — shown only in browser (not standalone).
 class AddToHomeScreenBanner extends StatefulWidget {
@@ -100,7 +101,7 @@ class _AddToHomeScreenBannerState extends State<AddToHomeScreenBanner> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      'Add to Home Screen',
+                      AppLocalizations.of(context).a2hsTitle,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: AppColors.textPrimary,
                             fontWeight: FontWeight.w700,
@@ -109,7 +110,7 @@ class _AddToHomeScreenBannerState extends State<AddToHomeScreenBanner> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Open MND faster, like an app.',
+                      AppLocalizations.of(context).a2hsSubtitle,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,
@@ -130,7 +131,7 @@ class _AddToHomeScreenBannerState extends State<AddToHomeScreenBanner> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    'Add',
+                    AppLocalizations.of(context).actionAdd,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
@@ -139,7 +140,7 @@ class _AddToHomeScreenBannerState extends State<AddToHomeScreenBanner> {
               ),
               IconButton(
                 onPressed: _dismiss,
-                tooltip: 'Dismiss',
+                tooltip: AppLocalizations.of(context).actionDismiss,
                 visualDensity: VisualDensity.compact,
                 icon: Icon(
                   Icons.close_rounded,
@@ -184,7 +185,7 @@ class _A2hsInstructionsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            'Add MND to your Home Screen',
+            AppLocalizations.of(context).a2hsSheetTitle,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w800,
@@ -193,29 +194,29 @@ class _A2hsInstructionsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Install from your browser menu so you can open MND in one tap.',
+            AppLocalizations.of(context).a2hsSheetSubtitle,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: AppColors.textSecondary,
                   height: 1.4,
                   fontWeight: FontWeight.w500,
                 ),
           ),          const SizedBox(height: 20),
-          const _InstructionStep(
+          _InstructionStep(
             number: '1',
-            title: 'Open the Share menu',
-            detail: 'Tap the Share icon in Safari (or your browser menu).',
+            title: AppLocalizations.of(context).a2hsStep1Title,
+            detail: AppLocalizations.of(context).a2hsStep1Detail,
           ),
           const SizedBox(height: 12),
-          const _InstructionStep(
+          _InstructionStep(
             number: '2',
-            title: 'Choose Add to Home Screen',
-            detail: 'Scroll the share sheet and select Add to Home Screen.',
+            title: AppLocalizations.of(context).a2hsStep2Title,
+            detail: AppLocalizations.of(context).a2hsStep2Detail,
           ),
           const SizedBox(height: 12),
-          const _InstructionStep(
+          _InstructionStep(
             number: '3',
-            title: 'Confirm',
-            detail: 'Tap Add. MND will appear on your home screen.',
+            title: AppLocalizations.of(context).a2hsStep3Title,
+            detail: AppLocalizations.of(context).a2hsStep3Detail,
           ),
           const SizedBox(height: 22),
           SizedBox(
@@ -230,7 +231,7 @@ class _A2hsInstructionsSheet extends StatelessWidget {
                 ),
               ),
               child: Text(
-                'Got it',
+                AppLocalizations.of(context).actionGotIt,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),

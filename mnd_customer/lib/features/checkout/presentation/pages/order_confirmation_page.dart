@@ -4,6 +4,7 @@ import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 /// Shown right after a successful order placement, before landing on order
 /// details. Gives the customer a clear confirmation moment instead of a
@@ -25,6 +26,7 @@ class OrderConfirmationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TextTheme text = Theme.of(context).textTheme;
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final String? tn = trackingNumber?.trim();
 
     return Scaffold(
@@ -51,7 +53,7 @@ class OrderConfirmationPage extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
               Text(
-                'Order placed!',
+                l10n.orderConfirmationTitle,
                 style: text.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
@@ -61,8 +63,8 @@ class OrderConfirmationPage extends StatelessWidget {
               const SizedBox(height: AppSpacing.xs),
               Text(
                 tn != null && tn.isNotEmpty
-                    ? 'Thank you — your order is confirmed with tracking $tn.'
-                    : 'Thank you — your order has been confirmed.',
+                    ? l10n.orderConfirmationMessageWithTracking(tn)
+                    : l10n.orderConfirmationMessage,
                 style: text.bodyMedium?.copyWith(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
@@ -73,18 +75,25 @@ class OrderConfirmationPage extends StatelessWidget {
                 child: Column(
                   children: <Widget>[
                     _SummaryLine(
-                      label: 'Order total',
+                      label: l10n.orderConfirmationTotalLabel,
                       value: totalLabel,
                       emphasize: true,
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     _SummaryLine(
-                      label: isPickup ? 'Fulfillment' : 'Delivery',
-                      value: isPickup ? 'Self pickup' : 'Home delivery',
+                      label: isPickup
+                          ? l10n.orderConfirmationFulfillmentLabel
+                          : l10n.fulfillmentDelivery,
+                      value: isPickup
+                          ? l10n.fulfillmentSelfPickup
+                          : l10n.orderConfirmationHomeDelivery,
                     ),
                     if (tn != null && tn.isNotEmpty) ...<Widget>[
                       const SizedBox(height: AppSpacing.sm),
-                      _SummaryLine(label: 'Tracking number', value: tn),
+                      _SummaryLine(
+                        label: l10n.orderConfirmationTrackingNumberLabel,
+                        value: tn,
+                      ),
                     ],
                   ],
                 ),
@@ -95,7 +104,7 @@ class OrderConfirmationPage extends StatelessWidget {
                 child: FilledButton(
                   onPressed: () =>
                       context.go('${AppRoutes.customerOrders}/$orderId'),
-                  child: const Text('View order details'),
+                  child: Text(l10n.orderConfirmationViewDetails),
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -103,7 +112,7 @@ class OrderConfirmationPage extends StatelessWidget {
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () => context.go(AppRoutes.customer),
-                  child: const Text('Continue shopping'),
+                  child: Text(l10n.orderConfirmationContinueShopping),
                 ),
               ),
             ],

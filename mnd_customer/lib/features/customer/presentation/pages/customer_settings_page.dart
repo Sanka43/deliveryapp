@@ -21,6 +21,7 @@ import 'package:mnd_delivery_app/features/customer/presentation/providers/custom
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/customer_profile_avatar.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/floating_glass_nav_bar.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class CustomerSettingsPage extends ConsumerWidget {
@@ -30,10 +31,11 @@ class CustomerSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<CustomerProfile?> async =
         ref.watch(customerProfileStreamProvider);
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
-      appBar: mndPageAppBar(title: 'Settings', implyLeading: false),
+      appBar: mndPageAppBar(title: l10n.navSettings, implyLeading: false),
       body: async.when(
         data: (CustomerProfile? profile) {
           if (profile == null) {
@@ -54,7 +56,7 @@ class CustomerSettingsPage extends ConsumerWidget {
             child: Text(
               userFacingError(
                 e,
-                fallback: 'Could not load settings. Please try again.',
+                fallback: l10n.settingsLoadErrorFallback,
               ),
               textAlign: TextAlign.center,
             ),
@@ -104,7 +106,7 @@ class _SignedOutBody extends StatelessWidget {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     Text(
-                      'Sign in to manage settings',
+                      AppLocalizations.of(context).settingsSignInTitle,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
@@ -113,7 +115,7 @@ class _SignedOutBody extends StatelessWidget {
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Text(
-                      'Save addresses, track orders, and manage your account.',
+                      AppLocalizations.of(context).settingsSignInSubtitle,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: AppColors.textSecondary,
@@ -124,7 +126,7 @@ class _SignedOutBody extends StatelessWidget {
                       width: double.infinity,
                       child: FilledButton(
                         onPressed: onSignIn,
-                        child: const Text('Sign in'),
+                        child: Text(AppLocalizations.of(context).actionSignIn),
                       ),
                     ),
                   ],
@@ -146,6 +148,7 @@ class _SettingsScrollContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final double bottomClearance = floatingNavTotalHeight(context);
     final bool signingOut =
         ref.watch(phoneAuthControllerProvider).isLoading;
@@ -215,7 +218,7 @@ class _SettingsScrollContent extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              'Jobs',
+                              l10n.settingsJobsTitle,
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w800,
                                 color: AppColors.textPrimary,
@@ -223,7 +226,7 @@ class _SettingsScrollContent extends ConsumerWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Browse openings and manage your applications.',
+                              l10n.settingsJobsSubtitle,
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -239,7 +242,7 @@ class _SettingsScrollContent extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                const MndSectionHeader(title: 'Account'),
+                MndSectionHeader(title: l10n.settingsAccountHeader),
                 const SizedBox(height: AppSpacing.sm),
                 MndPremiumCard(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
@@ -247,23 +250,24 @@ class _SettingsScrollContent extends ConsumerWidget {
                     children: <Widget>[
                       _SettingsRow(
                         icon: Icons.location_on_outlined,
-                        title: 'Saved addresses',
+                        title: l10n.settingsSavedAddresses,
                         onTap: () =>
                             context.push(AppRoutes.customerSavedAddresses),
                       ),
                       const _SettingsDivider(),
                       _SettingsRow(
                         icon: Icons.notifications_outlined,
-                        title: 'Notifications',
-                        subtitle: 'Choose order alerts and offers.',
+                        title: l10n.settingsNotifications,
+                        subtitle: l10n.settingsNotificationsSubtitle,
                         onTap: () => context
                             .push(AppRoutes.customerNotificationSettings),
                       ),
                       const _SettingsDivider(),
                       _SettingsRow(
                         icon: Icons.language_rounded,
-                        title: 'Language',
+                        title: l10n.settingsLanguage,
                         subtitle: describeAppLocaleChoice(
+                          context,
                           ref.watch(appLocaleProvider).valueOrNull,
                         ),
                         onTap: () => context.push(AppRoutes.customerLanguage),
@@ -277,20 +281,34 @@ class _SettingsScrollContent extends ConsumerWidget {
                   child: Column(
                     children: <Widget>[
                       _SettingsRow(
+                        icon: Icons.support_agent_rounded,
+                        title: l10n.settingsHelpSupport,
+                        subtitle: l10n.settingsHelpSupportSubtitle,
+                        onTap: () => context.push(AppRoutes.customerSupport),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                MndPremiumCard(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                  child: Column(
+                    children: <Widget>[
+                      _SettingsRow(
                         icon: Icons.privacy_tip_outlined,
-                        title: 'Privacy policy',
+                        title: l10n.settingsPrivacyPolicy,
                         onTap: () => context.push(AppRoutes.customerPrivacy),
                       ),
                       const _SettingsDivider(),
                       _SettingsRow(
                         icon: Icons.description_outlined,
-                        title: 'Terms of service',
+                        title: l10n.settingsTermsOfService,
                         onTap: () => context.push(AppRoutes.customerTerms),
                       ),
                       const _SettingsDivider(),
                       _SettingsRow(
                         icon: Icons.info_outline_rounded,
-                        title: 'About this app',
+                        title: l10n.settingsAboutApp,
                         onTap: () => _showAbout(context),
                       ),
                     ],
@@ -328,7 +346,7 @@ class _SettingsScrollContent extends ConsumerWidget {
       children: <Widget>[
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'Order food and groceries, book rides, and browse local jobs.',
+          AppLocalizations.of(context).settingsAboutBody,
           style: theme.textTheme.bodyMedium,
         ),
       ],
@@ -336,12 +354,13 @@ class _SettingsScrollContent extends ConsumerWidget {
   }
 
   Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final bool ok = await MndConfirmDialog.show(
       context,
-      title: 'Sign out',
-      message: 'Do you want to sign out from this account?',
+      title: l10n.settingsSignOutTitle,
+      message: l10n.settingsSignOutMessage,
       icon: Icons.logout_rounded,
-      confirmLabel: 'Sign out',
+      confirmLabel: l10n.settingsSignOutTitle,
       variant: MndConfirmDialogVariant.primary,
     );
     if (!ok || !context.mounted) {
@@ -364,15 +383,13 @@ class _SettingsScrollContent extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final bool ok = await MndConfirmDialog.show(
       context,
-      title: 'Delete account',
-      message:
-          'This permanently deletes your sign-in and profile data from MND '
-          '(addresses, photo, account). Order history may be kept in anonymised '
-          'form for records. This cannot be undone.',
+      title: l10n.settingsDeleteAccountTitle,
+      message: l10n.settingsDeleteAccountMessage,
       icon: Icons.delete_forever_rounded,
-      confirmLabel: 'Delete',
+      confirmLabel: l10n.actionDelete,
     );
     if (!ok || !context.mounted) {
       return;
@@ -388,7 +405,7 @@ class _SettingsScrollContent extends ConsumerWidget {
     }
     ref.read(guestBrowsingProvider.notifier).state = false;
     context.go(AppRoutes.login);
-    showMndSnackBar(context, 'Your account has been deleted.');
+    showMndSnackBar(context, l10n.settingsAccountDeletedMessage);
   }
 }
 
@@ -534,7 +551,7 @@ class _SignOutButton extends StatelessWidget {
               Icon(Icons.logout_rounded, color: error, size: 20),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                'Sign out',
+                AppLocalizations.of(context).settingsSignOutTitle,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: error,
@@ -570,7 +587,7 @@ class _DeleteAccountButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
           alignment: Alignment.center,
           child: Text(
-            'Delete account',
+            AppLocalizations.of(context).settingsDeleteAccountButton,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: error,

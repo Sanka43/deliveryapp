@@ -12,6 +12,7 @@ import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
 import 'package:mnd_delivery_app/features/offers/domain/customer_offer.dart';
 import 'package:mnd_delivery_app/features/offers/presentation/offer_order_helpers.dart';
 import 'package:mnd_delivery_app/features/offers/presentation/providers/customer_offers_provider.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 import 'package:shimmer/shimmer.dart';
 
 const double _kHeroBannerHeight = 224;
@@ -344,7 +345,7 @@ class _OfferHeroBanner extends ConsumerWidget {
                   children: <Widget>[
                     _BannerChip(
                       icon: Icons.local_offer_rounded,
-                      label: 'Offer',
+                      label: AppLocalizations.of(context).homeOfferBadge,
                       foreground: Colors.white,
                       background: AppColors.offerOrange.withValues(alpha: 0.92),
                     ),
@@ -398,7 +399,7 @@ class _OfferHeroBanner extends ConsumerWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           Text(
-                            'From',
+                            AppLocalizations.of(context).homeOfferFromLabel,
                             style: textTheme.labelSmall?.copyWith(
                               color: Colors.white.withValues(alpha: 0.7),
                               fontWeight: FontWeight.w600,
@@ -436,7 +437,7 @@ class _OfferHeroBanner extends ConsumerWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
                             Text(
-                              'Order Now',
+                              AppLocalizations.of(context).actionOrderNow,
                               style: textTheme.bodyMedium?.copyWith(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -500,7 +501,7 @@ class _OfferCountdownChipState extends State<_OfferCountdownChip> {
   void _sync() {
     final DateTime now = DateTime.now();
     _ended = !widget.endsAt.isAfter(now);
-    _label = _ended ? 'Ended' : formatOfferCountdown(widget.endsAt, now: now);
+    _label = _ended ? '' : formatOfferCountdown(widget.endsAt, now: now);
   }
 
   @override
@@ -529,7 +530,7 @@ class _OfferCountdownChipState extends State<_OfferCountdownChip> {
           ),
           const SizedBox(width: 5),
           Text(
-            _ended ? 'Ended' : _label,
+            _ended ? AppLocalizations.of(context).homeOfferEnded : _label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: _ended
                       ? AppColors.textSecondary
@@ -676,7 +677,7 @@ class _DispatchHeroCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            'Live dispatch',
+                            AppLocalizations.of(context).homeLiveDispatchBadge,
                             style: text.labelSmall?.copyWith(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
@@ -705,7 +706,7 @@ class _DispatchHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Anything you need,\nstraight to your door.',
+                  AppLocalizations.of(context).homeHeroTitle,
                   style: text.headlineSmall?.copyWith(
                     color: Colors.white,
                     height: 1.16,
@@ -713,7 +714,7 @@ class _DispatchHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Food, groceries, rides and jobs in one premium flow.',
+                  AppLocalizations.of(context).homeHeroSubtitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: text.bodyMedium?.copyWith(
@@ -727,7 +728,7 @@ class _DispatchHeroCard extends StatelessWidget {
                   children: <Widget>[
                     Expanded(
                       child: _HeroCta(
-                        label: 'Order food',
+                        label: AppLocalizations.of(context).homeHeroOrderFood,
                         icon: Icons.restaurant_rounded,
                         filled: true,
                         onTap: () => context.push(AppRoutes.customerFood),
@@ -736,7 +737,7 @@ class _DispatchHeroCard extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _HeroCta(
-                        label: 'Find jobs',
+                        label: AppLocalizations.of(context).homeHeroFindJobs,
                         icon: Icons.work_outline_rounded,
                         filled: false,
                         onTap: () => context.push(AppRoutes.customerJobs),

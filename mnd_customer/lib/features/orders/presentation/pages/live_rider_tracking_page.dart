@@ -17,6 +17,7 @@ import 'package:mnd_delivery_app/features/orders/presentation/widgets/rider_eta_
 import 'package:mnd_delivery_app/features/rides/data/ride_directions_service.dart';
 import 'package:mnd_delivery_app/features/rides/domain/ride_constants.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/providers/ride_route_provider.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 const LatLng _kDefaultCenter = LatLng(6.9271, 79.8612);
 
@@ -82,7 +83,9 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
           rotation: rider.heading ?? 0,
           flat: (rider.heading != null),
           anchor: const Offset(0.5, 0.5),
-          infoWindow: const InfoWindow(title: 'Rider'),
+          infoWindow: InfoWindow(
+            title: AppLocalizations.of(context).liveTrackingRiderMarker,
+          ),
           icon: LiveVehicleMarkers.iconFor(vehicle),
         ),
       );
@@ -92,7 +95,9 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
         Marker(
           markerId: const MarkerId('dropoff'),
           position: LatLng(dropLat, dropLng),
-          infoWindow: const InfoWindow(title: 'Your address'),
+          infoWindow: InfoWindow(
+            title: AppLocalizations.of(context).liveTrackingYourAddressMarker,
+          ),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
       );
@@ -167,6 +172,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AsyncValue<CustomerOrderDetail?> orderState =
         ref.watch(orderDetailStreamProvider(widget.orderId));
     final CustomerOrderDetail? detail = orderState.asData?.value;
@@ -219,14 +225,14 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
     }
     if (orderState.hasError) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Live tracking')),
+        appBar: AppBar(title: Text(l10n.liveTrackingTitle)),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: Text(
               ordersLoadErrorMessage(
                 orderState.error!,
-                fallback: 'Could not load order.',
+                fallback: l10n.orderDetailsLoadErrorFallback,
               ),
               textAlign: TextAlign.center,
             ),
@@ -236,11 +242,11 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
     }
     if (detail == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Live tracking')),
-        body: const Center(
+        appBar: AppBar(title: Text(l10n.liveTrackingTitle)),
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(AppSpacing.lg),
-            child: Text('Order not found or you do not have access.'),
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Text(l10n.orderNotFoundMessage),
           ),
         ),
       );
@@ -299,7 +305,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   Text(
-                    'Map is not supported on this platform.',
+                    l10n.liveTrackingMapUnsupportedTitle,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
@@ -307,7 +313,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'You can still follow order status from Order details.',
+                    l10n.liveTrackingMapUnsupportedSubtitle,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppColors.textSecondary,
@@ -320,7 +326,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Live tracking'),
+        title: Text(l10n.liveTrackingTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
@@ -328,7 +334,9 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
         actions: <Widget>[
           if (assigned && rider != null && _mapSupported)
             IconButton(
-              tooltip: _followRider ? 'Stop following rider' : 'Follow rider',
+              tooltip: _followRider
+                  ? l10n.liveTrackingStopFollowing
+                  : l10n.liveTrackingFollowRider,
               onPressed: () {
                 final RiderLiveLocation loc = rider;
                 setState(() => _followRider = !_followRider);
@@ -371,7 +379,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    'Tracking ${detail.referenceForDisplay}',
+                    l10n.ordersTrackingLabel(detail.referenceForDisplay),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w600,
@@ -406,16 +414,15 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                   if (!assigned)
                     Text(
                       activeMap
-                          ? 'A rider will appear here once someone is assigned.'
-                          : 'Tracking is only active while your order is on the way.',
+                          ? l10n.liveTrackingWaitingForRider
+                          : l10n.liveTrackingNotActiveYet,
                       style: Theme.of(context).textTheme.bodyMedium,
                     )
                   else if (riderState.isLoading)
                     const LinearProgressIndicator(minHeight: 3)
                   else if (rider == null)
                     Text(
-                      'Rider location is not available right now. '
-                      'They may be offline, or location sharing may be limited — pull back and try again shortly.',
+                      l10n.liveTrackingRiderUnavailable,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -423,15 +430,17 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                   else
                     Text(
                       rider.updatedAt != null
-                          ? 'Last location update · ${_formatTime(rider.updatedAt!)}'
-                          : 'Receiving live location updates.',
+                          ? l10n.liveTrackingLastUpdate(
+                              _formatTime(rider.updatedAt!),
+                            )
+                          : l10n.liveTrackingReceivingUpdates,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   if (dropLat == null || dropLng == null)
                     Padding(
                       padding: const EdgeInsets.only(top: AppSpacing.sm),
                       child: Text(
-                        'Delivery pin not set for this order — only the rider shows on the map.',
+                        l10n.liveTrackingNoDeliveryPin,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -451,7 +460,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                 dropLng: dropLng,
               ),
               icon: const Icon(Icons.fit_screen),
-              label: const Text('Fit map'),
+              label: Text(l10n.liveTrackingFitMapButton),
             )
           : null,
     );

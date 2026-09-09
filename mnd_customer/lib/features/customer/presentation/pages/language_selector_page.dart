@@ -7,6 +7,7 @@ import 'package:mnd_delivery_app/core/locale/app_language_option.dart';
 import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class LanguageSelectorPage extends ConsumerWidget {
   const LanguageSelectorPage({super.key});
@@ -14,10 +15,11 @@ class LanguageSelectorPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<Locale?> asyncLocale = ref.watch(appLocaleProvider);
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
-      appBar: mndPageAppBar(title: 'Language'),
+      appBar: mndPageAppBar(title: l10n.settingsLanguage),
       body: asyncLocale.when(
         data: (Locale? selected) {
           return ListView(
@@ -44,8 +46,7 @@ class LanguageSelectorPage extends ConsumerWidget {
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
-                          'Most of the app UI is still in English. '
-                          'Sinhala and Tamil currently affect system/date formatting only.',
+                          l10n.languagePartialCoverageNotice,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: Colors.black87,
                                 height: 1.35,
@@ -72,9 +73,13 @@ class LanguageSelectorPage extends ConsumerWidget {
                       if (context.mounted) {
                         final AppLanguageOption opt =
                             AppLanguageOption.ordered[index];
-                        showMndSnackBar(context, opt.isSystem
-                              ? 'Using your device language.'
-                              : 'Language set to ${opt.title}.', variant: MndSnackBarVariant.success);
+                        showMndSnackBar(
+                          context,
+                          opt.isSystem
+                              ? l10n.languageUsingDeviceMessage
+                              : l10n.languageSetToMessage(opt.title),
+                          variant: MndSnackBarVariant.success,
+                        );
                       }
                     } catch (e) {
                       if (context.mounted) {
@@ -82,7 +87,7 @@ class LanguageSelectorPage extends ConsumerWidget {
                           context,
                           userFacingError(
                             e,
-                            fallback: 'Could not save language. Please try again.',
+                            fallback: l10n.languageSaveErrorFallback,
                           ),
                           variant: MndSnackBarVariant.error,
                         );
@@ -101,7 +106,7 @@ class LanguageSelectorPage extends ConsumerWidget {
             child: Text(
               userFacingError(
                 e,
-                fallback: 'Could not load language. Please try again.',
+                fallback: l10n.languageLoadErrorFallback,
               ),
               textAlign: TextAlign.center,
             ),
@@ -125,9 +130,19 @@ class _LanguageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final bool isOn = option.isSystem
         ? selected == null
         : selected?.languageCode == option.id;
+    // The system option's copy is translated here rather than on
+    // AppLanguageOption itself (a const object, built before a BuildContext
+    // exists); language names (English/සිංහල/தமிழ்) are shown in their own
+    // script regardless of locale, so those stay as-is.
+    final String title =
+        option.isSystem ? l10n.languageUseDeviceOption : option.title;
+    final String? subtitle = option.isSystem
+        ? l10n.languageFollowsDeviceSubtitle
+        : option.subtitle;
 
     return Material(
       color: Colors.transparent,
@@ -166,15 +181,15 @@ class _LanguageTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      option.title,
+                      title,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                     ),
-                    if (option.subtitle != null) ...<Widget>[
+                    if (subtitle != null) ...<Widget>[
                       const SizedBox(height: 2),
                       Text(
-                        option.subtitle!,
+                        subtitle,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Colors.black54,
                             ),

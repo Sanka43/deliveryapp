@@ -20,6 +20,7 @@ import 'package:mnd_delivery_app/features/orders/domain/order_timeline.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/utils/orders_load_error.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/floating_glass_nav_bar.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class OrdersHistoryPage extends ConsumerWidget {
   const OrdersHistoryPage({super.key});
@@ -37,18 +38,19 @@ class OrdersHistoryPage extends ConsumerWidget {
     final AsyncValue<User?> auth = ref.watch(authStateUserProvider);
     final AsyncValue<List<CustomerOrderSummary>> orders =
         ref.watch(customerOrdersStreamProvider);
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
-      appBar: mndPageAppBar(title: 'My orders', implyLeading: false),
+      appBar: mndPageAppBar(title: l10n.ordersHistoryTitle, implyLeading: false),
       body: auth.when(
         data: (User? user) {
           if (user == null) {
             return MndEmptyState(
               icon: Icons.lock_outline_rounded,
-              title: 'Sign in to see your orders',
-              subtitle: 'Your order history is saved to your account.',
-              actionLabel: 'Sign in',
+              title: l10n.ordersSignInTitle,
+              subtitle: l10n.ordersSignInSubtitle,
+              actionLabel: l10n.actionSignIn,
               onAction: () {
                 ref.read(guestBrowsingProvider.notifier).state = false;
                 ref.read(postAuthRedirectProvider.notifier).state =
@@ -89,10 +91,9 @@ class OrdersHistoryPage extends ConsumerWidget {
                         height: MediaQuery.sizeOf(context).height * 0.5,
                         child: MndEmptyState(
                           icon: Icons.receipt_long_outlined,
-                          title: 'No orders yet',
-                          subtitle:
-                              'When you place an order, it will show up here.',
-                          actionLabel: 'Order food',
+                          title: l10n.ordersEmptyTitle,
+                          subtitle: l10n.ordersEmptySubtitle,
+                          actionLabel: l10n.homeHeroOrderFood,
                           onAction: () => context.go(AppRoutes.customerFood),
                         ),
                       ),
@@ -110,11 +111,11 @@ class OrdersHistoryPage extends ConsumerWidget {
                   ),
                   children: <Widget>[
                     MndSectionHeader(
-                      title: 'Active (${active.length})',
+                      title: l10n.ordersActiveHeader(active.length),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     if (active.isEmpty)
-                      const _EmptyHint(text: 'No active orders right now.')
+                      _EmptyHint(text: l10n.ordersNoActiveHint)
                     else
                       ...active.map(
                         (CustomerOrderSummary o) => Padding(
@@ -127,11 +128,11 @@ class OrdersHistoryPage extends ConsumerWidget {
                       ),
                     const SizedBox(height: AppSpacing.lg),
                     MndSectionHeader(
-                      title: 'Completed (${completed.length})',
+                      title: l10n.ordersCompletedHeader(completed.length),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     if (completed.isEmpty)
-                      const _EmptyHint(text: 'No completed orders yet.')
+                      _EmptyHint(text: l10n.ordersNoCompletedHint)
                     else
                       ...completed.map(
                         (CustomerOrderSummary o) => Padding(
@@ -160,7 +161,7 @@ class OrdersHistoryPage extends ConsumerWidget {
                             Text(
                               ordersLoadErrorMessage(
                                 err,
-                                fallback: 'Could not load orders.',
+                                fallback: l10n.ordersLoadErrorFallback,
                               ),
                               textAlign: TextAlign.center,
                               style: Theme.of(context).textTheme.bodyMedium,
@@ -170,7 +171,7 @@ class OrdersHistoryPage extends ConsumerWidget {
                               onPressed: () => ref.invalidate(
                                 customerOrdersStreamProvider,
                               ),
-                              child: const Text('Retry'),
+                              child: Text(l10n.actionRetry),
                             ),
                           ],
                         ),
@@ -189,7 +190,7 @@ class OrdersHistoryPage extends ConsumerWidget {
             child: Text(
               userFacingError(
                 err,
-                fallback: 'Could not verify sign-in. Please try again.',
+                fallback: l10n.ordersVerifySignInErrorFallback,
               ),
               textAlign: TextAlign.center,
             ),
@@ -320,7 +321,8 @@ class _OrderCard extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  'Tracking ${order.referenceForDisplay}',
+                  AppLocalizations.of(context)
+                      .ordersTrackingLabel(order.referenceForDisplay),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: AppColors.textSecondary,
                         letterSpacing: 0.2,
@@ -334,7 +336,7 @@ class _OrderCard extends StatelessWidget {
                     if (order.canRateStore)
                       _CompactCardAction(
                         icon: Icons.star_outline_rounded,
-                        label: 'Rate',
+                        label: AppLocalizations.of(context).actionRate,
                         onPressed: () => context.push(
                           '${AppRoutes.customerOrders}/${order.id}',
                         ),
@@ -342,7 +344,7 @@ class _OrderCard extends StatelessWidget {
                     if (canTrack)
                       _CompactCardAction(
                         icon: Icons.map_outlined,
-                        label: 'Track',
+                        label: AppLocalizations.of(context).actionTrack,
                         onPressed: () => context.push(
                           AppRoutes.customerOrderLiveTracking(order.id),
                         ),

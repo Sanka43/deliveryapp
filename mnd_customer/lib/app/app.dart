@@ -11,6 +11,7 @@ import 'package:mnd_delivery_app/core/config/env_config.dart';
 import 'package:mnd_delivery_app/core/theme/app_theme.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/user_role_provider.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class MndDeliveryApp extends ConsumerWidget {
   const MndDeliveryApp({super.key});
@@ -37,9 +38,16 @@ class MndDeliveryApp extends ConsumerWidget {
         themeMode: ThemeMode.light,
         builder: (BuildContext context, Widget? child) {
           final MediaQueryData mq = MediaQuery.of(context);
-          return MediaQuery(
-            data: mq.copyWith(platformBrightness: Brightness.light),
-            child: AppUpdateGate(child: child ?? const SizedBox.shrink()),
+          // Localizations.localeOf is the final resolved locale (post
+          // localeResolutionCallback), unlike the possibly-null value this
+          // widget passes to MaterialApp's own `locale:` below.
+          final Locale resolvedLocale = Localizations.localeOf(context);
+          return Theme(
+            data: AppTheme.applyLocalizedFont(Theme.of(context), resolvedLocale),
+            child: MediaQuery(
+              data: mq.copyWith(platformBrightness: Brightness.light),
+              child: AppUpdateGate(child: child ?? const SizedBox.shrink()),
+            ),
           );
         },
         locale: localeState.when(
@@ -49,6 +57,7 @@ class MndDeliveryApp extends ConsumerWidget {
         ),
         supportedLocales: kAppSupportedLocales,
         localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+          AppLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,

@@ -47,6 +47,10 @@ class AppLanguageOption {
 }
 
 /// Locales the app can switch to (not including system).
+///
+/// Must stay in sync with the locales defined in `l10n.yaml`/`lib/l10n/*.arb`
+/// — adding a language here without a matching ARB file (or vice versa)
+/// leaves the picker and the actual translations out of sync.
 const List<Locale> kAppSupportedLocales = <Locale>[
   Locale('en'),
   Locale('si'),

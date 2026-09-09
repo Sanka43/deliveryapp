@@ -24,6 +24,7 @@ import 'package:mnd_delivery_app/features/orders/presentation/widgets/animated_o
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/order_contact_actions.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/store_rating_card.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/rider_rating_card.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class OrderDetailsPage extends ConsumerWidget {
   const OrderDetailsPage({super.key, required this.orderId});
@@ -41,18 +42,19 @@ class OrderDetailsPage extends ConsumerWidget {
     return '${d.year}-${two(d.month)}-${two(d.day)} · ${two(d.hour)}:${two(d.minute)}';
   }
 
-  static String paymentLabel(String raw) {
+  static String paymentLabel(BuildContext context, String raw) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final String key = raw.toLowerCase().trim();
     switch (key) {
       case 'cashondelivery':
       case 'cash_on_delivery':
-        return 'Cash on delivery';
+        return l10n.paymentCashOnDelivery;
       case 'payhere':
-        return 'Paid online';
+        return l10n.orderPaymentPaidOnline;
       case 'card':
-        return 'Card';
+        return l10n.orderPaymentCard;
       case 'wallet':
-        return 'Wallet';
+        return l10n.orderPaymentWallet;
       default:
         if (raw.isEmpty) {
           return '—';
@@ -65,14 +67,15 @@ class OrderDetailsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<CustomerOrderDetail?> async =
         ref.watch(orderDetailStreamProvider(orderId));
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
       appBar: mndPageAppBar(
-        title: 'Order details',
+        title: l10n.orderDetailsTitle,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Back',
+          tooltip: l10n.actionBack,
           onPressed: () {
             if (context.canPop()) {
               context.pop();
@@ -89,7 +92,7 @@ class OrderDetailsPage extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Text(
-                  'Order not found or you do not have access.',
+                  l10n.orderNotFoundMessage,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
@@ -153,7 +156,7 @@ class OrderDetailsPage extends ConsumerWidget {
                     width: double.infinity,
                     child: FilledButton.icon(
                       icon: const Icon(Icons.map_outlined),
-                      label: const Text('Track rider on map'),
+                      label: Text(l10n.orderTrackRiderButton),
                       onPressed: () => context.push(
                         AppRoutes.customerOrderLiveTracking(
                           detail.id,
@@ -192,7 +195,7 @@ class OrderDetailsPage extends ConsumerWidget {
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Text(
-                              'Order cancelled',
+                              l10n.orderCancelledTitle,
                               style: Theme.of(context)
                                   .textTheme
                                   .titleSmall
@@ -206,7 +209,9 @@ class OrderDetailsPage extends ConsumerWidget {
                       if (detail.resolvedCancellationLabel != null) ...<Widget>[
                         const SizedBox(height: AppSpacing.sm),
                         Text(
-                          'Reason: ${detail.resolvedCancellationLabel}',
+                          l10n.orderCancelledReasonLabel(
+                            detail.resolvedCancellationLabel!,
+                          ),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],
@@ -247,7 +252,7 @@ class OrderDetailsPage extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    'Self pickup',
+                    l10n.fulfillmentSelfPickup,
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                           color: AppColors.primaryBlue,
                           fontWeight: FontWeight.w800,
@@ -308,8 +313,8 @@ class OrderDetailsPage extends ConsumerWidget {
                               children: <Widget>[
                                 Text(
                                   detail.isSelfPickup
-                                      ? 'Collect at'
-                                      : 'Delivery address',
+                                      ? l10n.orderCollectAtLabel
+                                      : l10n.checkoutDeliveryAddressHeader,
                                   style: Theme.of(context)
                                       .textTheme
                                       .labelSmall
@@ -351,7 +356,7 @@ class OrderDetailsPage extends ConsumerWidget {
                               const SizedBox(width: AppSpacing.sm),
                               Expanded(
                                 child: Text(
-                                  'Note: ${detail.deliveryNote}',
+                                  l10n.orderDeliveryNoteLabel(detail.deliveryNote),
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ),
@@ -370,7 +375,9 @@ class OrderDetailsPage extends ConsumerWidget {
                             const SizedBox(width: AppSpacing.sm),
                             Expanded(
                               child: Text(
-                                'Instructions: ${detail.specialInstructions}',
+                                l10n.orderSpecialInstructionsLabel(
+                                  detail.specialInstructions,
+                                ),
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ),
@@ -385,16 +392,16 @@ class OrderDetailsPage extends ConsumerWidget {
                       Row(
                         children: <Widget>[
                           Text(
-                            'Payment status',
+                            l10n.orderPaymentStatusLabel,
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const Spacer(),
                           _PaymentChip(
                             label: detail.isPaid
-                                ? 'Paid'
+                                ? l10n.orderPaymentPaid
                                 : detail.isRefunded
-                                    ? 'Refunded'
-                                    : 'Payment pending',
+                                    ? l10n.orderPaymentRefunded
+                                    : l10n.orderPaymentPending,
                             color: detail.isPaid
                                 ? AppColors.success
                                 : detail.isRefunded
@@ -406,13 +413,13 @@ class OrderDetailsPage extends ConsumerWidget {
                       const SizedBox(height: AppSpacing.xs),
                     ],
                     _SummaryRow(
-                      label: 'Subtotal',
+                      label: l10n.summarySubtotal,
                       value: formatLkr(detail.subtotal),
                     ),
                     if (detail.discount > 0) ...<Widget>[
                       const SizedBox(height: AppSpacing.xs),
                       _SummaryRow(
-                        label: 'Discount',
+                        label: l10n.summaryDiscount,
                         value: '- ${formatLkr(detail.discount)}',
                         valueStyle: const TextStyle(
                           color: AppColors.success,
@@ -426,7 +433,7 @@ class OrderDetailsPage extends ConsumerWidget {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'Coupon ${detail.couponCode}',
+                          l10n.orderCouponLabel(detail.couponCode!),
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppColors.textSecondary,
@@ -436,14 +443,15 @@ class OrderDetailsPage extends ConsumerWidget {
                     ],
                     const SizedBox(height: AppSpacing.xs),
                     _SummaryRow(
-                      label:
-                          detail.isSelfPickup ? 'Pickup fee' : 'Delivery fee',
+                      label: detail.isSelfPickup
+                          ? l10n.orderPickupFeeLabel
+                          : l10n.orderDeliveryFeeLabel,
                       value: formatLkr(detail.deliveryFee),
                     ),
                     if (detail.serviceCharge > 0) ...<Widget>[
                       const SizedBox(height: AppSpacing.xs),
                       _SummaryRow(
-                        label: 'Service charge',
+                        label: l10n.orderServiceChargeLabel,
                         value: formatLkr(detail.serviceCharge),
                       ),
                     ],
@@ -452,7 +460,7 @@ class OrderDetailsPage extends ConsumerWidget {
                       child: Divider(height: 1),
                     ),
                     _SummaryRow(
-                      label: 'Total',
+                      label: l10n.cartTotalLabel,
                       value: formatLkr(detail.total),
                       emphasize: true,
                     ),
@@ -480,7 +488,7 @@ class OrderDetailsPage extends ConsumerWidget {
                 Text(
                   ordersLoadErrorMessage(
                     err,
-                    fallback: 'Could not load order.',
+                    fallback: l10n.orderDetailsLoadErrorFallback,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -488,7 +496,7 @@ class OrderDetailsPage extends ConsumerWidget {
                 FilledButton(
                   onPressed: () =>
                       ref.invalidate(orderDetailStreamProvider(orderId)),
-                  child: const Text('Retry'),
+                  child: Text(l10n.actionRetry),
                 ),
               ],
             ),
@@ -572,7 +580,9 @@ class _CancelOrderBarState extends State<_CancelOrderBar> {
             ),
           ),
           onPressed: widget.onTap,
-          child: Text('Cancel Order (${_secondsLeft}s)'),
+          child: Text(
+            AppLocalizations.of(context).orderCancelButton(_secondsLeft),
+          ),
         ),
       ),
     );
@@ -620,7 +630,7 @@ class _PayOnlineActionState extends ConsumerState<_PayOnlineAction> {
         case PayHereNativeStatus.completed:
           showMndSnackBar(
             context,
-            'Payment received — updating your order…',
+            AppLocalizations.of(context).orderPaymentReceivedMessage,
             variant: MndSnackBarVariant.success,
           );
           break;
@@ -630,21 +640,22 @@ class _PayOnlineActionState extends ConsumerState<_PayOnlineAction> {
           // the case where the redirect is somehow interrupted.
           showMndSnackBar(
             context,
-            'Redirecting to payment…',
+            AppLocalizations.of(context).orderRedirectingPaymentMessage,
             variant: MndSnackBarVariant.success,
           );
           break;
         case PayHereNativeStatus.dismissed:
           showMndSnackBar(
             context,
-            'Payment cancelled.',
+            AppLocalizations.of(context).checkoutPaymentCancelledMessage,
             variant: MndSnackBarVariant.warning,
           );
           break;
         case PayHereNativeStatus.error:
           showMndSnackBar(
             context,
-            result.errorMessage ?? 'Payment failed.',
+            result.errorMessage ??
+                AppLocalizations.of(context).checkoutPaymentFailedFallback,
             variant: MndSnackBarVariant.error,
           );
           break;
@@ -653,7 +664,10 @@ class _PayOnlineActionState extends ConsumerState<_PayOnlineAction> {
       if (mounted) {
         showMndSnackBar(
           context,
-          userFacingError(e, fallback: 'Could not start payment.'),
+          userFacingError(
+            e,
+            fallback: AppLocalizations.of(context).checkoutStartPaymentError,
+          ),
           variant: MndSnackBarVariant.error,
         );
       }
@@ -693,7 +707,9 @@ class _PayOnlineActionState extends ConsumerState<_PayOnlineAction> {
                     ),
               const SizedBox(width: 6),
               Text(
-                _submitting ? 'Starting…' : 'Pay online',
+                _submitting
+                    ? AppLocalizations.of(context).orderPayOnlineStarting
+                    : AppLocalizations.of(context).paymentPayOnline,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: AppColors.brandPrimary,
                       fontWeight: FontWeight.w800,
@@ -720,14 +736,15 @@ class _HeroOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final String? dateLabel = OrderDetailsPage.formatDate(detail.createdAt);
     final String chipLabel = detail.isOnlinePayment
         ? (detail.isPaid
-            ? 'Paid'
+            ? l10n.orderPaymentPaid
             : detail.isRefunded
-                ? 'Refunded'
-                : 'Payment pending')
-        : OrderDetailsPage.paymentLabel(detail.paymentMethod);
+                ? l10n.orderPaymentRefunded
+                : l10n.orderPaymentPending)
+        : OrderDetailsPage.paymentLabel(context, detail.paymentMethod);
     final Color chipDot = detail.isOnlinePayment
         ? (detail.isPaid
             ? AppColors.success
@@ -838,7 +855,7 @@ class _HeroOrderCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              'Total',
+                              l10n.cartTotalLabel,
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall

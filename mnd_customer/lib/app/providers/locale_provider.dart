@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/locale/app_language_option.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const String _kLanguagePrefKey = 'app_language_code';
@@ -46,9 +47,13 @@ class AppLocaleNotifier extends AsyncNotifier<Locale?> {
 }
 
 /// Short label for lists (profile tile subtitle).
-String describeAppLocaleChoice(Locale? explicit) {
+///
+/// Language names are shown in their own script/language regardless of the
+/// current locale (matching [AppLanguageOption]'s picker labels) — only the
+/// "device default" chrome text is translated.
+String describeAppLocaleChoice(BuildContext context, Locale? explicit) {
   if (explicit == null) {
-    return 'Device default';
+    return AppLocalizations.of(context).languageDeviceDefault;
   }
   switch (explicit.languageCode) {
     case 'en':

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_pressable.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 /// Floating bottom nav — slim frosted-glass pill, icon-only tabs that grow
 /// into a soft tinted pill with a label when selected.
@@ -20,33 +21,39 @@ class FloatingGlassNavBar extends StatelessWidget {
   static const double barHeight = 64;
   static const double bottomGap = 8;
 
-  static const List<({IconData icon, IconData selectedIcon, String label})>
-      _items = <({IconData icon, IconData selectedIcon, String label})>[
-    (
-      icon: Icons.home_outlined,
-      selectedIcon: Icons.home_rounded,
-      label: 'Home',
-    ),
-    (
-      icon: Icons.receipt_long_outlined,
-      selectedIcon: Icons.receipt_long_rounded,
-      label: 'Orders',
-    ),
-    (
-      icon: Icons.favorite_border_rounded,
-      selectedIcon: Icons.favorite_rounded,
-      label: 'Favorites',
-    ),
-    (
-      icon: Icons.settings_outlined,
-      selectedIcon: Icons.settings_rounded,
-      label: 'Settings',
-    ),
-  ];
+  static List<({IconData icon, IconData selectedIcon, String label})> _items(
+    BuildContext context,
+  ) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return <({IconData icon, IconData selectedIcon, String label})>[
+      (
+        icon: Icons.home_outlined,
+        selectedIcon: Icons.home_rounded,
+        label: l10n.navHome,
+      ),
+      (
+        icon: Icons.receipt_long_outlined,
+        selectedIcon: Icons.receipt_long_rounded,
+        label: l10n.navOrders,
+      ),
+      (
+        icon: Icons.favorite_border_rounded,
+        selectedIcon: Icons.favorite_rounded,
+        label: l10n.navFavorites,
+      ),
+      (
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings_rounded,
+        label: l10n.navSettings,
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final double bottom = MediaQuery.paddingOf(context).bottom;
+    final List<({IconData icon, IconData selectedIcon, String label})> items =
+        _items(context);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -85,9 +92,9 @@ class FloatingGlassNavBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List<Widget>.generate(_items.length, (int index) {
+                children: List<Widget>.generate(items.length, (int index) {
                   final bool selected = index == selectedIndex;
-                  final item = _items[index];
+                  final item = items[index];
                   return _NavItem(
                     icon: selected ? item.selectedIcon : item.icon,
                     label: item.label,
