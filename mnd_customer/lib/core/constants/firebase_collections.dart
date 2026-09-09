@@ -28,6 +28,11 @@ class FirebaseCollections {
   static const String notifications = 'notifications';
   static const String deviceTokens = 'device_tokens';
 
+  /// One chat thread per customer with support staff; doc id = customer uid.
+  /// Subcollection `messages/{messageId}` holds the conversation.
+  static const String supportThreads = 'support_threads';
+  static const String supportMessages = 'messages';
+
   /// Force/optional update gate — doc id per app (`customer`/`rider`/`shop`).
   static const String appConfig = 'app_config';
 

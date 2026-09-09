@@ -201,6 +201,10 @@ class RiderProfilePage extends ConsumerWidget {
                           }
                         },
                       ),
+                      const SizedBox(height: 12),
+                      _DeleteAccountTextButton(
+                        onPressed: () => context.push(RoutePaths.deleteAccount),
+                      ),
                     ],
                   ),
                 ),
@@ -270,6 +274,32 @@ class _SignOutButton extends StatelessWidget {
             SizedBox(width: 8),
             Text('Sign out'),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteAccountTextButton extends StatelessWidget {
+  const _DeleteAccountTextButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+
+    return Center(
+      child: TextButton(
+        onPressed: onPressed,
+        child: Text(
+          'Delete account',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: cs.error,
+            decoration: TextDecoration.underline,
+            decorationColor: cs.error,
+          ),
         ),
       ),
     );

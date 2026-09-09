@@ -17,6 +17,7 @@ class RoutePaths {
   static const String report = '/report';
   static const String reportPreview = '/report/preview';
   static const String settings = '/settings';
+  static const String deleteAccount = '/settings/delete-account';
   static const String profileEdit = '/profile/edit';
   static const String renewDocuments = '/profile/documents';
   static const String notifications = '/notifications';

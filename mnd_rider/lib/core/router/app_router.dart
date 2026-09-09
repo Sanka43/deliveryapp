@@ -17,6 +17,7 @@ import 'package:mnd_rider/features/auth/presentation/providers/rider_registratio
 import 'package:mnd_rider/features/earnings/presentation/pages/rider_transactions_page.dart';
 import 'package:mnd_rider/features/notifications/presentation/pages/rider_notifications_page.dart';
 import 'package:mnd_rider/features/profile/domain/rider_profile.dart';
+import 'package:mnd_rider/features/profile/presentation/pages/rider_delete_account_page.dart';
 import 'package:mnd_rider/features/profile/presentation/pages/rider_edit_profile_page.dart';
 import 'package:mnd_rider/features/profile/presentation/pages/rider_renew_documents_page.dart';
 import 'package:mnd_rider/features/profile/presentation/pages/rider_settings_page.dart';
@@ -249,6 +250,10 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
       GoRoute(
         path: RoutePaths.renewDocuments,
         builder: (_, __) => const RiderRenewDocumentsPage(),
+      ),
+      GoRoute(
+        path: RoutePaths.deleteAccount,
+        builder: (_, __) => const RiderDeleteAccountPage(),
       ),
     ],
     errorBuilder: (_, GoRouterState state) => const Scaffold(

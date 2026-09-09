@@ -426,6 +426,28 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // Coupons: doc id is the code itself. Never readable by customers —
+    // codes and their rules (expiry, limits) are only ever resolved through
+    // `validateCoupon` / order placement (Cloud Functions, admin SDK, bypass
+    // these rules), so a code can't be scraped or its discount logic
+    // reverse-engineered by reading Firestore directly. Only the admin
+    // dashboard (mnd_web) manages coupons.
+    match /coupons/{code} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isAdmin();
+
+      // Usage counters are maintained only by Cloud Functions (admin SDK).
+      match /usage_shards/{shardId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+
+      match /customer_usage/{uid} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+
     // Standalone shop offers: approved docs are public; vendors see own history;
     // vendors create as pending only; admin approves/rejects.
     match /offers/{offerId} {
@@ -1777,6 +1799,42 @@ service cloud.firestore {
     // does not cover collectionGroup('cash_settlements').
     match /{path=**}/cash_settlements/{settlementId} {
       allow read: if isAdmin();
+    }
+
+    // Customer <-> support chat. One thread per customer (doc id = uid).
+    // Aggregate fields (lastMessage*, unread counters, customer snapshot,
+    // status) are Cloud-Function-owned (onSupportMessageCreated) so a staff
+    // reply added directly in the Firebase console — there is no admin app
+    // yet — still updates them; the client only ever clears its own unread
+    // counter. Message docs are append-only from the customer's side.
+    match /support_threads/{customerId} {
+      allow read: if isSelf(customerId) || isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSelf(customerId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['unreadByCustomer'])
+          && request.resource.data.unreadByCustomer == 0
+        );
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        function validCustomerSupportMessageCreate() {
+          let d = request.resource.data;
+          return isSelf(customerId)
+            && d.senderId == request.auth.uid
+            && d.senderType == 'customer'
+            && d.text is string
+            && d.text.size() > 0
+            && d.text.size() <= 2000
+            && d.createdAt is timestamp;
+        }
+
+        allow read: if isSelf(customerId) || isAdmin();
+        allow create: if isAdmin() || validCustomerSupportMessageCreate();
+        allow update, delete: if isAdmin();
+      }
     }
 
     // Device tokens: owner manages own token docs (FCM registry).

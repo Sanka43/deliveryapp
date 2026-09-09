@@ -12,6 +12,7 @@ import 'package:mnd_rider/core/widgets/rider_snackbar.dart';
 import 'package:mnd_rider/features/auth/data/rider_auth_repository.dart';
 import 'package:mnd_rider/features/auth/data/rider_registration_validator.dart';
 import 'package:mnd_rider/features/auth/domain/rider_registration_form.dart';
+import 'package:mnd_rider/features/auth/domain/rider_service_type.dart';
 import 'package:mnd_rider/features/auth/domain/rider_vehicle_type.dart';
 import 'package:mnd_rider/features/auth/presentation/providers/rider_phone_auth_provider.dart';
 import 'package:mnd_rider/features/auth/presentation/providers/rider_registration_provider.dart';
@@ -43,6 +44,7 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
   final TextEditingController _city = TextEditingController();
 
   RiderVehicleType? _vehicleType;
+  final Set<RiderServiceType> _serviceTypes = <RiderServiceType>{};
   Uint8List? _profilePhotoBytes;
   Uint8List? _licensePhotoFrontBytes;
   Uint8List? _licensePhotoBackBytes;
@@ -91,6 +93,9 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
     _nic.text = draft.nicNumber;
     _vehicleNumber.text = draft.vehicleNumber;
     _city.text = draft.city;
+    _serviceTypes
+      ..clear()
+      ..addAll(draft.serviceTypes);
     _vehicleType = draft.vehicleType;
     _profilePhotoBytes = draft.profilePhotoBytes;
     _licensePhotoFrontBytes = draft.licensePhotoFrontBytes;
@@ -150,6 +155,7 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
       fullName: _name.text,
       phone: _phone.text,
       nicNumber: _nic.text,
+      serviceTypes: _serviceTypes,
       vehicleType: _vehicleType,
       vehicleNumber: _vehicleNumber.text,
       city: _city.text,
@@ -525,6 +531,71 @@ class _RiderRegisterPageState extends ConsumerState<RiderRegisterPage> {
           decoration: _fieldDecoration(
             hint: 'City',
             errorText: _fieldError('city'),
+          ),
+        ),
+        _gap(16),
+        _fieldLabel('What work do you want to do?'),
+        if (_fieldError('serviceTypes') != null) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            _fieldError('serviceTypes')!,
+            style: GoogleFonts.plusJakartaSans(
+              color: AppColors.errorRed,
+              fontSize: 12,
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 2.6,
+          children: RiderServiceType.values.map((RiderServiceType type) {
+            final bool selected = _serviceTypes.contains(type);
+            return Material(
+              color: selected ? _ink : _field,
+              borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+              child: InkWell(
+                onTap: () => setState(() {
+                  if (selected) {
+                    _serviceTypes.remove(type);
+                  } else {
+                    _serviceTypes.add(type);
+                  }
+                }),
+                borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+                    border: Border.all(
+                      color: selected ? _ink : _border,
+                    ),
+                  ),
+                  child: Text(
+                    type.label,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: selected ? Colors.white : _ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'You can select both if you want to do everything.',
+          style: GoogleFonts.plusJakartaSans(
+            color: _muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],

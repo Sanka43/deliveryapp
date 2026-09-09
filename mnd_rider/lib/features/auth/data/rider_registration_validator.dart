@@ -25,7 +25,7 @@ class RiderRegistrationValidator {
   static final RegExp _phoneLocalPattern = RegExp(r'^(0)?7[0-9]{8}$');
 
   static const List<Set<String>> stepFieldKeys = <Set<String>>[
-    <String>{'fullName', 'phone', 'nicNumber', 'city'},
+    <String>{'fullName', 'phone', 'nicNumber', 'city', 'serviceTypes'},
     <String>{'profilePhoto', 'licensePhotoFront', 'licensePhotoBack'},
     <String>{
       'vehicleType',
@@ -87,6 +87,11 @@ class RiderRegistrationValidator {
 
     if (form.city.trim().length < 2) {
       errors['city'] = 'Enter your city.';
+    }
+
+    if (form.serviceTypes.isEmpty) {
+      errors['serviceTypes'] =
+          'Select at least one job type you want to receive.';
     }
 
     if (form.profilePhotoBytes == null || form.profilePhotoBytes!.isEmpty) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
 import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
@@ -13,11 +14,15 @@ class CustomerOrdersRepository {
   CustomerOrdersRepository({
     required FirebaseFirestore firestore,
     required FirebaseAuth auth,
+    FirebaseFunctions? functions,
   })  : _firestore = firestore,
-        _auth = auth;
+        _auth = auth,
+        _functions =
+            functions ?? FirebaseFunctions.instanceFor(region: 'asia-south1');
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  final FirebaseFunctions _functions;
 
   /// Firestore [orders] for [customerUid], newest first. Empty stream if uid is empty.
   Stream<List<CustomerOrderSummary>> watchMyOrders(String customerUid) {
@@ -122,7 +127,10 @@ class CustomerOrdersRepository {
     return controller.stream;
   }
 
-  /// Customer cancels their own order with a reason (validated in a transaction).
+  /// Customer cancels their own order with a reason. Runs server-side (a
+  /// callable, not a direct Firestore write) so a paid-online order is
+  /// refunded automatically in the same step — see `cancelOrderByCustomer`
+  /// in functions/src/orderRefunds.ts.
   Future<OrderCancellationResult> cancelOrderByCustomer({
     required String orderId,
     required String reasonId,
@@ -145,43 +153,50 @@ class CustomerOrdersRepository {
     }
 
     try {
-      await _firestore.runTransaction((Transaction transaction) async {
-        final DocumentReference<Map<String, dynamic>> ref =
-            _firestore.collection(FirebaseCollections.orders).doc(orderId);
-        final DocumentSnapshot<Map<String, dynamic>> snapshot = await transaction.get(ref);
-        if (!snapshot.exists || snapshot.data() == null) {
-          throw StateError('Order not found.');
-        }
-        final Map<String, dynamic> data = snapshot.data()!;
-        if (data['customerId'] != user.uid) {
-          throw StateError('You cannot cancel this order.');
-        }
-        final String status =
-            (data['status'] as String?)?.trim().toLowerCase() ?? '';
-        if (!OrderCancellationPolicy.customerMayCancel(status)) {
-          throw StateError('This order can no longer be cancelled.');
-        }
-
-        final Map<String, dynamic> update = <String, dynamic>{
-          'status': 'cancelled',
-          'cancellationReason': trimmedReason,
-          'cancelledAt': FieldValue.serverTimestamp(),
-          'cancelledBy': 'customer',
-        };
-        if (detail != null && detail.isNotEmpty) {
-          update['cancellationReasonDetail'] = detail;
-        }
-
-        transaction.update(ref, update);
+      await _functions.httpsCallable('cancelOrderByCustomer').call(<String, dynamic>{
+        'orderId': orderId,
+        'reasonId': trimmedReason,
+        if (detail != null && detail.isNotEmpty) 'otherDetail': detail,
       });
       return OrderCancellationResult.success();
-    } on StateError catch (e) {
-      return OrderCancellationResult.failure(
-        userFacingError(e, fallback: 'Could not cancel order.'),
-      );
     } catch (e) {
       return OrderCancellationResult.failure(
         userFacingError(e, fallback: 'Could not cancel order.'),
+      );
+    }
+  }
+
+  /// Customer asks for money back on an order they can no longer cancel from
+  /// the app (already cancelled, delivered with an issue, etc). See
+  /// `requestOrderRefund` in functions/src/orderRefunds.ts for the server
+  /// logic deciding whether this refunds immediately or goes to admin review.
+  Future<RefundRequestResult> requestOrderRefund({
+    required String orderId,
+    String? reason,
+  }) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      return RefundRequestResult.failure('Sign in to request a refund.');
+    }
+    final String trimmedReason = (reason ?? '').trim();
+
+    try {
+      final HttpsCallableResult<dynamic> result =
+          await _functions.httpsCallable('requestOrderRefund').call(<String, dynamic>{
+        'orderId': orderId,
+        if (trimmedReason.isNotEmpty) 'reason': trimmedReason,
+      });
+      final Map<String, dynamic> data =
+          Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);
+      final String outcome = (data['outcome'] as String?)?.trim() ?? '';
+      final RefundRequestOutcome? parsed = RefundRequestOutcome.fromWire(outcome);
+      if (parsed == null) {
+        return RefundRequestResult.failure('Could not submit your refund request.');
+      }
+      return RefundRequestResult.success(parsed);
+    } catch (e) {
+      return RefundRequestResult.failure(
+        userFacingError(e, fallback: 'Could not submit your refund request.'),
       );
     }
   }

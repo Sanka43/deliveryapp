@@ -65,6 +65,54 @@ class OrderCancellationPolicy {
   }
 }
 
+/// Outcome of a `requestOrderRefund` call — mirrors the `outcome` string the
+/// Cloud Function returns (functions/src/orderRefunds.ts).
+enum RefundRequestOutcome {
+  /// A paid, already-cancelled order was refunded immediately.
+  refunded,
+
+  /// Needs a person to look at it; queued for admin review.
+  pendingReview,
+
+  /// This order was already refunded before the call.
+  alreadyRefunded,
+
+  /// A refund request for this order is already in flight or under review.
+  alreadyPending;
+
+  static RefundRequestOutcome? fromWire(String value) {
+    switch (value) {
+      case 'refunded':
+        return RefundRequestOutcome.refunded;
+      case 'pending_review':
+        return RefundRequestOutcome.pendingReview;
+      case 'already_refunded':
+        return RefundRequestOutcome.alreadyRefunded;
+      case 'already_pending':
+        return RefundRequestOutcome.alreadyPending;
+      default:
+        return null;
+    }
+  }
+}
+
+class RefundRequestResult {
+  const RefundRequestResult._({this.outcome, this.errorMessage});
+
+  factory RefundRequestResult.success(RefundRequestOutcome outcome) {
+    return RefundRequestResult._(outcome: outcome, errorMessage: null);
+  }
+
+  factory RefundRequestResult.failure(String message) {
+    return RefundRequestResult._(outcome: null, errorMessage: message);
+  }
+
+  final RefundRequestOutcome? outcome;
+  final String? errorMessage;
+
+  bool get isSuccess => outcome != null;
+}
+
 class OrderCancellationResult {
   const OrderCancellationResult._({
     required this.isSuccess,

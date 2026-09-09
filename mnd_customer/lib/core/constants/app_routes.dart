@@ -39,6 +39,7 @@ class AppRoutes {
   static const String customerNotificationSettings =
       '/customer/settings/notifications';
   static const String customerNotifications = '/customer/notifications';
+  static const String customerSupport = '/customer/support';
   static const String customerLanguage = '/customer/settings/language';
   static const String customerPrivacy = '/customer/settings/privacy';
   static const String customerTerms = '/customer/settings/terms';

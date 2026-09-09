@@ -1,6 +1,6 @@
 ﻿/**
  * MND web admin — Firestore CRUD aligned with mnd_customer:
- * collections: orders, trips, customers, vendors, products, banners, offers, shop_categories, shop_types, grocery_aisles, riders, store_ratings, ride_fare_config (see firebase_collections.dart).
+ * collections: orders, trips, customers, vendors, products, banners, coupons, offers, shop_categories, shop_types, grocery_aisles, riders, store_ratings, ride_fare_config (see firebase_collections.dart).
  * Auth: Firebase Email/Password; Firestore customers/{uid}.role must be "admin".
  */
 (function () {
@@ -11,6 +11,7 @@
     vendors: "vendors",
     products: "products",
     banners: "banners",
+    coupons: "coupons",
     offers: "offers",
     shopCategories: "shop_categories",
     shopTypes: "shop_types",
@@ -27,6 +28,7 @@
     riderCashSettlements: "cash_settlements",
     riderWithdrawals: "withdrawals",
     storeRatings: "store_ratings",
+    supportThreads: "support_threads",
   };
 
   const ACTIVE_DELIVERY_STATUSES = ["out_for_delivery", "picked_up", "on_the_way"];
@@ -153,6 +155,7 @@
     vendors: [],
     products: [],
     banners: [],
+    coupons: [],
     offers: [],
     shopCategories: [],
     shopTypes: [],
@@ -170,9 +173,13 @@
     cashSettlements: [],
     cashRiders: [],
     withdrawals: [],
+    supportThreads: [],
   };
 
   let ongoingUnsubs = [];
+  let supportThreadsUnsub = null;
+  let supportMessagesUnsub = null;
+  let activeSupportThreadId = null;
   let riderTrackUnsub = null;
   let riderTrackMap = null;
   let riderTrackRiderMarker = null;
@@ -1065,6 +1072,7 @@
     vendors: "Vendors",
     products: "Products",
     banners: "Banners",
+    coupons: "Coupons",
     offers: "Offers",
     "shop-types": "Shop types",
     "shop-approvals": "Shop approvals",
@@ -1073,6 +1081,7 @@
     riders: "Riders",
     "ongoing-riders": "Ongoing riders",
     customers: "Customers",
+    support: "Support",
     "rider-cash": "Rider cash",
     withdrawals: "Withdrawals",
     "ride-fares": "Ride fares",
@@ -1093,6 +1102,9 @@
   function showView(name) {
     if (currentView === "ongoing-riders" && name !== "ongoing-riders") {
       stopOngoingListeners();
+    }
+    if (currentView === "support" && name !== "support") {
+      stopSupportListeners();
     }
     currentView = name;
     elPageTitle.textContent = titles[name] || name;
@@ -1122,7 +1134,15 @@
 
   async function loadViewDataInner(name) {
     if (name === "dashboard") {
-      await Promise.all([loadOrders(), loadVendors(), loadCustomers(), loadJobs(), loadRiders(), loadOffers()]);
+      await Promise.all([
+        loadOrders(),
+        loadVendors(),
+        loadCustomers(),
+        loadJobs(),
+        loadRiders(),
+        loadOffers(),
+        loadSupportThreads(),
+      ]);
     }
     if (name === "orders") await Promise.all([loadOrders(), loadCustomers(), loadVendors()]);
     if (name === "rides") await Promise.all([loadTrips(), loadCustomers(), loadRiders()]);
@@ -1138,6 +1158,7 @@
       await Promise.all([loadProducts(), loadVendors(), loadGroceryAisles()]);
     }
     if (name === "banners") await loadBanners();
+    if (name === "coupons") await loadCoupons();
     if (name === "offers") await loadOffers();
     if (name === "shop-types") await loadShopTypes();
     if (name === "riders" || name === "rider-approvals" || name === "dashboard") {
@@ -1148,6 +1169,7 @@
       await startOngoingJobsListeners();
     }
     if (name === "customers") await Promise.all([loadCustomers(), loadOrders()]);
+    if (name === "support") await startSupportThreadsListener();
     if (name === "withdrawals") await loadWithdrawals();
     if (name === "rider-cash") await loadRiderCash();
     if (name === "ride-fares") await loadRideFares();
@@ -1169,6 +1191,7 @@
     }
     if (name === "products") renderProducts();
     if (name === "banners") renderBanners();
+    if (name === "coupons") renderCoupons();
     if (name === "offers") {
       renderOfferApprovals();
       renderOffers();
@@ -1538,6 +1561,27 @@
       const snap = await db.collection(COL.banners).limit(100).get(FS_GET_SERVER);
       cache.banners = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
+  }
+
+  async function loadCoupons() {
+    const snap = await db.collection(COL.coupons).limit(200).get(FS_GET_SERVER);
+    const coupons = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    await Promise.all(
+      coupons.map(async (c) => {
+        try {
+          const shardsSnap = await db
+            .collection(COL.coupons)
+            .doc(c.id)
+            .collection("usage_shards")
+            .get(FS_GET_SERVER);
+          c.totalUsed = shardsSnap.docs.reduce((sum, s) => sum + (Number(s.data().count) || 0), 0);
+        } catch (_) {
+          c.totalUsed = 0;
+        }
+      })
+    );
+    coupons.sort((a, b) => a.id.localeCompare(b.id));
+    cache.coupons = coupons;
   }
 
   async function loadOffers() {
@@ -2790,6 +2834,58 @@
     });
     tbody.querySelectorAll("[data-del-banner]").forEach((btn) => {
       btn.addEventListener("click", () => deleteBanner(btn.getAttribute("data-del-banner")));
+    });
+  }
+
+  function renderCoupons() {
+    const tbody = document.querySelector("#table-coupons tbody");
+    const list = [...cache.coupons];
+    tbody.innerHTML =
+      list.length === 0
+        ? `<tr><td colspan="9"><div class="empty-state">No coupons yet.</div></td></tr>`
+        : list
+            .map((c) => {
+              const discountLabel =
+                c.discountType === "percent"
+                  ? `${Number(c.value) || 0}%${c.maxDiscountLkr != null ? ` (max ${fmtMoney(c.maxDiscountLkr)})` : ""}`
+                  : fmtMoney(c.value);
+              const minOrder = c.minSubtotalLkr != null ? fmtMoney(c.minSubtotalLkr) : "—";
+              const expires = fmtDate(c.expiresAt);
+              const maxUses = c.maxUses != null ? String(c.maxUses) : "Unlimited";
+              const perCustomer = c.perCustomerLimit != null ? String(c.perCustomerLimit) : "Unlimited";
+              return `<tr>
+        <td><code>${escapeHtml(c.id)}</code></td>
+        <td>${escapeHtml(discountLabel)}</td>
+        <td>${escapeHtml(minOrder)}</td>
+        <td>${escapeHtml(expires)}</td>
+        <td>${escapeHtml(maxUses)}</td>
+        <td>${escapeHtml(perCustomer)}</td>
+        <td>${Number(c.totalUsed) || 0}</td>
+        <td><input type="checkbox" data-toggle-coupon="${escapeHtml(c.id)}" ${c.active === true ? "checked" : ""}></td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-edit-coupon="${escapeHtml(c.id)}">Edit</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-del-coupon="${escapeHtml(c.id)}">Delete</button>
+        </td>
+      </tr>`;
+            })
+            .join("");
+    tbody.querySelectorAll("[data-edit-coupon]").forEach((btn) => {
+      btn.addEventListener("click", () => openCouponModal(btn.getAttribute("data-edit-coupon")));
+    });
+    tbody.querySelectorAll("[data-del-coupon]").forEach((btn) => {
+      btn.addEventListener("click", () => deleteCoupon(btn.getAttribute("data-del-coupon")));
+    });
+    tbody.querySelectorAll("[data-toggle-coupon]").forEach((el) => {
+      el.addEventListener("change", async (e) => {
+        const id = el.getAttribute("data-toggle-coupon");
+        const checked = e.target.checked;
+        try {
+          await db.collection(COL.coupons).doc(id).update({ active: checked });
+        } catch (err) {
+          e.target.checked = !checked;
+          alert(err.message || String(err));
+        }
+      });
     });
   }
 
@@ -4781,6 +4877,32 @@
     modalSave.style.display = "inline-flex";
   }
 
+  function openCouponModal(id) {
+    const c = id ? cache.coupons.find((x) => x.id === id) : null;
+    const expiresVal =
+      c?.expiresAt && typeof c.expiresAt.toDate === "function"
+        ? c.expiresAt.toDate().toISOString().slice(0, 10)
+        : "";
+    openModal(
+      id ? `Edit coupon — ${escapeHtml(id)}` : "New coupon",
+      `<div class="form-group"><label>Code</label><input type="text" id="f-c-code" value="${escapeHtml(id || "")}" ${id ? "disabled" : ""} placeholder="e.g. WELCOME15" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Discount type</label><select id="f-c-type">
+        <option value="flat" ${c?.discountType !== "percent" ? "selected" : ""}>Flat amount (LKR)</option>
+        <option value="percent" ${c?.discountType === "percent" ? "selected" : ""}>Percentage (%)</option>
+      </select></div>
+      <div class="form-group"><label>Value</label><input type="number" id="f-c-value" min="0" step="1" value="${Number(c?.value) || 0}"></div>
+      <div class="form-group"><label>Minimum order (LKR, optional)</label><input type="number" id="f-c-min" min="0" step="1" value="${c?.minSubtotalLkr != null ? Number(c.minSubtotalLkr) : ""}"></div>
+      <div class="form-group"><label>Max discount cap (LKR, optional — percent coupons)</label><input type="number" id="f-c-maxdisc" min="0" step="1" value="${c?.maxDiscountLkr != null ? Number(c.maxDiscountLkr) : ""}"></div>
+      <div class="form-group"><label>Expires on (optional)</label><input type="date" id="f-c-expires" value="${expiresVal}"></div>
+      <div class="form-group"><label>Max total uses (optional, blank = unlimited)</label><input type="number" id="f-c-maxuses" min="1" step="1" value="${c?.maxUses != null ? Number(c.maxUses) : ""}"></div>
+      <div class="form-group"><label>Max uses per customer (optional, blank = unlimited)</label><input type="number" id="f-c-percustomer" min="1" step="1" value="${c?.perCustomerLimit != null ? Number(c.perCustomerLimit) : ""}"></div>
+      <div class="form-group"><label>Active</label><select id="f-c-active"><option value="true" ${c?.active !== false ? "selected" : ""}>Yes</option><option value="false" ${c && c.active === false ? "selected" : ""}>No</option></select></div>`,
+      "coupon",
+      id || null
+    );
+    modalSave.style.display = "inline-flex";
+  }
+
   function colorToHexInput(val) {
     if (val == null) return "";
     if (typeof val === "number") {
@@ -5130,6 +5252,46 @@
       if (modalEditId) await db.collection(COL.banners).doc(modalEditId).set(data, { merge: true });
       else await db.collection(COL.banners).doc().set(data);
     }
+    if (modalMode === "coupon") {
+      const del = firebase.firestore.FieldValue.delete();
+      const optionalPositiveInt = (elId) => {
+        const raw = document.getElementById(elId).value.trim();
+        if (raw === "") return del;
+        const n = Math.floor(Number(raw));
+        if (!Number.isFinite(n) || n < 0) throw new Error("Enter a valid non-negative number.");
+        return n;
+      };
+      const codeInput = document.getElementById("f-c-code").value.trim().toUpperCase();
+      const code = modalEditId || codeInput;
+      if (!code || !/^[A-Z0-9_-]{2,32}$/.test(code)) {
+        throw new Error("Code must be 2-32 characters: letters, numbers, - or _ only.");
+      }
+      if (!modalEditId && cache.coupons.some((x) => x.id === code)) {
+        throw new Error(`Coupon "${code}" already exists.`);
+      }
+      const discountType = document.getElementById("f-c-type").value === "percent" ? "percent" : "flat";
+      const value = Math.floor(Number(document.getElementById("f-c-value").value));
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error("Value must be a positive number.");
+      }
+      const active = document.getElementById("f-c-active").value === "true";
+      const expiresRaw = document.getElementById("f-c-expires").value;
+      const expiresAt = expiresRaw
+        ? firebase.firestore.Timestamp.fromDate(new Date(`${expiresRaw}T23:59:59`))
+        : del;
+      const data = {
+        code,
+        discountType,
+        value,
+        active,
+        minSubtotalLkr: optionalPositiveInt("f-c-min"),
+        maxDiscountLkr: optionalPositiveInt("f-c-maxdisc"),
+        maxUses: optionalPositiveInt("f-c-maxuses"),
+        perCustomerLimit: optionalPositiveInt("f-c-percustomer"),
+        expiresAt,
+      };
+      await db.collection(COL.coupons).doc(code).set(data, { merge: true });
+    }
     if (modalMode === "job") {
       const existing = modalEditId ? cache.jobs.find((x) => x.id === modalEditId) : null;
       const title = document.getElementById("f-j-title").value.trim();
@@ -5366,6 +5528,12 @@
     if (!confirm(`Delete banner ${id}?`)) return;
     await db.collection(COL.banners).doc(id).delete();
     await loadViewData("banners");
+  }
+
+  async function deleteCoupon(id) {
+    if (!confirm(`Delete coupon ${id}? This cannot be undone.`)) return;
+    await db.collection(COL.coupons).doc(id).delete();
+    await loadViewData("coupons");
   }
 
   async function deleteShopCategory(id) {
@@ -5997,6 +6165,255 @@
       navBadge.hidden = false;
     } else {
       navBadge.hidden = true;
+    }
+  }
+
+  /**
+   * Customer <-> support chat. One thread per customer (doc id = customer
+   * uid) at support_threads/{customerId}, with a messages subcollection.
+   * Aggregate fields (lastMessage*, unreadByStaff/unreadByCustomer, status,
+   * customer snapshot) are owned by the onSupportMessageCreated Cloud
+   * Function (functions/src/supportChat.ts) — this page only ever appends a
+   * `senderType: "staff"` message doc and toggles `status`; it never writes
+   * the aggregate fields directly, so it can't drift from what the function
+   * computes.
+   */
+  function countUnreadSupportThreads() {
+    return cache.supportThreads.filter((t) => Number(t.unreadByStaff || 0) > 0).length;
+  }
+
+  function updatePendingSupportNavBadge() {
+    const n = countUnreadSupportThreads();
+    const navBadge = document.getElementById("nav-pending-support");
+    if (navBadge) {
+      if (n > 0) {
+        navBadge.textContent = String(n);
+        navBadge.hidden = false;
+      } else {
+        navBadge.hidden = true;
+      }
+    }
+  }
+
+  async function loadSupportThreads() {
+    if (!db) return;
+    try {
+      const snap = await db
+        .collection(COL.supportThreads)
+        .orderBy("lastMessageAt", "desc")
+        .limit(200)
+        .get(FS_GET_SERVER);
+      cache.supportThreads = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (_) {
+      const snap = await db.collection(COL.supportThreads).limit(200).get(FS_GET_SERVER);
+      cache.supportThreads = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cache.supportThreads.sort((a, b) => tsMillis(b.lastMessageAt) - tsMillis(a.lastMessageAt));
+    }
+    updatePendingSupportNavBadge();
+  }
+
+  /** Resolves once the first snapshot has rendered, then keeps listening live. */
+  function startSupportThreadsListener() {
+    stopSupportThreadsListener();
+    return new Promise((resolve) => {
+      let settled = false;
+      supportThreadsUnsub = db
+        .collection(COL.supportThreads)
+        .orderBy("lastMessageAt", "desc")
+        .limit(200)
+        .onSnapshot(
+          (snap) => {
+            cache.supportThreads = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            updatePendingSupportNavBadge();
+            renderSupportThreads();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          },
+          (err) => {
+            toast(err.message || String(err), "error");
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          }
+        );
+    });
+  }
+
+  function stopSupportThreadsListener() {
+    if (typeof supportThreadsUnsub === "function") {
+      try {
+        supportThreadsUnsub();
+      } catch (_) {}
+    }
+    supportThreadsUnsub = null;
+  }
+
+  function stopSupportMessagesListener() {
+    if (typeof supportMessagesUnsub === "function") {
+      try {
+        supportMessagesUnsub();
+      } catch (_) {}
+    }
+    supportMessagesUnsub = null;
+  }
+
+  function stopSupportListeners() {
+    stopSupportThreadsListener();
+    stopSupportMessagesListener();
+    activeSupportThreadId = null;
+  }
+
+  function supportThreadDisplayName(t) {
+    return String(t.customerName || "").trim() || "Customer";
+  }
+
+  function activeSupportThread() {
+    return cache.supportThreads.find((t) => t.id === activeSupportThreadId) || null;
+  }
+
+  function renderSupportThreads() {
+    const wrap = document.getElementById("support-thread-list");
+    if (!wrap) return;
+    const q = (document.getElementById("filter-support-threads")?.value || "").trim().toLowerCase();
+    let threads = cache.supportThreads.slice();
+    if (q) {
+      threads = threads.filter((t) => {
+        const hay = `${supportThreadDisplayName(t)} ${t.customerPhone || ""} ${t.lastMessageText || ""}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    if (threads.length === 0) {
+      wrap.innerHTML = `<div class="empty-state">No support conversations yet.</div>`;
+      return;
+    }
+    wrap.innerHTML = threads
+      .map((t) => {
+        const unread = Number(t.unreadByStaff || 0) > 0;
+        const active = t.id === activeSupportThreadId;
+        const preview = escapeHtml(String(t.lastMessageText || "").slice(0, 80));
+        const closed = String(t.status || "open") === "closed";
+        return `
+          <button type="button" class="support-thread-item${active ? " active" : ""}${unread ? " unread" : ""}" data-thread-id="${t.id}">
+            <div class="support-thread-item-top">
+              <span class="support-thread-name">${escapeHtml(supportThreadDisplayName(t))}</span>
+              <span class="support-thread-time">${fmtDateTime(t.lastMessageAt)}</span>
+            </div>
+            <div class="support-thread-item-bottom">
+              <span class="support-thread-preview">${preview || "&nbsp;"}</span>
+              ${unread ? '<span class="support-unread-dot"></span>' : ""}
+            </div>
+            ${closed ? '<span class="badge badge-cancelled">Closed</span>' : ""}
+          </button>`;
+      })
+      .join("");
+  }
+
+  function renderSupportConversationHeader() {
+    const header = document.getElementById("support-conversation-header");
+    if (!header) return;
+    const t = activeSupportThread();
+    if (!t) {
+      header.innerHTML = "";
+      return;
+    }
+    const closed = String(t.status || "open") === "closed";
+    header.innerHTML = `
+      <div>
+        <strong>${escapeHtml(supportThreadDisplayName(t))}</strong>
+        <div class="support-conversation-sub">${escapeHtml(t.customerPhone || "—")}</div>
+      </div>
+      <button type="button" id="btn-toggle-support-thread-status" class="btn btn-ghost btn-sm" style="width: auto">
+        ${closed ? "Reopen" : "Mark closed"}
+      </button>`;
+    document.getElementById("btn-toggle-support-thread-status")?.addEventListener("click", () => {
+      toggleActiveSupportThreadStatus().catch((e) => toast(e.message || String(e), "error"));
+    });
+  }
+
+  async function toggleActiveSupportThreadStatus() {
+    const t = activeSupportThread();
+    if (!t) return;
+    const nextStatus = String(t.status || "open") === "closed" ? "open" : "closed";
+    await db.collection(COL.supportThreads).doc(t.id).update({ status: nextStatus });
+    toast(nextStatus === "closed" ? "Conversation closed." : "Conversation reopened.", "success");
+  }
+
+  function renderSupportMessages(messages) {
+    const list = document.getElementById("support-messages");
+    if (!list) return;
+    if (messages.length === 0) {
+      list.innerHTML = `<div class="empty-state">No messages yet.</div>`;
+      return;
+    }
+    list.innerHTML = messages
+      .map((m) => {
+        const fromStaff = String(m.senderType || "") === "staff";
+        return `
+          <div class="support-bubble-row ${fromStaff ? "from-staff" : "from-customer"}">
+            <div class="support-bubble">${escapeHtml(m.text || "")}</div>
+            <div class="support-bubble-time">${fmtDateTime(m.createdAt)}</div>
+          </div>`;
+      })
+      .join("");
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function openSupportThread(customerId) {
+    if (!customerId || customerId === activeSupportThreadId) return;
+    activeSupportThreadId = customerId;
+    stopSupportMessagesListener();
+    renderSupportThreads();
+    renderSupportConversationHeader();
+    const list = document.getElementById("support-messages");
+    if (list) list.innerHTML = `<div class="empty-state">Loading messages…</div>`;
+
+    supportMessagesUnsub = db
+      .collection(COL.supportThreads)
+      .doc(customerId)
+      .collection("messages")
+      .orderBy("createdAt")
+      .limitToLast(200)
+      .onSnapshot(
+        (snap) => {
+          const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          renderSupportMessages(messages);
+        },
+        (err) => toast(err.message || String(err), "error")
+      );
+
+    db.collection(COL.supportThreads)
+      .doc(customerId)
+      .update({ unreadByStaff: 0 })
+      .catch(() => {});
+  }
+
+  async function sendActiveSupportReply() {
+    const input = document.getElementById("support-reply-input");
+    if (!input || !activeSupportThreadId) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    input.disabled = true;
+    try {
+      await db
+        .collection(COL.supportThreads)
+        .doc(activeSupportThreadId)
+        .collection("messages")
+        .add({
+          senderId: auth.currentUser ? auth.currentUser.uid : "support",
+          senderType: "staff",
+          text,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (e) {
+      input.value = text;
+      toast(e.message || String(e), "error");
+    } finally {
+      input.disabled = false;
+      input.focus();
     }
   }
 
@@ -6669,6 +7086,24 @@
     : () => renderCustomers();
   document.getElementById("filter-customers")?.addEventListener("input", debouncedRenderCustomers);
   document.getElementById("filter-customer-role")?.addEventListener("change", () => renderCustomers());
+  const debouncedRenderSupportThreads = ui().debounce
+    ? ui().debounce(() => renderSupportThreads(), 200)
+    : () => renderSupportThreads();
+  document.getElementById("filter-support-threads")?.addEventListener("input", debouncedRenderSupportThreads);
+  document.getElementById("support-thread-list")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-thread-id]");
+    if (!btn) return;
+    openSupportThread(btn.getAttribute("data-thread-id"));
+  });
+  document.getElementById("btn-send-support-reply")?.addEventListener("click", () => {
+    sendActiveSupportReply().catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.getElementById("support-reply-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendActiveSupportReply().catch((err) => toast(err.message || String(err), "error"));
+    }
+  });
   const debouncedRenderOngoing = ui().debounce
     ? ui().debounce(() => renderOngoingRiders(), 220)
     : () => renderOngoingRiders();
@@ -6695,6 +7130,7 @@
   document.getElementById("btn-new-vendor")?.addEventListener("click", () => openVendorModal(null));
   document.getElementById("btn-new-product")?.addEventListener("click", () => openProductModal(null));
   document.getElementById("btn-new-banner")?.addEventListener("click", () => openBannerModal(null));
+  document.getElementById("btn-new-coupon")?.addEventListener("click", () => openCouponModal(null));
   document.getElementById("offers-status-filter")?.addEventListener("change", () => renderOffers());
   document.getElementById("btn-refresh-job-reports")?.addEventListener("click", () => {
     loadJobReports()

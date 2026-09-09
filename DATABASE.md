@@ -483,6 +483,22 @@ Auto-refund on that same timeout, when the order was paid via PayHere (`paymentS
 | `refundFailedAt` | timestamp |
 | `refundError` | string |
 
+**Customer-initiated cancellation and refunds** (`cancelOrderByCustomer` / `requestOrderRefund` callables, `functions/src/orderRefunds.ts` — region `asia-south1`): the client never writes these fields directly, only the callables (Admin SDK) do.
+
+`cancelOrderByCustomer({orderId, reasonId, otherDetail?})` — customer cancels their own `placed`/`confirmed`, unassigned order. Sets the same `status`/`cancellationReason`/`cancelledAt`/`cancelledBy: 'customer'` fields as before, and — new — refunds automatically when paid via PayHere, same eligibility check as the vendor-no-response sweep above.
+
+`requestOrderRefund({orderId, reason?})` — customer asks for money back on an order they can no longer cancel (already `cancelled`, `delivered`, etc). A `cancelled` + paid-online order refunds immediately; anything else is queued for admin review (`refundRequestStatus: 'pending_review'`) since it needs a person to judge (delivered-with-an-issue, COD, etc).
+
+| Field | Type |
+|-------|------|
+| `refundRequestStatus` | `'processing'` (refund call in flight) → `'completed'`, or `'pending_review'` (needs admin) |
+| `refundRequestedAt` | timestamp |
+| `refundRequestedBy` | `'customer'` |
+| `refundRequestReason` | string? — customer's free-text reason, `requestOrderRefund` only |
+| `paymentStatus` | `'refunded'` on success |
+| `refundedAt` / `refundReason` (`'customer_cancelled'` \| `'customer_requested'`) / `refundReference` / `refundedBy: 'customer'` | set on success, mirroring the vendor-no-response fields above |
+| `refundFailed` / `refundFailedAt` / `refundError` | set instead if the PayHere refund call failed — falls back to `refundRequestStatus: 'pending_review'` so admin can retry |
+
 **Other fields (read by detail UI, may be set by ops/admin):**
 
 | Field | Type |

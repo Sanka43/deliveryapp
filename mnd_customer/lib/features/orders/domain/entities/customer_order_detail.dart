@@ -172,6 +172,7 @@ class CustomerOrderDetail {
     this.riderRated = false,
     this.riderRatingStars,
     this.fulfillmentMode = 'delivery',
+    this.refundRequestStatus,
   });
 
   final String id;
@@ -220,11 +221,34 @@ class CustomerOrderDetail {
   /// `delivery` or `selfPickup` from Firestore.
   final String fulfillmentMode;
 
+  /// `processing` | `pending_review` | `completed`, set once a refund has
+  /// been requested (by cancelling a paid order, or via [canRequestRefund]).
+  final String? refundRequestStatus;
+
   bool get isSelfPickup => fulfillmentMode.trim() == 'selfPickup';
 
   bool get isOnlinePayment => paymentMethod.toLowerCase().trim() == 'payhere';
 
   bool get isPaid => paymentStatus.toLowerCase().trim() == 'paid';
+
+  bool get isRefunded => paymentStatus.toLowerCase().trim() == 'refunded';
+
+  bool get isRefundProcessing => refundRequestStatus == 'processing';
+
+  bool get isRefundPendingReview => refundRequestStatus == 'pending_review';
+
+  bool get hasPendingRefundRequest => isRefundProcessing || isRefundPendingReview;
+
+  /// Whether to show the explicit "Request a refund" action: the order is
+  /// paid online, not already refunded or mid-refund, and past the window
+  /// where cancelling would refund it automatically (see
+  /// [OrderCancellationPolicy.customerMayCancel]).
+  bool get canRequestRefund =>
+      isOnlinePayment &&
+      isPaid &&
+      !isRefunded &&
+      !hasPendingRefundRequest &&
+      !OrderCancellationPolicy.customerMayCancel(statusRaw);
 
   /// User-visible order reference (never the Firestore document id).
   String get referenceForDisplay {
@@ -306,6 +330,7 @@ class CustomerOrderDetail {
           (data['fulfillmentMode'] as String?)?.trim().isNotEmpty == true
               ? (data['fulfillmentMode'] as String).trim()
               : 'delivery',
+      refundRequestStatus: _readOptionalId(data['refundRequestStatus']),
     );
   }
 

@@ -13,6 +13,7 @@ import {
   vendorOrderBody,
   writeVendorNotification,
 } from "./orderNotifications";
+import {refundPayHerePayment} from "./payHereRefund";
 
 export const REMINDER_1_MS = 2 * 60 * 1000;
 export const REMINDER_2_MS = 5 * 60 * 1000;
@@ -94,11 +95,17 @@ function reminderCopy(action: "reminder_1" | "reminder_2"): {
   return {title: "Final reminder — confirm order", type: "order_reminder"};
 }
 
-async function notifyAdminsOfMissedOrder(input: {
+/**
+ * Push (+ best-effort delivery) to every admin's FCM token. Shared by any
+ * sweep or callable that needs to put something in front of ops — the
+ * vendor-no-response escalation below, and the customer-refund flows in
+ * `orderRefunds.ts`.
+ */
+export async function notifyAdmins(input: {
+  title: string;
+  body: string;
   orderId: string;
-  vendorId: string;
-  storeName: string;
-  trackingNumber: string;
+  vendorId?: string;
 }): Promise<void> {
   const db = getFirestore();
   const admins = await db
@@ -106,10 +113,6 @@ async function notifyAdminsOfMissedOrder(input: {
     .where("role", "in", ADMIN_ROLES)
     .limit(50)
     .get();
-  const title = "Shop missed an order";
-  const tracking = input.trackingNumber || input.orderId;
-  const store = input.storeName || "A shop";
-  const body = `${store} did not confirm ${tracking} — order auto-cancelled.`;
   const messaging = getMessaging();
 
   await Promise.all(
@@ -121,14 +124,14 @@ async function notifyAdminsOfMissedOrder(input: {
       try {
         await messaging.send({
           token,
-          notification: {title, body},
+          notification: {title: input.title, body: input.body},
           data: {
             type: "admin_alert",
             orderId: input.orderId,
-            vendorId: input.vendorId,
+            vendorId: input.vendorId ?? "",
             screen: "order",
-            title,
-            body,
+            title: input.title,
+            body: input.body,
           },
           android: {priority: "high" as const},
           apns: {payload: {aps: {sound: "default"}}},
@@ -142,6 +145,92 @@ async function notifyAdminsOfMissedOrder(input: {
       }
     }),
   );
+}
+
+async function notifyAdminsOfMissedOrder(input: {
+  orderId: string;
+  vendorId: string;
+  storeName: string;
+  trackingNumber: string;
+}): Promise<void> {
+  const tracking = input.trackingNumber || input.orderId;
+  const store = input.storeName || "A shop";
+  await notifyAdmins({
+    title: "Shop missed an order",
+    body: `${store} did not confirm ${tracking} — order auto-cancelled.`,
+    orderId: input.orderId,
+    vendorId: input.vendorId,
+  });
+}
+
+/**
+ * Auto-cancelling a `placed` order because the shop never confirmed leaves
+ * the customer's money captured with no delivery coming — refund it right
+ * away instead of waiting on an admin to notice the escalation alert.
+ * COD orders (nothing charged yet) and non-PayHere payment states are
+ * silently skipped; a PayHere failure is recorded on the order rather than
+ * thrown, so the sweep continues to the next order.
+ */
+async function refundIfPaidOnline(
+  orderId: string,
+  orderData: DocumentData,
+): Promise<void> {
+  const paymentStatus = String(orderData.paymentStatus ?? "").trim().toLowerCase();
+  const paymentProvider = String(orderData.paymentProvider ?? "").trim().toLowerCase();
+  const paymentTransactionId = String(orderData.paymentTransactionId ?? "").trim();
+  const amount = Number(orderData.total ?? 0);
+  if (
+    paymentStatus !== "paid" ||
+    paymentProvider !== "payhere" ||
+    !paymentTransactionId ||
+    !(amount > 0)
+  ) {
+    return;
+  }
+
+  const db = getFirestore();
+  const ref = db.collection("orders").doc(orderId);
+  const result = await refundPayHerePayment(
+    paymentTransactionId,
+    amount,
+    "Order auto-cancelled: shop did not confirm in time",
+  );
+
+  if (result.ok) {
+    await ref.update({
+      paymentStatus: "refunded",
+      refundedAt: FieldValue.serverTimestamp(),
+      refundReason: "vendor_no_response",
+      refundReference: result.refundId,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  } else {
+    logger.error("Auto-refund failed for vendor_no_response cancellation", {
+      orderId,
+      error: result.error,
+    });
+    await ref.update({
+      refundFailed: true,
+      refundFailedAt: FieldValue.serverTimestamp(),
+      refundError: result.error,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return;
+  }
+
+  const customerId = String(orderData.customerId ?? "").trim();
+  if (customerId) {
+    await db.collection("notifications").add({
+      userId: customerId,
+      orderId,
+      type: "payment",
+      title: "Payment refunded",
+      body: "The shop did not confirm your order in time, so it was " +
+        "cancelled and your payment was refunded.",
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  }
 }
 
 type SweepResult = {
@@ -354,6 +443,7 @@ export const sweepStalePlacedOrders = onSchedule(
               storeName: result.storeName,
               trackingNumber: result.trackingNumber,
             });
+            await refundIfPaidOnline(doc.id, result.orderData);
           }
         } catch (err) {
           logger.error("Vendor accept reminder sweep failed for order", {

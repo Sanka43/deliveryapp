@@ -37,6 +37,7 @@ class _CartPageState extends ConsumerState<CartPage> {
     final int subtotal = cart.subtotal;
     final int discount = cart.discount;
     final int total = subtotal - discount;
+    final bool exceedsMaxOrderValue = cart.exceedsMaxOrderValue;
 
     final String storeName =
         cart.isEmpty ? '' : cart.items.first.storeName.trim();
@@ -88,6 +89,14 @@ class _CartPageState extends ConsumerState<CartPage> {
                         ),
                         const SizedBox(height: AppSpacing.md),
                       ],
+                      if (exceedsMaxOrderValue) ...<Widget>[
+                        _MaxOrderValueBanner(
+                          message: l10n.cartMaxOrderValueExceeded(
+                            MoneyFormat.lkr(kMaxOrderValueLkr),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
                       MndSectionHeader(
                         title: l10n.cartItemsHeader(cart.itemCount),
                       ),
@@ -113,9 +122,12 @@ class _CartPageState extends ConsumerState<CartPage> {
                   couponCode: cart.appliedCoupon?.code,
                   total: total,
                   needsSignIn: needsSignIn,
-                  onProceedToCheckout: needsSignIn
-                      ? () => navigateToSignInForCheckout(ref, context)
-                      : () => context.push(AppRoutes.customerCheckout),
+                  disabled: exceedsMaxOrderValue,
+                  onProceedToCheckout: exceedsMaxOrderValue
+                      ? null
+                      : needsSignIn
+                          ? () => navigateToSignInForCheckout(ref, context)
+                          : () => context.push(AppRoutes.customerCheckout),
                 ),
               ],
             ),
@@ -480,6 +492,7 @@ class _CartBottomBar extends StatelessWidget {
     required this.couponCode,
     required this.total,
     this.needsSignIn = false,
+    this.disabled = false,
     required this.onProceedToCheckout,
   });
 
@@ -488,7 +501,8 @@ class _CartBottomBar extends StatelessWidget {
   final String? couponCode;
   final int total;
   final bool needsSignIn;
-  final VoidCallback onProceedToCheckout;
+  final bool disabled;
+  final VoidCallback? onProceedToCheckout;
 
   @override
   Widget build(BuildContext context) {
@@ -587,6 +601,40 @@ class _PriceRow extends StatelessWidget {
           child: Text(value, style: style, textAlign: TextAlign.end),
         ),
       ],
+    );
+  }
+}
+
+class _MaxOrderValueBanner extends StatelessWidget {
+  const _MaxOrderValueBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -20,6 +20,7 @@ import 'package:mnd_delivery_app/features/orders/presentation/providers/order_de
 import 'package:mnd_delivery_app/features/orders/presentation/providers/order_placement_repository_provider.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/utils/orders_load_error.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/cancel_order_bottom_sheet.dart';
+import 'package:mnd_delivery_app/features/orders/presentation/widgets/request_refund_bottom_sheet.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/animated_order_status_tracker.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/order_contact_actions.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/widgets/store_rating_card.dart';
@@ -40,6 +41,33 @@ class OrderDetailsPage extends ConsumerWidget {
     }
     String two(int n) => n.toString().padLeft(2, '0');
     return '${d.year}-${two(d.month)}-${two(d.day)} · ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  static String paymentChipLabel(BuildContext context, CustomerOrderDetail detail) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    if (detail.hasPendingRefundRequest) {
+      return l10n.orderPaymentRefundPending;
+    }
+    if (detail.isRefunded) {
+      return l10n.orderPaymentRefunded;
+    }
+    if (detail.isPaid) {
+      return l10n.orderPaymentPaid;
+    }
+    return l10n.orderPaymentPending;
+  }
+
+  static Color paymentChipColor(CustomerOrderDetail detail) {
+    if (detail.hasPendingRefundRequest) {
+      return AppColors.warning;
+    }
+    if (detail.isRefunded) {
+      return AppColors.brandPrimary;
+    }
+    if (detail.isPaid) {
+      return AppColors.success;
+    }
+    return AppColors.warning;
   }
 
   static String paymentLabel(BuildContext context, String raw) {
@@ -397,16 +425,8 @@ class OrderDetailsPage extends ConsumerWidget {
                           ),
                           const Spacer(),
                           _PaymentChip(
-                            label: detail.isPaid
-                                ? l10n.orderPaymentPaid
-                                : detail.isRefunded
-                                    ? l10n.orderPaymentRefunded
-                                    : l10n.orderPaymentPending,
-                            color: detail.isPaid
-                                ? AppColors.success
-                                : detail.isRefunded
-                                    ? AppColors.brandPrimary
-                                    : AppColors.warning,
+                            label: OrderDetailsPage.paymentChipLabel(context, detail),
+                            color: OrderDetailsPage.paymentChipColor(detail),
                           ),
                         ],
                       ),
@@ -471,6 +491,17 @@ class OrderDetailsPage extends ConsumerWidget {
                 _CancelOrderBar(
                   createdAt: detail.createdAt,
                   onTap: () => showCancelOrderBottomSheet(
+                    pageContext: context,
+                    detail: detail,
+                  ),
+                ),
+              if (detail.hasPendingRefundRequest) ...<Widget>[
+                const SizedBox(height: AppSpacing.sm),
+                _RefundStatusBanner(detail: detail),
+              ],
+              if (detail.canRequestRefund)
+                _RequestRefundBar(
+                  onTap: () => showRequestRefundBottomSheet(
                     pageContext: context,
                     detail: detail,
                   ),
@@ -584,6 +615,91 @@ class _CancelOrderBarState extends State<_CancelOrderBar> {
             AppLocalizations.of(context).orderCancelButton(_secondsLeft),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Lets a customer request a refund once the order can no longer be
+/// cancelled outright (already cancelled by the shop/system, delivered with
+/// an issue, etc) — see [CustomerOrderDetail.canRequestRefund].
+class _RequestRefundBar extends StatelessWidget {
+  const _RequestRefundBar({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm + 2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          onPressed: onTap,
+          child: Text(AppLocalizations.of(context).orderRequestRefundButton),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows while a refund is in flight ([CustomerOrderDetail.isRefundProcessing])
+/// or waiting on admin review ([CustomerOrderDetail.isRefundPendingReview]).
+class _RefundStatusBanner extends StatelessWidget {
+  const _RefundStatusBanner({required this.detail});
+
+  final CustomerOrderDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final String title = detail.isRefundProcessing
+        ? l10n.orderRefundBannerProcessingTitle
+        : l10n.orderRefundBannerPendingReviewTitle;
+    final String body = detail.isRefundProcessing
+        ? l10n.orderRefundBannerProcessingBody
+        : l10n.orderRefundBannerPendingReviewBody;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.brandPrimary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
+        border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(Icons.hourglass_top_rounded, color: scheme.primary),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(body, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -739,18 +855,10 @@ class _HeroOrderCard extends StatelessWidget {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String? dateLabel = OrderDetailsPage.formatDate(detail.createdAt);
     final String chipLabel = detail.isOnlinePayment
-        ? (detail.isPaid
-            ? l10n.orderPaymentPaid
-            : detail.isRefunded
-                ? l10n.orderPaymentRefunded
-                : l10n.orderPaymentPending)
+        ? OrderDetailsPage.paymentChipLabel(context, detail)
         : OrderDetailsPage.paymentLabel(context, detail.paymentMethod);
     final Color chipDot = detail.isOnlinePayment
-        ? (detail.isPaid
-            ? AppColors.success
-            : detail.isRefunded
-                ? AppColors.brandPrimary
-                : AppColors.warning)
+        ? OrderDetailsPage.paymentChipColor(detail)
         : Colors.white;
 
     return Container(

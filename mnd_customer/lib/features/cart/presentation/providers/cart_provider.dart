@@ -14,6 +14,9 @@ class CartCoupon {
 
 enum CouponDiscountType { flat, percent }
 
+/// Orders above this subtotal (LKR) cannot be placed.
+const int kMaxOrderValueLkr = 5000;
+
 /// How the customer will receive the order.
 enum FulfillmentMode {
   delivery,
@@ -149,6 +152,8 @@ class CartState {
   }
 
   bool get isEmpty => items.isEmpty;
+
+  bool get exceedsMaxOrderValue => subtotal > kMaxOrderValueLkr;
 
   CartState copyWith({
     List<CartItem>? items,
@@ -291,14 +296,11 @@ class CartNotifier extends StateNotifier<CartState> {
     state = state.copyWith(clearDropoff: true);
   }
 
-  bool applyCouponCode(String code) {
-    final String normalizedCode = code.trim().toUpperCase();
-    final CartCoupon? coupon = _supportedCoupons[normalizedCode];
-    if (coupon == null) {
-      return false;
-    }
+  /// Applies a coupon already validated server-side (see `CouponRepository` /
+  /// the `validateCoupon` Cloud Function) — this notifier never decides on
+  /// its own whether a code is valid.
+  void setCoupon(CartCoupon coupon) {
     state = state.copyWith(appliedCoupon: coupon);
-    return true;
   }
 
   void removeCoupon() {
@@ -326,21 +328,3 @@ final Provider<int> cartItemCountProvider = Provider<int>((Ref ref) {
 final Provider<int> cartSubtotalProvider = Provider<int>((Ref ref) {
   return ref.watch(cartProvider).subtotal;
 });
-
-const Map<String, CartCoupon> _supportedCoupons = <String, CartCoupon>{
-  'SAVE100': CartCoupon(
-    code: 'SAVE100',
-    discountType: CouponDiscountType.flat,
-    value: 100,
-  ),
-  'MND10': CartCoupon(
-    code: 'MND10',
-    discountType: CouponDiscountType.percent,
-    value: 10,
-  ),
-  'WELCOME15': CartCoupon(
-    code: 'WELCOME15',
-    discountType: CouponDiscountType.percent,
-    value: 15,
-  ),
-};

@@ -1,13 +1,9 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_delivery_app/core/utils/maps_proxy_client.dart';
-import 'package:mnd_delivery_app/core/utils/placemark_address_utils.dart';
 import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
+import 'package:mnd_delivery_app/core/widgets/place_autocomplete_field.dart';
 import 'package:mnd_delivery_app/features/rides/domain/entities/ride_place.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/rides_map_support.dart';
 import 'package:mnd_delivery_app/features/rides/presentation/rides_theme.dart';
@@ -49,14 +45,25 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
   GoogleMapController? _mapController;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
+  final GlobalKey<PlaceAutocompleteFieldState> _searchFieldKey =
+      GlobalKey<PlaceAutocompleteFieldState>();
 
   late LatLng _mapCenter;
   double _zoom = 15;
   bool _locating = false;
   bool _confirming = false;
-  bool _searching = false;
-  List<_SearchHit> _hits = const <_SearchHit>[];
-  Timer? _debounce;
+
+  /// The Places Autocomplete suggestion the user last picked, if the map
+  /// hasn't been moved since — [_confirm] uses its name/label directly
+  /// instead of reverse-geocoding the pin when this is set. Cleared by any
+  /// user-driven camera move (see `onCameraMoveStarted`), since moving the
+  /// pin means they want a different point.
+  PlaceDetailsResult? _selectedPlace;
+
+  /// Set right before a programmatic `animateCamera` call so the
+  /// `onCameraMoveStarted` callback it triggers doesn't mistake that for a
+  /// user drag and clear [_selectedPlace].
+  bool _ignoreNextCameraMoveStart = false;
 
   bool get _isPickup => widget.mode == RidesPlacePickerMode.pickup;
   bool get _isStop => widget.mode == RidesPlacePickerMode.stop;
@@ -93,106 +100,22 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _searchController.dispose();
     _searchFocus.dispose();
     _mapController?.dispose();
     super.dispose();
   }
 
-  void _onSearchChanged(String raw) {
-    _debounce?.cancel();
-    final String q = raw.trim();
-    if (q.length < 3) {
-      setState(() {
-        _hits = const <_SearchHit>[];
-        _searching = false;
-      });
-      return;
-    }
-    setState(() => _searching = true);
-    _debounce = Timer(const Duration(milliseconds: 450), () {
-      _runSearch(q);
-    });
-  }
-
-  Future<void> _runSearch(String query) async {
-    if (kIsWeb) {
-      // `geocoding` has no web implementation — use the Cloud Function
-      // proxy instead (Google's Geocoding REST API blocks direct browser
-      // calls).
-      final List<GeoSearchHit> webHits = await geocodeSearchViaFunction(query);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _hits = webHits
-            .map(
-              (GeoSearchHit h) => _SearchHit(
-                label: h.label,
-                latLng: LatLng(h.lat, h.lng),
-              ),
-            )
-            .toList(growable: false);
-        _searching = false;
-      });
-      return;
-    }
-    try {
-      // Prefer Sri Lanka results for MND.
-      final String scoped = query.toLowerCase().contains('sri lanka')
-          ? query
-          : '$query, Sri Lanka';
-      final List<Location> locations = await locationFromAddress(scoped);
-      final List<_SearchHit> hits = <_SearchHit>[];
-      for (final Location loc in locations.take(6)) {
-        String label =
-            '${loc.latitude.toStringAsFixed(5)}, ${loc.longitude.toStringAsFixed(5)}';
-        try {
-          final List<Placemark> marks = await placemarkFromCoordinates(
-            loc.latitude,
-            loc.longitude,
-          );
-          final String composed = formatBestPlacemarkLabel(marks);
-          if (composed.isNotEmpty) {
-            label = composed;
-          }
-        } catch (_) {}
-        hits.add(
-          _SearchHit(
-            label: label,
-            latLng: LatLng(loc.latitude, loc.longitude),
-          ),
-        );
-      }
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _hits = hits;
-        _searching = false;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _hits = const <_SearchHit>[];
-        _searching = false;
-      });
-    }
-  }
-
-  Future<void> _selectHit(_SearchHit hit) async {
-    _searchFocus.unfocus();
+  Future<void> _onPlaceSelected(PlaceDetailsResult details) async {
+    final LatLng target = LatLng(details.lat, details.lng);
+    _ignoreNextCameraMoveStart = true;
     setState(() {
-      _hits = const <_SearchHit>[];
-      _mapCenter = hit.latLng;
-      _searchController.text = hit.label;
+      _selectedPlace = details;
+      _mapCenter = target;
       _zoom = 16;
     });
     await _mapController?.animateCamera(
-      CameraUpdate.newLatLngZoom(hit.latLng, 16),
+      CameraUpdate.newLatLngZoom(target, 16),
     );
   }
 
@@ -222,12 +145,14 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
         return;
       }
       final LatLng target = LatLng(place.lat, place.lng);
+      _ignoreNextCameraMoveStart = true;
       setState(() {
+        _selectedPlace = null;
         _mapCenter = target;
         _zoom = 16;
         _searchController.text = place.label;
-        _hits = const <_SearchHit>[];
       });
+      _searchFieldKey.currentState?.clearHits();
       await _mapController?.animateCamera(
         CameraUpdate.newLatLngZoom(target, 16),
       );
@@ -242,29 +167,29 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
     setState(() => _confirming = true);
     try {
       final bool mapOk = isRidesMapSupported();
+      final PlaceDetailsResult? selected = _selectedPlace;
       RidePlace place;
-      if (mapOk) {
+      if (selected != null) {
+        // The map hasn't moved since a search suggestion was picked — use
+        // its name/label directly instead of reverse-geocoding the pin.
+        place = RidePlace(
+          lat: selected.lat,
+          lng: selected.lng,
+          label: selected.label,
+          placeId: selected.placeId,
+          name: selected.name.isEmpty ? null : selected.name,
+        );
+      } else if (mapOk) {
         place = await reverseGeocodeRidePlace(_mapCenter);
       } else {
-        final String q = _searchController.text.trim();
-        if (q.length < 3) {
-          if (mounted) {
-            showMndSnackBar(context, 'Search for a place first.', variant: MndSnackBarVariant.warning);
-          }
-          return;
+        if (mounted) {
+          showMndSnackBar(
+            context,
+            'Search and select a place first.',
+            variant: MndSnackBarVariant.warning,
+          );
         }
-        final List<Location> locations = await locationFromAddress(
-          q.toLowerCase().contains('sri lanka') ? q : '$q, Sri Lanka',
-        );
-        if (locations.isEmpty) {
-          if (mounted) {
-            showMndSnackBar(context, 'No matching place found.', variant: MndSnackBarVariant.warning);
-          }
-          return;
-        }
-        place = await reverseGeocodeRidePlace(
-          LatLng(locations.first.latitude, locations.first.longitude),
-        );
+        return;
       }
       if (!mounted) {
         return;
@@ -303,6 +228,15 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
                 zoom: _zoom,
               ),
               onMapCreated: (GoogleMapController c) => _mapController = c,
+              onCameraMoveStarted: () {
+                if (_ignoreNextCameraMoveStart) {
+                  _ignoreNextCameraMoveStart = false;
+                  return;
+                }
+                if (_selectedPlace != null) {
+                  setState(() => _selectedPlace = null);
+                }
+              },
               onCameraMove: (CameraPosition position) {
                 _mapCenter = position.target;
                 _zoom = position.zoom;
@@ -342,57 +276,18 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Material(
-                          elevation: 3,
-                          shadowColor: Colors.black26,
-                          borderRadius: BorderRadius.circular(16),
-                          color: Colors.white,
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _searchFocus,
-                            onChanged: _onSearchChanged,
-                            onSubmitted: (String v) {
-                              if (v.trim().length >= 3) {
-                                _runSearch(v.trim());
-                              }
-                            },
-                            textInputAction: TextInputAction.search,
-                            decoration: InputDecoration(
-                              hintText: _isPickup
-                                  ? 'Search pick-up location'
-                                  : _isStop
-                                      ? 'Search stop location'
-                                      : 'Search drop-off location',
-                              prefixIcon: Icon(Icons.search, color: _accent),
-                              suffixIcon: _searching
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    )
-                                  : (_searchController.text.isEmpty
-                                      ? null
-                                      : IconButton(
-                                          icon: const Icon(Icons.close),
-                                          onPressed: () {
-                                            _searchController.clear();
-                                            setState(() {
-                                              _hits = const <_SearchHit>[];
-                                            });
-                                          },
-                                        )),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
+                        child: PlaceAutocompleteField(
+                          key: _searchFieldKey,
+                          controller: _searchController,
+                          focusNode: _searchFocus,
+                          hintText: _isPickup
+                              ? 'Search pick-up location'
+                              : _isStop
+                                  ? 'Search stop location'
+                                  : 'Search drop-off location',
+                          accentColor: _accent,
+                          biasCenter: () => _mapCenter,
+                          onPlaceSelected: _onPlaceSelected,
                         ),
                       ),
                     ],
@@ -425,32 +320,6 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
                       ),
                     ),
                   ),
-                  if (_hits.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 8),
-                    Material(
-                      elevation: 4,
-                      borderRadius: BorderRadius.circular(14),
-                      color: Colors.white,
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _hits.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (BuildContext context, int i) {
-                          final _SearchHit hit = _hits[i];
-                          return ListTile(
-                            leading: Icon(Icons.place_outlined, color: _accent),
-                            title: Text(
-                              hit.label,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () => _selectHit(hit),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -500,11 +369,4 @@ class _RidesPlacePickerPageState extends State<RidesPlacePickerPage> {
       ),
     );
   }
-}
-
-class _SearchHit {
-  const _SearchHit({required this.label, required this.latLng});
-
-  final String label;
-  final LatLng latLng;
 }

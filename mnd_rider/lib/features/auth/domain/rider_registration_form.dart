@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:mnd_rider/features/auth/domain/rider_service_type.dart';
 import 'package:mnd_rider/features/auth/domain/rider_vehicle_type.dart';
 
 /// Vehicle photo angles required at registration (matches admin `vehiclePhotos`).
@@ -46,6 +47,7 @@ class RiderRegistrationForm {
     this.fullName = '',
     this.phone = '',
     this.nicNumber = '',
+    this.serviceTypes = const <RiderServiceType>{},
     this.vehicleType,
     this.vehicleNumber = '',
     this.city = '',
@@ -66,6 +68,7 @@ class RiderRegistrationForm {
   final String fullName;
   final String phone;
   final String nicNumber;
+  final Set<RiderServiceType> serviceTypes;
   final RiderVehicleType? vehicleType;
   final String vehicleNumber;
   final String city;
@@ -119,6 +122,7 @@ class RiderRegistrationForm {
     String? fullName,
     String? phone,
     String? nicNumber,
+    Set<RiderServiceType>? serviceTypes,
     RiderVehicleType? vehicleType,
     String? vehicleNumber,
     String? city,
@@ -151,6 +155,7 @@ class RiderRegistrationForm {
       fullName: fullName ?? this.fullName,
       phone: phone ?? this.phone,
       nicNumber: nicNumber ?? this.nicNumber,
+      serviceTypes: serviceTypes ?? this.serviceTypes,
       vehicleType: vehicleType ?? this.vehicleType,
       vehicleNumber: vehicleNumber ?? this.vehicleNumber,
       city: city ?? this.city,

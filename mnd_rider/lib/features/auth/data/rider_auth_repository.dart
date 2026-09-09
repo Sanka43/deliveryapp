@@ -9,6 +9,7 @@ import 'package:mnd_rider/core/utils/user_facing_error.dart';
 import 'package:mnd_rider/features/auth/data/rider_registration_validator.dart';
 import 'package:mnd_rider/features/auth/domain/rider_profile_document.dart';
 import 'package:mnd_rider/features/auth/domain/rider_registration_form.dart';
+import 'package:mnd_rider/features/auth/domain/rider_service_type.dart';
 
 final Provider<RiderAuthRepository> riderAuthRepositoryProvider =
     Provider<RiderAuthRepository>((Ref ref) {
@@ -250,6 +251,9 @@ class RiderAuthRepository {
         ),
       ),
       'vehicleType': form.vehicleType!.firestoreValue,
+      'serviceTypes': form.serviceTypes
+          .map((RiderServiceType t) => t.firestoreValue)
+          .toList(),
       'vehicleNumber': form.vehicleNumber.trim().toUpperCase(),
       'city': form.city.trim(),
       'email': user.email?.trim() ?? '',

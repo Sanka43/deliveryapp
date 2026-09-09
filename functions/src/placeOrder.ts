@@ -5,11 +5,12 @@ import {logger} from "firebase-functions";
 import {defineSecret, defineString} from "firebase-functions/params";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {
+  checkCouponUsageLimits,
   computeDiscountLkr,
   CouponDoc,
   incrementCouponUsageTx,
+  incrementCustomerCouponUsageTx,
   normalizeCouponCode,
-  sumCouponUsageShards,
 } from "./coupons";
 import {
   clampTraveledKmToPlausibleRange,
@@ -340,6 +341,9 @@ async function resolveProductLine(
  * this function only reads; it never writes, so it's safe to call before
  * any other write in the same transaction.
  */
+/** Orders above this subtotal (LKR) are rejected. */
+const MAX_ORDER_VALUE_LKR = 5000;
+
 async function resolveOrderLinesTx(
   tx: FirebaseFirestore.Transaction,
   vendorId: string,
@@ -409,6 +413,12 @@ async function resolveOrderLinesTx(
   );
   if (subtotal < 0) {
     throw new HttpsError("failed-precondition", "Invalid subtotal.");
+  }
+  if (subtotal > MAX_ORDER_VALUE_LKR) {
+    throw new HttpsError(
+      "failed-precondition",
+      `Order total cannot exceed LKR ${MAX_ORDER_VALUE_LKR}.`,
+    );
   }
 
   return {pricedItems, subtotal, stockDecrements};
@@ -598,6 +608,7 @@ async function loadAndPriceCoupon(
   tx: FirebaseFirestore.Transaction,
   couponRaw: string,
   subtotal: number,
+  uid: string,
 ): Promise<{code: string; couponRef: FirebaseFirestore.DocumentReference; discount: number}> {
   const db = getFirestore();
   const code = normalizeCouponCode(couponRaw);
@@ -614,12 +625,9 @@ async function loadAndPriceCoupon(
       "This coupon cannot be applied to your cart.",
     );
   }
-  const maxUses = coupon.maxUses;
-  if (maxUses != null) {
-    const usedCount = await sumCouponUsageShards(couponRef, tx);
-    if (usedCount >= maxUses) {
-      throw new HttpsError("failed-precondition", "Coupon usage limit reached.");
-    }
+  const usageCheck = await checkCouponUsageLimits(coupon, couponRef, uid, tx);
+  if (!usageCheck.ok) {
+    throw new HttpsError("failed-precondition", usageCheck.error);
   }
   return {code, couponRef, discount};
 }
@@ -629,12 +637,13 @@ async function consumeCouponAndSequence(
   tx: FirebaseFirestore.Transaction,
   couponRaw: string,
   subtotal: number,
+  uid: string,
 ): Promise<{discount: number; couponCode: string | undefined; trackingNumber: string}> {
   let discount = 0;
   let couponCode: string | undefined;
   let couponRef: FirebaseFirestore.DocumentReference | undefined;
   if (couponRaw) {
-    const loaded = await loadAndPriceCoupon(tx, couponRaw, subtotal);
+    const loaded = await loadAndPriceCoupon(tx, couponRaw, subtotal, uid);
     couponRef = loaded.couponRef;
     discount = loaded.discount;
     couponCode = loaded.code;
@@ -646,6 +655,7 @@ async function consumeCouponAndSequence(
   const trackingNumber = await reserveTrackingNumber(tx);
   if (couponRef) {
     incrementCouponUsageTx(tx, couponRef);
+    incrementCustomerCouponUsageTx(tx, couponRef, uid);
   }
   return {discount, couponCode, trackingNumber};
 }
@@ -661,6 +671,7 @@ async function previewCouponAndSequence(
   tx: FirebaseFirestore.Transaction,
   couponRaw: string,
   subtotal: number,
+  uid: string,
 ): Promise<{discount: number; couponCode: string | undefined; trackingNumber: string}> {
   let discount = 0;
   let couponCode: string | undefined;
@@ -669,6 +680,7 @@ async function previewCouponAndSequence(
       tx,
       couponRaw,
       subtotal,
+      uid,
     );
     discount = d;
     couponCode = code;
@@ -704,7 +716,7 @@ export const placeCashOnDeliveryOrder = onCall(
       );
 
       const {discount, couponCode, trackingNumber} =
-        await consumeCouponAndSequence(tx, prepared.couponRaw, subtotal);
+        await consumeCouponAndSequence(tx, prepared.couponRaw, subtotal, uid);
 
       const serviceCharge = computeServiceChargeLkr(
         subtotal,
@@ -821,7 +833,7 @@ export const createPayHereCheckoutForOrder = onCall(
       );
 
       const {discount, couponCode, trackingNumber} =
-        await previewCouponAndSequence(tx, prepared.couponRaw, subtotal);
+        await previewCouponAndSequence(tx, prepared.couponRaw, subtotal, uid);
 
       const serviceCharge = computeServiceChargeLkr(
         subtotal,
@@ -1124,16 +1136,21 @@ export async function markOrderPaidAndPlace(
     // created (`previewCouponAndSequence`) — reserve it now that payment has
     // actually confirmed, so an abandoned checkout never burns a use.
     const couponCode = String(data.couponCode ?? "").trim();
-    if (couponCode) {
+    const couponCustomerId = String(data.customerId ?? "").trim();
+    if (couponCode && couponCustomerId) {
       const couponRef = getFirestore().collection("coupons").doc(couponCode);
       const couponSnap = await tx.get(couponRef);
       if (couponSnap.exists) {
         const coupon = couponSnap.data() as CouponDoc;
-        const maxUses = coupon.maxUses;
-        const usedCount =
-          maxUses != null ? await sumCouponUsageShards(couponRef, tx) : 0;
-        if (maxUses == null || usedCount < maxUses) {
+        const usageCheck = await checkCouponUsageLimits(
+          coupon,
+          couponRef,
+          couponCustomerId,
+          tx,
+        );
+        if (usageCheck.ok) {
           incrementCouponUsageTx(tx, couponRef);
+          incrementCustomerCouponUsageTx(tx, couponRef, couponCustomerId);
         }
       }
     }

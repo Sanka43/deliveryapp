@@ -36,6 +36,7 @@ import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_s
 import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_favorites_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_shops_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/saved_addresses_page.dart';
+import 'package:mnd_delivery_app/features/support/presentation/pages/support_chat_page.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/pages/cart_page.dart';
 import 'package:mnd_delivery_app/features/checkout/presentation/pages/checkout_page.dart';
 import 'package:mnd_delivery_app/features/checkout/presentation/pages/order_confirmation_page.dart';
@@ -462,6 +463,12 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
         parentNavigatorKey: rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) =>
             const CustomerNotificationsPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.customerSupport,
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) =>
+            const SupportChatPage(),
       ),
       GoRoute(
         path: AppRoutes.customerNotificationSettings,

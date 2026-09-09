@@ -16,6 +16,8 @@ export interface CouponDoc {
   expiresAt?: Timestamp;
   usedCount?: number;
   maxUses?: number;
+  /** Caps how many times a single customer may redeem this coupon. */
+  perCustomerLimit?: number;
 }
 
 export function normalizeCouponCode(raw: string): string {
@@ -69,6 +71,52 @@ export async function incrementCouponUsage(
   );
 }
 
+/**
+ * Per-customer redemption count for a coupon, keyed by uid — a single small
+ * doc (not sharded like `usage_shards`) since at most one customer writes it
+ * at a time, so it can't become a hot document the way a shared counter can.
+ */
+function customerCouponUsageRef(
+  couponRef: FirebaseFirestore.DocumentReference,
+  uid: string,
+): FirebaseFirestore.DocumentReference {
+  return couponRef.collection("customer_usage").doc(uid);
+}
+
+export async function getCustomerCouponUsageCount(
+  couponRef: FirebaseFirestore.DocumentReference,
+  uid: string,
+  tx?: FirebaseFirestore.Transaction,
+): Promise<number> {
+  const ref = customerCouponUsageRef(couponRef, uid);
+  const snap = tx ? await tx.get(ref) : await ref.get();
+  return Number(snap.data()?.count ?? 0);
+}
+
+/** Call inside a transaction, after all of that transaction's reads. */
+export function incrementCustomerCouponUsageTx(
+  tx: FirebaseFirestore.Transaction,
+  couponRef: FirebaseFirestore.DocumentReference,
+  uid: string,
+): void {
+  tx.set(
+    customerCouponUsageRef(couponRef, uid),
+    {count: FieldValue.increment(1)},
+    {merge: true},
+  );
+}
+
+/** Standalone (non-transactional) version, for callers outside a transaction. */
+export async function incrementCustomerCouponUsage(
+  couponRef: FirebaseFirestore.DocumentReference,
+  uid: string,
+): Promise<void> {
+  await customerCouponUsageRef(couponRef, uid).set(
+    {count: FieldValue.increment(1)},
+    {merge: true},
+  );
+}
+
 export function computeDiscountLkr(
   coupon: CouponDoc,
   subtotalLkr: number,
@@ -107,12 +155,43 @@ export function computeDiscountLkr(
   return Math.max(0, Math.min(discount, subtotalLkr));
 }
 
+function couponRefFor(code: string): FirebaseFirestore.DocumentReference {
+  return getFirestore().collection("coupons").doc(code);
+}
+
 async function loadCoupon(code: string): Promise<CouponDoc | null> {
-  const snap = await getFirestore().collection("coupons").doc(code).get();
+  const snap = await couponRefFor(code).get();
   if (!snap.exists) {
     return null;
   }
   return snap.data() as CouponDoc;
+}
+
+/**
+ * Checks the coupon's global (`maxUses`) and per-customer (`perCustomerLimit`)
+ * redemption caps. Shared by the customer-facing preview (`validateCoupon`)
+ * and the order-placement path (`placeOrder.ts`) so both enforce the same
+ * limits instead of drifting apart.
+ */
+export async function checkCouponUsageLimits(
+  coupon: CouponDoc,
+  couponRef: FirebaseFirestore.DocumentReference,
+  uid: string,
+  tx?: FirebaseFirestore.Transaction,
+): Promise<{ok: true} | {ok: false; error: string}> {
+  if (coupon.maxUses != null) {
+    const usedCount = await sumCouponUsageShards(couponRef, tx);
+    if (usedCount >= coupon.maxUses) {
+      return {ok: false, error: "Coupon usage limit reached."};
+    }
+  }
+  if (coupon.perCustomerLimit != null) {
+    const customerUsed = await getCustomerCouponUsageCount(couponRef, uid, tx);
+    if (customerUsed >= coupon.perCustomerLimit) {
+      return {ok: false, error: "You have already used this coupon."};
+    }
+  }
+  return {ok: true};
 }
 
 export const validateCoupon = onCall(
@@ -142,6 +221,15 @@ export const validateCoupon = onCall(
         valid: false,
         error: "This coupon cannot be applied to your cart.",
       };
+    }
+
+    const usageCheck = await checkCouponUsageLimits(
+      coupon,
+      couponRefFor(code),
+      request.auth.uid,
+    );
+    if (!usageCheck.ok) {
+      return {valid: false, error: usageCheck.error};
     }
 
     return {
@@ -180,11 +268,17 @@ export const onOrderCreatedValidateCoupon = onDocumentCreated(
     const code = normalizeCouponCode(rawCode);
     const subtotal = Number(data.subtotal ?? 0);
     const deliveryFee = Number(data.deliveryFee ?? 0);
+    const customerId = String(data.customerId ?? "").trim();
+    const couponRef = couponRefFor(code);
     const coupon = await loadCoupon(code);
 
-    const expectedDiscount = coupon
-      ? computeDiscountLkr(coupon, subtotal)
-      : 0;
+    let expectedDiscount = coupon ? computeDiscountLkr(coupon, subtotal) : 0;
+    if (expectedDiscount > 0 && coupon && customerId) {
+      const usageCheck = await checkCouponUsageLimits(coupon, couponRef, customerId);
+      if (!usageCheck.ok) {
+        expectedDiscount = 0;
+      }
+    }
     const statedDiscount = Number(data.discount ?? 0);
     const expectedServiceCharge = computeServiceChargeLkr(subtotal);
     const statedServiceCharge = Number(data.serviceCharge ?? 0);
@@ -208,7 +302,10 @@ export const onOrderCreatedValidateCoupon = onDocumentCreated(
       patch.couponRejected = true;
     } else {
       patch.couponVerified = true;
-      await incrementCouponUsage(getFirestore().collection("coupons").doc(code));
+      await incrementCouponUsage(couponRef);
+      if (customerId) {
+        await incrementCustomerCouponUsage(couponRef, customerId);
+      }
     }
 
     if (Object.keys(patch).length > 0) {
