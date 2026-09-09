@@ -8,6 +8,8 @@ class CustomerProfile extends Equatable {
     required this.phone,
     this.email,
     this.photoUrl,
+    this.referralCode,
+    this.referredBy,
   });
 
   final String id;
@@ -15,6 +17,13 @@ class CustomerProfile extends Equatable {
   final String phone;
   final String? email;
   final String? photoUrl;
+
+  /// This customer's own code to share with friends. Server-generated —
+  /// see onCustomerProfileCreatedGenerateReferralCode in functions/src/referrals.ts.
+  final String? referralCode;
+
+  /// Set once, when this customer redeems someone else's referral code.
+  final String? referredBy;
 
   /// Prefers Firestore [customers] fields when set, otherwise Firebase Auth.
   factory CustomerProfile.merge(
@@ -33,6 +42,8 @@ class CustomerProfile extends Equatable {
     final String? docPhone = trim(doc?['phoneNumber'] as String?);
     final String? docEmail = trim(doc?['email'] as String?);
     final String? docPhoto = trim(doc?['photoUrl'] as String?);
+    final String? referralCode = trim(doc?['referralCode'] as String?);
+    final String? referredBy = trim(doc?['referredBy'] as String?);
 
     final String name =
         docName ?? trim(authUser.displayName) ?? 'Customer';
@@ -47,6 +58,8 @@ class CustomerProfile extends Equatable {
       phone: phone,
       email: email,
       photoUrl: photoUrl,
+      referralCode: referralCode,
+      referredBy: referredBy,
     );
   }
 
@@ -103,5 +116,6 @@ class CustomerProfile extends Equatable {
   }
 
   @override
-  List<Object?> get props => <Object?>[id, name, phone, email, photoUrl];
+  List<Object?> get props =>
+      <Object?>[id, name, phone, email, photoUrl, referralCode, referredBy];
 }

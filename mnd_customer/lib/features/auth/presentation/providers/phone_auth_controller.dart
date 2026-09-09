@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
+import 'package:mnd_delivery_app/core/services/analytics_service.dart';
 import 'package:mnd_delivery_app/core/services/fcm_token_repository.dart';
 import 'package:mnd_delivery_app/features/customer/data/customer_profile_repository.dart';
 import 'package:mnd_delivery_app/features/customer/domain/entities/customer_profile.dart';
@@ -282,6 +285,7 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
 
       final UserCredential userCredential =
           await _auth.signInWithCustomToken(customToken);
+      unawaited(AnalyticsService.logLogin());
 
       try {
         await _ensureUserProfile(

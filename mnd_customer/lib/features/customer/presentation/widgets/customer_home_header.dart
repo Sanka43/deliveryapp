@@ -96,61 +96,67 @@ class CustomerHomeHeaderSection extends ConsumerWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: InkWell(
-                onTap: () => context.push(AppRoutes.customerSavedAddresses),
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          const Icon(
-                            Icons.location_on_rounded,
-                            size: 14,
-                            color: AppColors.brandPrimary,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Deliver to',
-                            style:
-                                Theme.of(context).textTheme.labelMedium?.copyWith(
-                                      color: AppColors.textSecondary,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.1,
-                                    ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              deliverLabel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+              child: Semantics(
+                button: true,
+                label: 'Change delivery address, currently $deliverLabel',
+                child: InkWell(
+                  onTap: () => context.push(AppRoutes.customerSavedAddresses),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            const Icon(
+                              Icons.location_on_rounded,
+                              size: 14,
+                              color: AppColors.brandPrimary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Deliver to',
                               style: Theme.of(context)
                                   .textTheme
-                                  .titleMedium
+                                  .labelMedium
                                   ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.3,
-                                    height: 1.15,
-                                    color: AppColors.textPrimary,
+                                    color: AppColors.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.1,
                                   ),
                             ),
-                          ),
-                          const Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 20,
-                            color: AppColors.textPrimary,
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                deliverLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -0.3,
+                                      height: 1.15,
+                                      color: AppColors.textPrimary,
+                                    ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 20,
+                              color: AppColors.textPrimary,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -159,10 +165,10 @@ class CustomerHomeHeaderSection extends ConsumerWidget {
             _NotificationBellButton(
               tooltip: 'Notifications',
               hasUnread: (ref
-                      .watch(customerUnreadNotificationCountProvider)
-                      .asData
-                      ?.value ??
-                  0) >
+                          .watch(customerUnreadNotificationCountProvider)
+                          .asData
+                          ?.value ??
+                      0) >
                   0,
               onTap: () => context.push(AppRoutes.customerNotifications),
             ),
@@ -190,35 +196,42 @@ class _ProfileAvatar extends StatelessWidget {
         ? name!.substring(0, 1).toUpperCase()
         : '?';
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 44,
-          height: 44,
-          padding: const EdgeInsets.all(2),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: AppColors.brandGradient,
-          ),
-          child: DecoratedBox(
+    return Semantics(
+      button: true,
+      label: name != null && name!.isNotEmpty
+          ? 'Open profile, $name'
+          : 'Open profile',
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 44,
+            height: 44,
+            padding: const EdgeInsets.all(2),
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white,
+              gradient: AppColors.brandGradient,
             ),
-            child: ClipOval(
-              child: photoUrl != null && photoUrl!.isNotEmpty
-                  ? MndNetworkImage(
-                      imageUrl: photoUrl!,
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                      showWatermarkOnError: false,
-                      errorChild: _InitialsAvatar(initials: initials),
-                    )
-                  : _InitialsAvatar(initials: initials),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              child: ClipOval(
+                child: photoUrl != null && photoUrl!.isNotEmpty
+                    ? MndNetworkImage(
+                        imageUrl: photoUrl!,
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                        showWatermarkOnError: false,
+                        errorChild: _InitialsAvatar(initials: initials),
+                      )
+                    : _InitialsAvatar(initials: initials),
+              ),
             ),
           ),
         ),
@@ -261,40 +274,43 @@ class _NotificationBellButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: 40,
-            height: 40,
-            child: Stack(
-              alignment: Alignment.center,
-              children: <Widget>[
-                const Icon(
-                  Icons.notifications_none_rounded,
-                  color: AppColors.textPrimary,
-                  size: 24,
-                ),
-                if (hasUnread)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: AppColors.brandPrimary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
+    return Semantics(
+      button: true,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Stack(
+                alignment: Alignment.center,
+                children: <Widget>[
+                  const Icon(
+                    Icons.notifications_none_rounded,
+                    color: AppColors.textPrimary,
+                    size: 24,
+                  ),
+                  if (hasUnread)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: AppColors.brandPrimary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

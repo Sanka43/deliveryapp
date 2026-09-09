@@ -298,7 +298,7 @@ async function sendPushToCustomer(input: {
   }
 }
 
-async function notifyCustomerOrderEvent(input: {
+export async function notifyCustomerOrderEvent(input: {
   customerId: string;
   orderId: string;
   type: string;

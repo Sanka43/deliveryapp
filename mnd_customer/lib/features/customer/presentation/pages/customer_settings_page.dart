@@ -150,8 +150,7 @@ class _SettingsScrollContent extends ConsumerWidget {
     final ThemeData theme = Theme.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
     final double bottomClearance = floatingNavTotalHeight(context);
-    final bool signingOut =
-        ref.watch(phoneAuthControllerProvider).isLoading;
+    final bool signingOut = ref.watch(phoneAuthControllerProvider).isLoading;
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(
@@ -169,76 +168,87 @@ class _SettingsScrollContent extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                MndPremiumCard(
-                  onTap: () => context.push(AppRoutes.customerProfile),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.md,
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      CustomerProfileAvatar(profile: profile, size: 56),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Text(
-                          profile.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                            color: AppColors.textPrimary,
+                Semantics(
+                  button: true,
+                  label: 'Open profile, ${profile.name}',
+                  excludeSemantics: true,
+                  child: MndPremiumCard(
+                    onTap: () => context.push(AppRoutes.customerProfile),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.md,
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        CustomerProfileAvatar(profile: profile, size: 56),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Text(
+                            profile.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ),
-                      ),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.textSecondary.withValues(alpha: 0.8),
-                      ),
-                    ],
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.textSecondary.withValues(alpha: 0.8),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                MndPremiumCard(
-                  onTap: () => context.push(AppRoutes.customerProfileJobs),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.sm + 2,
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      const _SoftIconWell(
-                        icon: Icons.work_outline_rounded,
-                        background: AppColors.serviceJobs,
-                        iconColor: AppColors.accentPurple,
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              l10n.settingsJobsTitle,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              l10n.settingsJobsSubtitle,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
+                Semantics(
+                  button: true,
+                  label:
+                      '${l10n.settingsJobsTitle}, ${l10n.settingsJobsSubtitle}',
+                  excludeSemantics: true,
+                  child: MndPremiumCard(
+                    onTap: () => context.push(AppRoutes.customerProfileJobs),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm + 2,
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        const _SoftIconWell(
+                          icon: Icons.work_outline_rounded,
+                          background: AppColors.serviceJobs,
+                          iconColor: AppColors.accentPurple,
                         ),
-                      ),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.textSecondary.withValues(alpha: 0.8),
-                      ),
-                    ],
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                l10n.settingsJobsTitle,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                l10n.settingsJobsSubtitle,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.textSecondary.withValues(alpha: 0.8),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -271,6 +281,13 @@ class _SettingsScrollContent extends ConsumerWidget {
                           ref.watch(appLocaleProvider).valueOrNull,
                         ),
                         onTap: () => context.push(AppRoutes.customerLanguage),
+                      ),
+                      const _SettingsDivider(),
+                      _SettingsRow(
+                        icon: Icons.card_giftcard_rounded,
+                        title: l10n.settingsInviteFriends,
+                        subtitle: l10n.settingsInviteFriendsSubtitle,
+                        onTap: () => context.push(AppRoutes.customerReferral),
                       ),
                     ],
                   ),
@@ -426,49 +443,54 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
 
-    return MndPressable(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm + 2,
-        ),
-        child: Row(
-          children: <Widget>[
-            _SoftIconWell(
-              icon: icon,
-              background: AppColors.primaryBlue.withValues(alpha: 0.10),
-              iconColor: AppColors.primaryBlue,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  if (subtitle != null) ...<Widget>[
-                    const SizedBox(height: 2),
+    return Semantics(
+      button: true,
+      label: subtitle != null ? '$title, $subtitle' : title,
+      excludeSemantics: true,
+      child: MndPressable(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm + 2,
+          ),
+          child: Row(
+            children: <Widget>[
+              _SoftIconWell(
+                icon: icon,
+                background: AppColors.primaryBlue.withValues(alpha: 0.10),
+                iconColor: AppColors.primaryBlue,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
                     Text(
-                      subtitle!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
                       ),
                     ),
+                    if (subtitle != null) ...<Widget>[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.textSecondary.withValues(alpha: 0.8),
-            ),
-          ],
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary.withValues(alpha: 0.8),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -533,31 +555,37 @@ class _SignOutButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color error = AppColors.error;
 
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: MndPressable(
-        onTap: enabled ? onPressed : null,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-          decoration: BoxDecoration(
-            color: error.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
-            border: Border.all(color: error.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(Icons.logout_rounded, color: error, size: 20),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                AppLocalizations.of(context).settingsSignOutTitle,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: error,
-                    ),
-              ),
-            ],
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: AppLocalizations.of(context).settingsSignOutTitle,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.55,
+        child: MndPressable(
+          onTap: enabled ? onPressed : null,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            decoration: BoxDecoration(
+              color: error.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(AppColors.cardRadiusMd),
+              border: Border.all(color: error.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(Icons.logout_rounded, color: error, size: 20),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  AppLocalizations.of(context).settingsSignOutTitle,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: error,
+                      ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -578,26 +606,31 @@ class _DeleteAccountButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color error = AppColors.error;
 
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: MndPressable(
-        onTap: enabled ? onPressed : null,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-          alignment: Alignment.center,
-          child: Text(
-            AppLocalizations.of(context).settingsDeleteAccountButton,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: error,
-                  decoration: TextDecoration.underline,
-                  decorationColor: error,
-                ),
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: AppLocalizations.of(context).settingsDeleteAccountButton,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.55,
+        child: MndPressable(
+          onTap: enabled ? onPressed : null,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            alignment: Alignment.center,
+            child: Text(
+              AppLocalizations.of(context).settingsDeleteAccountButton,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: error,
+                    decoration: TextDecoration.underline,
+                    decorationColor: error,
+                  ),
+            ),
           ),
         ),
       ),
     );
   }
 }
-

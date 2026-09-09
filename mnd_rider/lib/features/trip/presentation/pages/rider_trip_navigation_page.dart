@@ -509,17 +509,21 @@ class _RiderTripNavigationPageState
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: Row(
                 children: <Widget>[
-                  RiderMapChrome(
-                    padding: EdgeInsets.zero,
-                    borderRadius: 99,
-                    onTap: () => context.pop(),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Icon(
-                        Icons.arrow_back_rounded,
-                        color: cs.onSurface,
-                        size: 22,
+                  Semantics(
+                    button: true,
+                    label: 'Back',
+                    child: RiderMapChrome(
+                      padding: EdgeInsets.zero,
+                      borderRadius: 99,
+                      onTap: () => context.pop(),
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: Icon(
+                          Icons.arrow_back_rounded,
+                          color: cs.onSurface,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ),
@@ -530,18 +534,22 @@ class _RiderTripNavigationPageState
                     compact: true,
                   ),
                   const Spacer(),
-                  RiderMapChrome(
-                    padding: EdgeInsets.zero,
-                    borderRadius: 99,
-                    onTap: () =>
-                        ref.invalidate(riderOrderDetailProvider(_order.id)),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Icon(
-                        Icons.refresh_rounded,
-                        color: cs.onSurface,
-                        size: 22,
+                  Semantics(
+                    button: true,
+                    label: 'Refresh order status',
+                    child: RiderMapChrome(
+                      padding: EdgeInsets.zero,
+                      borderRadius: 99,
+                      onTap: () =>
+                          ref.invalidate(riderOrderDetailProvider(_order.id)),
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: Icon(
+                          Icons.refresh_rounded,
+                          color: cs.onSurface,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ),

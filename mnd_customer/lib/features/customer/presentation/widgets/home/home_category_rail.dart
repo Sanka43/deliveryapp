@@ -124,40 +124,45 @@ class _ServiceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String label = _categoryLabel(context, item.action);
-    return MndPressable(
-      onTap: onTap,
-      scale: 0.96,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          AspectRatio(
-            aspectRatio: 1,
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.homeMutedFill,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              padding: const EdgeInsets.all(8),
-              child: Image.asset(
-                item.assetPath,
-                fit: BoxFit.contain,
-                semanticLabel: label,
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: MndPressable(
+        onTap: onTap,
+        scale: 0.96,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.homeMutedFill,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.all(8),
+                child: Image.asset(
+                  item.assetPath,
+                  fit: BoxFit.contain,
+                  semanticLabel: label,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
-                  letterSpacing: -0.1,
-                ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                    letterSpacing: -0.1,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }

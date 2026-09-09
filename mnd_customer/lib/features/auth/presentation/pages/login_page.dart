@@ -474,7 +474,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
   ) {
     final OutlineInputBorder quietBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(28),
-      borderSide: BorderSide(color: AppColors.brandPrimary.withValues(alpha: 0.14)),
+      borderSide:
+          BorderSide(color: AppColors.brandPrimary.withValues(alpha: 0.14)),
     );
 
     return SingleChildScrollView(
@@ -565,10 +566,11 @@ class _LoginPageState extends ConsumerState<LoginPage>
                       },
                       decoration: InputDecoration(
                         hintText: AppLocalizations.of(context).loginPhoneHint,
-                        hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: _muted.withValues(alpha: 0.6),
-                              fontWeight: FontWeight.w400,
-                            ),
+                        hintStyle:
+                            Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: _muted.withValues(alpha: 0.6),
+                                  fontWeight: FontWeight.w400,
+                                ),
                         prefixIcon: Icon(
                           Icons.phone_iphone_rounded,
                           color: _muted.withValues(alpha: 0.7),
@@ -596,9 +598,10 @@ class _LoginPageState extends ConsumerState<LoginPage>
                           borderRadius: BorderRadius.circular(28),
                           borderSide: const BorderSide(color: AppColors.error),
                         ),
-                        errorStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.error,
-                            ),
+                        errorStyle:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: AppColors.error,
+                                ),
                       ),
                       validator: (String? value) {
                         return PhoneNumberUtils.validateNationalNumber(
@@ -654,7 +657,10 @@ class _LoginPageState extends ConsumerState<LoginPage>
                           children: <Widget>[
                             Text(
                               AppLocalizations.of(context).actionContinue,
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.3,
                                   ),
@@ -673,7 +679,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   onPressed: authState.isLoading ? null : _onGuestContinue,
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white,
-                    disabledForegroundColor: Colors.white.withValues(alpha: 0.4),
+                    disabledForegroundColor:
+                        Colors.white.withValues(alpha: 0.4),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(28),
                     ),
@@ -731,15 +738,19 @@ class _LoginPageState extends ConsumerState<LoginPage>
             child: Material(
               color: Colors.black.withValues(alpha: 0.28),
               shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: authState.isLoading ? null : _goToPhoneStep,
-                child: const Padding(
-                  padding: EdgeInsets.all(10),
-                  child: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    size: 16,
-                    color: Colors.white,
+              child: Semantics(
+                button: true,
+                label: AppLocalizations.of(context).actionBack,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: authState.isLoading ? null : _goToPhoneStep,
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -750,7 +761,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight - 52),
+              constraints:
+                  BoxConstraints(minHeight: constraints.maxHeight - 52),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -804,7 +816,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                           ),
                     ),
                   ],
-                  if (_secondsRemaining == 0 || _resendAttempts >= 1) ...<Widget>[
+                  if (_secondsRemaining == 0 ||
+                      _resendAttempts >= 1) ...<Widget>[
                     const SizedBox(height: AppSpacing.md),
                     Text(
                       AppLocalizations.of(context).loginSmsHelpHint,
@@ -826,7 +839,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                             AppColors.brandPrimary.withValues(alpha: 0.45),
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        shadowColor: AppColors.brandPrimary.withValues(alpha: 0.35),
+                        shadowColor:
+                            AppColors.brandPrimary.withValues(alpha: 0.35),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(28),
                         ),
@@ -846,13 +860,17 @@ class _LoginPageState extends ConsumerState<LoginPage>
                                 Text(
                                   AppLocalizations.of(context)
                                       .loginVerifyAndContinue,
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
                                         fontWeight: FontWeight.w700,
                                         letterSpacing: 0.3,
                                       ),
                                 ),
                                 const SizedBox(width: AppSpacing.xs),
-                                const Icon(Icons.arrow_forward_rounded, size: 18),
+                                const Icon(Icons.arrow_forward_rounded,
+                                    size: 18),
                               ],
                             ),
                     ),
@@ -865,18 +883,19 @@ class _LoginPageState extends ConsumerState<LoginPage>
                           _secondsRemaining > 0
                               ? AppLocalizations.of(context)
                                   .loginResendCountdown(_secondsRemaining)
-                              : AppLocalizations.of(context)
-                                  .loginDidNotGetCode,
+                              : AppLocalizations.of(context).loginDidNotGetCode,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.75),
-                                fontWeight: FontWeight.w400,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.75),
+                                    fontWeight: FontWeight.w400,
+                                  ),
                         ),
                         TextButton(
-                          onPressed: authState.isLoading || _secondsRemaining > 0
-                              ? null
-                              : _resendOtpCode,
+                          onPressed:
+                              authState.isLoading || _secondsRemaining > 0
+                                  ? null
+                                  : _resendOtpCode,
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.white,
                             disabledForegroundColor: Colors.white,
@@ -887,7 +906,10 @@ class _LoginPageState extends ConsumerState<LoginPage>
                           ),
                           child: Text(
                             AppLocalizations.of(context).actionResend,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.underline,
@@ -959,47 +981,51 @@ class _OtpBoxes extends StatelessWidget {
                 border: Border.all(color: borderColor, width: 1.5),
               ),
               alignment: Alignment.center,
-              child: TextField(
-                controller: controllers[index],
-                focusNode: focusNodes[index],
-                enabled: enabled,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                textAlignVertical: TextAlignVertical.center,
-                maxLength: 6,
-                autofillHints: index == 0
-                    ? const <String>[AutofillHints.oneTimeCode]
-                    : null,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
-                    ),
-                cursorColor: AppColors.brandSecondary,
-                cursorWidth: 1.5,
-                showCursor: true,
-                inputFormatters: <TextInputFormatter>[
-                  FilteringTextInputFormatter.digitsOnly,
-                ],
-                decoration: const InputDecoration(
-                  counterText: '',
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  filled: true,
-                  fillColor: Colors.transparent,
-                  isCollapsed: true,
-                  contentPadding: EdgeInsets.zero,
+              child: Semantics(
+                label: 'OTP digit ${index + 1} of ${controllers.length}',
+                textField: true,
+                child: TextField(
+                  controller: controllers[index],
+                  focusNode: focusNodes[index],
+                  enabled: enabled,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  textAlignVertical: TextAlignVertical.center,
+                  maxLength: 6,
+                  autofillHints: index == 0
+                      ? const <String>[AutofillHints.oneTimeCode]
+                      : null,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                      ),
+                  cursorColor: AppColors.brandSecondary,
+                  cursorWidth: 1.5,
+                  showCursor: true,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  decoration: const InputDecoration(
+                    counterText: '',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    filled: true,
+                    fillColor: Colors.transparent,
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (String value) => onChanged(index, value),
+                  onTap: () {
+                    controllers[index].selection = TextSelection(
+                      baseOffset: 0,
+                      extentOffset: controllers[index].text.length,
+                    );
+                  },
                 ),
-                onChanged: (String value) => onChanged(index, value),
-                onTap: () {
-                  controllers[index].selection = TextSelection(
-                    baseOffset: 0,
-                    extentOffset: controllers[index].text.length,
-                  );
-                },
               ),
             ),
           ),

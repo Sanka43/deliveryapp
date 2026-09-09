@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_rider/app/providers/firebase_providers.dart';
 import 'package:mnd_rider/core/constants/firebase_collections.dart';
+import 'package:mnd_rider/core/services/analytics_service.dart';
 import 'package:mnd_rider/core/services/firebase/firebase_storage_service.dart';
 import 'package:mnd_rider/core/utils/user_facing_error.dart';
 import 'package:mnd_rider/features/auth/data/rider_registration_validator.dart';
@@ -123,6 +126,7 @@ class RiderAuthRepository {
     }
 
     await _auth.signInWithCustomToken(customToken);
+    unawaited(AnalyticsService.logLogin());
     await _auth.currentUser?.reload();
     if (!isPhoneVerifiedFor(e164Phone)) {
       await Future<void>.delayed(const Duration(milliseconds: 200));

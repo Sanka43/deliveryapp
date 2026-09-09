@@ -108,73 +108,79 @@ class _RiderSlideToConfirmState extends State<RiderSlideToConfirm>
         _trackWidth = constraints.maxWidth;
         final double progress = _maxDrag == 0 ? 0 : _dragPixels / _maxDrag;
 
-        return Container(
-          height: widget.height,
-          decoration: BoxDecoration(
-            color: trackColor,
-            borderRadius: BorderRadius.circular(widget.height / 2),
-          ),
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: <Widget>[
-              Positioned.fill(
-                child: Opacity(
-                  opacity: (1 - progress * 1.6).clamp(0, 1),
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Text(
-                          widget.label,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: labelColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: labelColor,
-                          size: 20,
-                        ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: labelColor.withValues(alpha: 0.5),
-                          size: 20,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 4 + _dragPixels,
-                child: GestureDetector(
-                  onHorizontalDragUpdate: _onPanUpdate,
-                  onHorizontalDragEnd: _onPanEnd,
-                  child: Container(
-                    width: _thumbSize,
-                    height: _thumbSize,
-                    decoration: BoxDecoration(
-                      color: thumbColor,
-                      shape: BoxShape.circle,
-                    ),
+        return Semantics(
+          button: true,
+          enabled: _enabled,
+          label:
+              _enabled ? '${widget.label}, slide to confirm' : widget.label,
+          child: Container(
+            height: widget.height,
+            decoration: BoxDecoration(
+              color: trackColor,
+              borderRadius: BorderRadius.circular(widget.height / 2),
+            ),
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: <Widget>[
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: (1 - progress * 1.6).clamp(0, 1),
                     child: Center(
-                      child: widget.busy
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Icon(widget.icon, color: Colors.white, size: 24),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            widget.label,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: labelColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: labelColor,
+                            size: 20,
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: labelColor.withValues(alpha: 0.5),
+                            size: 20,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                Positioned(
+                  left: 4 + _dragPixels,
+                  child: GestureDetector(
+                    onHorizontalDragUpdate: _onPanUpdate,
+                    onHorizontalDragEnd: _onPanEnd,
+                    child: Container(
+                      width: _thumbSize,
+                      height: _thumbSize,
+                      decoration: BoxDecoration(
+                        color: thumbColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: widget.busy
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Icon(widget.icon, color: Colors.white, size: 24),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

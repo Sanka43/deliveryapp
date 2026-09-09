@@ -30,6 +30,7 @@ import 'package:mnd_delivery_app/features/jobs/presentation/pages/my_job_posts_p
 import 'package:mnd_delivery_app/features/jobs/presentation/pages/post_job_page.dart';
 import 'package:mnd_delivery_app/features/jobs/presentation/pages/saved_jobs_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/language_selector_page.dart';
+import 'package:mnd_delivery_app/features/referral/presentation/pages/referral_invite_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/notification_settings_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_notifications_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_search_page.dart';
@@ -481,6 +482,12 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
         parentNavigatorKey: rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) =>
             const LanguageSelectorPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.customerReferral,
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) =>
+            const ReferralInvitePage(),
       ),
       GoRoute(
         path: AppRoutes.customerPrivacy,

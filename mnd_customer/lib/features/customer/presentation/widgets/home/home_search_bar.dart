@@ -16,38 +16,42 @@ class HomeSearchBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return MndPressable(
-      onTap: () => openCustomerSearch(context),
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: AppColors.textSecondary.withValues(alpha: 0.18),
+    return Semantics(
+      button: true,
+      label: AppLocalizations.of(context).homeSearchHint,
+      child: MndPressable(
+        onTap: () => openCustomerSearch(context),
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: AppColors.textSecondary.withValues(alpha: 0.18),
+            ),
           ),
-        ),
-        child: Row(
-          children: <Widget>[
-            Icon(
-              Icons.search_rounded,
-              color: AppColors.textSecondary.withValues(alpha: 0.85),
-              size: 20,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                AppLocalizations.of(context).homeSearchHint,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
+          child: Row(
+            children: <Widget>[
+              Icon(
+                Icons.search_rounded,
+                color: AppColors.textSecondary.withValues(alpha: 0.85),
+                size: 20,
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  AppLocalizations.of(context).homeSearchHint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

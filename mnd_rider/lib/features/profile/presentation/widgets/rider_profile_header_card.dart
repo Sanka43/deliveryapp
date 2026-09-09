@@ -266,6 +266,7 @@ class _Avatar extends StatelessWidget {
           ? Image.network(
               profile.profilePhotoUrl!,
               fit: BoxFit.cover,
+              semanticLabel: 'Profile photo',
               errorBuilder: (
                 BuildContext context,
                 Object error,

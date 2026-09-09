@@ -15,6 +15,7 @@ import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/hom
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_nearby_shops_section.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_recommended_section.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_search_bar.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/referral_code_banner.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/floating_glass_nav_bar.dart';
 
 class CustomerHomePage extends ConsumerWidget {
@@ -72,6 +73,7 @@ class _CustomerHomeContent extends ConsumerWidget {
                 delegate: SliverChildListDelegate(
                   <Widget>[
                     const AddToHomeScreenBanner(),
+                    const ReferralCodeBanner(),
                     const HomeSearchBar(),
                     const SizedBox(height: AppSpacing.sm),
                     const HomeCategoryRail(),

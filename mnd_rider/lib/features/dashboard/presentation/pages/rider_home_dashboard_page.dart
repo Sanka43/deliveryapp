@@ -173,13 +173,17 @@ class _RecenterFab extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onPressed,
-        child: SizedBox(
-          width: 56,
-          height: 56,
-          child: Icon(
-            Icons.my_location_rounded,
-            color: cs.onSurface,
-            size: 24,
+        child: Semantics(
+          button: true,
+          label: 'Recenter map on your location',
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: Icon(
+              Icons.my_location_rounded,
+              color: cs.onSurface,
+              size: 24,
+            ),
           ),
         ),
       ),

@@ -341,6 +341,7 @@ class _RiderOtpVerificationPageState extends ConsumerState<RiderOtpVerificationP
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: IconButton(
+                        tooltip: 'Back',
                         onPressed: busy
                             ? null
                             : () {
@@ -558,42 +559,46 @@ class _OtpBoxes extends StatelessWidget {
                 border: Border.all(color: borderColor),
               ),
               alignment: Alignment.center,
-              child: TextField(
-                controller: controllers[index],
-                focusNode: focusNodes[index],
-                enabled: enabled,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                textAlignVertical: TextAlignVertical.center,
-                style: GoogleFonts.plusJakartaSans(
-                  color: const Color(0xFF0A0A0A),
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  height: 1.2,
+              child: Semantics(
+                label: 'OTP digit ${index + 1} of ${controllers.length}',
+                textField: true,
+                child: TextField(
+                  controller: controllers[index],
+                  focusNode: focusNodes[index],
+                  enabled: enabled,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: const Color(0xFF0A0A0A),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                  cursorColor: AppColors.primaryBlue,
+                  cursorWidth: 1.5,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    filled: true,
+                    fillColor: Colors.transparent,
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (String value) => onChanged(index, value),
+                  onTap: () {
+                    controllers[index].selection = TextSelection(
+                      baseOffset: 0,
+                      extentOffset: controllers[index].text.length,
+                    );
+                  },
                 ),
-                cursorColor: AppColors.primaryBlue,
-                cursorWidth: 1.5,
-                inputFormatters: <TextInputFormatter>[
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  filled: true,
-                  fillColor: Colors.transparent,
-                  isCollapsed: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                onChanged: (String value) => onChanged(index, value),
-                onTap: () {
-                  controllers[index].selection = TextSelection(
-                    baseOffset: 0,
-                    extentOffset: controllers[index].text.length,
-                  );
-                },
               ),
             ),
           ),

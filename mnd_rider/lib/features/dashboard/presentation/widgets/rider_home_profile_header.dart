@@ -38,36 +38,41 @@ class RiderHomeProfileHeader extends ConsumerWidget {
                 },
         ),
         const Spacer(),
-        RiderMapChrome(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          onTap: () {
-            ref.read(riderShellTabIndexProvider.notifier).state = 2;
-          },
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: <Widget>[
-              Text(
-                'TODAY',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.4,
-                  color: cs.onSurfaceVariant,
-                  fontSize: 8.5,
+        Semantics(
+          button: true,
+          label:
+              "Today's earnings, ${LkrFormat.moneyDecimal(todayEarningsLkr)}. Tap to view earnings details",
+          child: RiderMapChrome(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            onTap: () {
+              ref.read(riderShellTabIndexProvider.notifier).state = 2;
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                Text(
+                  'TODAY',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                    color: cs.onSurfaceVariant,
+                    fontSize: 8.5,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                LkrFormat.moneyDecimal(todayEarningsLkr),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface,
-                  letterSpacing: 0,
-                  height: 1.05,
-                  fontSize: 15,
+                const SizedBox(height: 1),
+                Text(
+                  LkrFormat.moneyDecimal(todayEarningsLkr),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface,
+                    letterSpacing: 0,
+                    height: 1.05,
+                    fontSize: 15,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],

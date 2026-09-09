@@ -109,46 +109,50 @@ class _OpsHeader extends StatelessWidget {
         child: InkWell(
           onTap: onClaimTap,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-            child: Row(
-              children: <Widget>[
-                Container(
-                  width: 3,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryBlue,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: cs.onSurface,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                          ),
-                      children: <InlineSpan>[
-                        TextSpan(text: '$openJobsCount open nearby'),
-                        TextSpan(
-                          text: '  ·  claim now',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+          child: Semantics(
+            button: true,
+            label: '$openJobsCount jobs open nearby, tap to claim',
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 3,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue,
+                      borderRadius: BorderRadius.circular(99),
                     ),
                   ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 18,
-                  color: AppColors.primaryBlue,
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: cs.onSurface,
+                              fontWeight: FontWeight.w700,
+                              height: 1.2,
+                            ),
+                        children: <InlineSpan>[
+                          TextSpan(text: '$openJobsCount open nearby'),
+                          TextSpan(
+                            text: '  ·  claim now',
+                            style: TextStyle(
+                              color: AppColors.primaryBlue,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 18,
+                    color: AppColors.primaryBlue,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -268,7 +272,11 @@ class _Metric extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: body,
+        child: Semantics(
+          button: true,
+          label: '$label: $value, tap to view open jobs',
+          child: body,
+        ),
       ),
     );
   }

@@ -41,6 +41,7 @@ class AppRoutes {
   static const String customerNotifications = '/customer/notifications';
   static const String customerSupport = '/customer/support';
   static const String customerLanguage = '/customer/settings/language';
+  static const String customerReferral = '/customer/settings/invite';
   static const String customerPrivacy = '/customer/settings/privacy';
   static const String customerTerms = '/customer/settings/terms';
 

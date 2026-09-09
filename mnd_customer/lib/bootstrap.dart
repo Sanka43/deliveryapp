@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mnd_delivery_app/app/app.dart';
 import 'package:mnd_delivery_app/core/config/env_config.dart';
@@ -20,6 +21,14 @@ Future<void> bootstrap() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  if (!kIsWeb) {
+    // Crashlytics has no web implementation — native platforms only.
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+  }
   if (kIsWeb) {
     // Phone auth reCAPTCHA must match the page origin (mnd.lk / *.web.app).
     // Newer Firebase Auth builds reject setting this after initializeApp — never

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
+import 'package:mnd_delivery_app/core/services/analytics_service.dart';
 import 'package:mnd_delivery_app/core/utils/payhere_native_launcher.dart';
 import 'package:mnd_delivery_app/features/cart/domain/delivery_pricing.dart';
 import 'package:mnd_delivery_app/features/cart/domain/platform_fee_config.dart';
@@ -121,12 +124,11 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       // the coupon may have expired or hit its usage limit since it was
       // applied. A silent failure here just leaves it unapplied; the coupon
       // code is still restored into the text field below for a manual retry.
-      final CouponValidationResult result = await ref
-          .read(couponRepositoryProvider)
-          .validate(
-            code: snapshot.couponCode!,
-            subtotalLkr: ref.read(cartProvider).subtotal,
-          );
+      final CouponValidationResult result =
+          await ref.read(couponRepositoryProvider).validate(
+                code: snapshot.couponCode!,
+                subtotalLkr: ref.read(cartProvider).subtotal,
+              );
       if (result.isSuccess && mounted) {
         cartNotifier.setCoupon(result.coupon!);
       }
@@ -340,19 +342,24 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleSmall
-                                          ?.copyWith(fontWeight: FontWeight.w700),
+                                          ?.copyWith(
+                                              fontWeight: FontWeight.w700),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      _resumedFrom!.pendingTrackingNumber != null
-                                          ? l10n.checkoutResumedWithTrackingMessage(
-                                              _resumedFrom!.pendingTrackingNumber!,
+                                      _resumedFrom!.pendingTrackingNumber !=
+                                              null
+                                          ? l10n
+                                              .checkoutResumedWithTrackingMessage(
+                                              _resumedFrom!
+                                                  .pendingTrackingNumber!,
                                             )
                                           : l10n.checkoutResumedMessage,
                                       style:
                                           Theme.of(context).textTheme.bodySmall,
                                     ),
-                                    if (_resumedFrom!.pendingOrderId != null) ...<Widget>[
+                                    if (_resumedFrom!.pendingOrderId !=
+                                        null) ...<Widget>[
                                       const SizedBox(height: 4),
                                       TextButton(
                                         style: TextButton.styleFrom(
@@ -387,7 +394,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                   children: <Widget>[
                                     Icon(
                                       Icons.info_outline,
-                                      color: Theme.of(context).colorScheme.error,
+                                      color:
+                                          Theme.of(context).colorScheme.error,
                                     ),
                                     const SizedBox(width: AppSpacing.sm),
                                     Expanded(
@@ -414,7 +422,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       itemCount: cart.itemCount,
                       fulfillmentMode: cart.fulfillmentMode,
                       onFulfillmentChanged: (FulfillmentMode mode) {
-                        ref.read(cartProvider.notifier).setFulfillmentMode(mode);
+                        ref
+                            .read(cartProvider.notifier)
+                            .setFulfillmentMode(mode);
                         if (mode == FulfillmentMode.selfPickup) {
                           setState(
                             () => _payment = CheckoutPaymentMethod.payhere,
@@ -445,7 +455,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                 .read(cartProvider.notifier)
                                 .setDropoffLocation(a.latitude!, a.longitude!);
                           } else {
-                            ref.read(cartProvider.notifier).clearDropoffLocation();
+                            ref
+                                .read(cartProvider.notifier)
+                                .clearDropoffLocation();
                           }
                           setState(() {
                             _selectedSavedId = a.id;
@@ -625,9 +637,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
             onSignIn: placeOrderBlock == l10n.checkoutSignInRequired
                 ? () => navigateToSignInForCheckout(ref, context)
                 : null,
-            onPlaceOrder: placeOrderDisabled
-                ? null
-                : () => _onPlaceOrder(context),
+            onPlaceOrder:
+                placeOrderDisabled ? null : () => _onPlaceOrder(context),
           ),
         ],
       ),
@@ -635,11 +646,14 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   }
 
   Future<void> _openDeliveryMapPicker() async {
-    final DeliveryMapPickResult? pick = await DeliveryMapPickerPage.pick(context);
+    final DeliveryMapPickResult? pick =
+        await DeliveryMapPickerPage.pick(context);
     if (pick == null || !mounted) {
       return;
     }
-    ref.read(cartProvider.notifier).setDropoffLocation(pick.latitude, pick.longitude);
+    ref
+        .read(cartProvider.notifier)
+        .setDropoffLocation(pick.latitude, pick.longitude);
     setState(() {
       _selectedSavedId = null;
       _line1Controller.text = pick.line1;
@@ -854,12 +868,14 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       // Not localized: this becomes the order's stored addressLine1/city,
       // read by the rider and admin apps (not localized), not just displayed
       // here.
-      final String fallbackStoreName = cart.items.first.storeName.trim().isNotEmpty
-          ? cart.items.first.storeName.trim()
-          : 'Store';
+      final String fallbackStoreName =
+          cart.items.first.storeName.trim().isNotEmpty
+              ? cart.items.first.storeName.trim()
+              : 'Store';
       StorePickupInfo? pickupInfo;
       try {
-        pickupInfo = await ref.read(storePickupInfoByStoreIdProvider(storeId).future);
+        pickupInfo =
+            await ref.read(storePickupInfoByStoreIdProvider(storeId).future);
       } catch (_) {
         pickupInfo = null;
       }
@@ -875,7 +891,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
     setState(() => _placingOrder = true);
     try {
-      final OrderPlacementRepository repo = ref.read(orderPlacementRepositoryProvider);
+      final OrderPlacementRepository repo =
+          ref.read(orderPlacementRepositoryProvider);
 
       if (_payment == CheckoutPaymentMethod.payhere) {
         await _placeOrderWithPayHere(
@@ -917,6 +934,12 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       final String? tn = result.trackingNumber?.trim();
       final String? orderId = result.orderId;
       if (orderId != null && orderId.isNotEmpty) {
+        unawaited(
+          AnalyticsService.logOrderPlaced(
+            orderId: orderId,
+            totalLkr: total.toDouble(),
+          ),
+        );
         context.go(
           AppRoutes.customerOrderConfirmation,
           extra: <String, dynamic>{
@@ -1107,7 +1130,9 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                isOnline ? Icons.credit_card_rounded : Icons.receipt_long_rounded,
+                isOnline
+                    ? Icons.credit_card_rounded
+                    : Icons.receipt_long_rounded,
                 color: AppColors.brandPrimary,
                 size: 28,
               ),
@@ -1144,11 +1169,14 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context, false),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm + 2),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm + 2),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppColors.buttonRadius),
+                        borderRadius:
+                            BorderRadius.circular(AppColors.buttonRadius),
                       ),
-                      side: BorderSide(color: Colors.black.withValues(alpha: 0.12)),
+                      side: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.12)),
                       foregroundColor: AppColors.textPrimary,
                     ),
                     child: Text(l10n.actionCancel),
@@ -1160,9 +1188,11 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
                     onPressed: () => Navigator.pop(context, true),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.brandPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm + 2),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm + 2),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppColors.buttonRadius),
+                        borderRadius:
+                            BorderRadius.circular(AppColors.buttonRadius),
                       ),
                     ),
                     child: Text(l10n.actionConfirm),
@@ -1307,31 +1337,37 @@ class _SegmentChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppColors.primaryBlue : Colors.transparent,
-      borderRadius: BorderRadius.circular(AppColors.cardRadiusSm - 2),
-      child: InkWell(
-        onTap: onTap,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? AppColors.primaryBlue : Colors.transparent,
         borderRadius: BorderRadius.circular(AppColors.cardRadiusSm - 2),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                icon,
-                size: 18,
-                color: selected ? Colors.white : AppColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: selected ? Colors.white : AppColors.textPrimary,
-                    ),
-              ),
-            ],
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppColors.cardRadiusSm - 2),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(
+                  icon,
+                  size: 18,
+                  color: selected ? Colors.white : AppColors.textSecondary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: selected ? Colors.white : AppColors.textPrimary,
+                      ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1355,42 +1391,48 @@ class _SavedAddressChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color fg = selected ? Colors.white : AppColors.textPrimary;
-    return Material(
-      color: selected ? AppColors.primaryBlue : AppColors.homeMutedFill,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        onTap: onTap,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: isDefault ? '$label, default address' : label,
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? AppColors.primaryBlue : AppColors.homeMutedFill,
         borderRadius: BorderRadius.circular(999),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: 8,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                Icons.location_on_rounded,
-                size: 14,
-                color: selected ? Colors.white : AppColors.textSecondary,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: fg,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              if (isDefault) ...<Widget>[
-                const SizedBox(width: 4),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: 8,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
                 Icon(
-                  Icons.star_rounded,
+                  Icons.location_on_rounded,
                   size: 14,
-                  color: selected ? Colors.white : AppColors.warning,
+                  color: selected ? Colors.white : AppColors.textSecondary,
                 ),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: fg,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                if (isDefault) ...<Widget>[
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.star_rounded,
+                    size: 14,
+                    color: selected ? Colors.white : AppColors.warning,
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -1404,7 +1446,8 @@ class _CheckoutCouponCard extends ConsumerStatefulWidget {
   final TextEditingController controller;
 
   @override
-  ConsumerState<_CheckoutCouponCard> createState() => _CheckoutCouponCardState();
+  ConsumerState<_CheckoutCouponCard> createState() =>
+      _CheckoutCouponCardState();
 }
 
 class _CheckoutCouponCardState extends ConsumerState<_CheckoutCouponCard> {
@@ -1427,6 +1470,7 @@ class _CheckoutCouponCardState extends ConsumerState<_CheckoutCouponCard> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     if (result.isSuccess) {
       ref.read(cartProvider.notifier).setCoupon(result.coupon!);
+      unawaited(AnalyticsService.logCouponApplied(result.coupon!.code));
       showMndSnackBar(
         context,
         l10n.checkoutCouponAppliedMessage(result.coupon!.code),
@@ -1460,7 +1504,8 @@ class _CheckoutCouponCardState extends ConsumerState<_CheckoutCouponCard> {
         if (applied != null) {
           return Row(
             children: <Widget>[
-              Icon(Icons.check_circle_rounded, size: 18, color: AppColors.success),
+              Icon(Icons.check_circle_rounded,
+                  size: 18, color: AppColors.success),
               const SizedBox(width: AppSpacing.xs),
               Expanded(
                 child: Text(
@@ -1717,64 +1762,74 @@ class _MapPickCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.primaryBlue.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-      child: InkWell(
-        onTap: onTap,
+    return Semantics(
+      button: true,
+      label:
+          '${AppLocalizations.of(context).checkoutPickOnMapTitle}, ${AppLocalizations.of(context).checkoutPickOnMapSubtitle}',
+      excludeSemantics: true,
+      child: Material(
+        color: AppColors.primaryBlue.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-            border: Border.all(
-              color: AppColors.primaryBlue.withValues(alpha: 0.28),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+              border: Border.all(
+                color: AppColors.primaryBlue.withValues(alpha: 0.28),
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.sm),
-            child: Row(
-              children: <Widget>[
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryBlue,
-                    borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue,
+                      borderRadius:
+                          BorderRadius.circular(AppColors.cardRadiusSm),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.map_outlined,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.map_outlined,
-                    color: Colors.white,
-                    size: 24,
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          AppLocalizations.of(context).checkoutPickOnMapTitle,
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textPrimary,
+                                  ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          AppLocalizations.of(context)
+                              .checkoutPickOnMapSubtitle,
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        AppLocalizations.of(context).checkoutPickOnMapTitle,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        AppLocalizations.of(context).checkoutPickOnMapSubtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                      ),
-                    ],
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textSecondary.withValues(alpha: 0.9),
                   ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textSecondary.withValues(alpha: 0.9),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1931,94 +1986,108 @@ class _SelectedAddressBanner extends StatelessWidget {
       city,
     ].join(', ');
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-      child: InkWell(
-        onTap: onChangeTap,
+    return Semantics(
+      button: true,
+      label: 'Change delivery address, currently $detail',
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          decoration: BoxDecoration(
-            color: AppColors.primaryBlue.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-            border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.18)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+        child: InkWell(
+          onTap: onChangeTap,
+          borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+          child: Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+              border: Border.all(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.18)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.location_on_rounded,
+                    color: AppColors.primaryBlue,
+                    size: 20,
+                  ),
                 ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.location_on_rounded,
-                  color: AppColors.primaryBlue,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: <Widget>[
-                        Text(
-                          AppLocalizations.of(context).checkoutDeliveringToLabel,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: AppColors.primaryBlue,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        if (pinnedOnMap) ...<Widget>[
-                          const SizedBox(width: AppSpacing.xs),
-                          Icon(
-                            Icons.check_circle_rounded,
-                            size: 13,
-                            color: AppColors.success,
-                          ),
-                          const SizedBox(width: 2),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: <Widget>[
                           Text(
-                            AppLocalizations.of(context).checkoutPinnedLabel,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: AppColors.success,
+                            AppLocalizations.of(context)
+                                .checkoutDeliveringToLabel,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: AppColors.primaryBlue,
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
+                          if (pinnedOnMap) ...<Widget>[
+                            const SizedBox(width: AppSpacing.xs),
+                            Icon(
+                              Icons.check_circle_rounded,
+                              size: 13,
+                              color: AppColors.success,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              AppLocalizations.of(context).checkoutPinnedLabel,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: AppColors.success,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      detail,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            height: 1.3,
-                          ),
-                    ),
-                    if (phone.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 2),
+                      ),
+                      const SizedBox(height: 4),
                       Text(
-                        phone,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
+                        detail,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              height: 1.3,
                             ),
                       ),
+                      if (phone.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          phone,
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.primaryBlue.withValues(alpha: 0.6),
-              ),
-            ],
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.primaryBlue.withValues(alpha: 0.6),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2043,46 +2112,51 @@ class _PaymentChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color fill = selected && enabled
-        ? AppColors.primaryBlue
-        : AppColors.homeMutedFill;
-    final Color fg = selected && enabled
-        ? Colors.white
-        : AppColors.textSecondary;
+    final Color fill =
+        selected && enabled ? AppColors.primaryBlue : AppColors.homeMutedFill;
+    final Color fg =
+        selected && enabled ? Colors.white : AppColors.textSecondary;
 
-    return Opacity(
-      opacity: enabled ? 1 : 0.72,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-          child: Ink(
-            height: 52,
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-              border: Border.all(
-                color: selected && enabled
-                    ? AppColors.primaryBlue
-                    : Colors.black.withValues(alpha: 0.06),
-                width: 1.5,
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: enabled,
+      label: label,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.72,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+            child: Ink(
+              height: 52,
+              decoration: BoxDecoration(
+                color: fill,
+                borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+                border: Border.all(
+                  color: selected && enabled
+                      ? AppColors.primaryBlue
+                      : Colors.black.withValues(alpha: 0.06),
+                  width: 1.5,
+                ),
               ),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Icon(icon, size: 18, color: fg),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: fg,
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                ],
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Icon(icon, size: 18, color: fg),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: fg,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2118,7 +2192,10 @@ class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TextStyle? base = emphasize
-        ? Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)
+        ? Theme.of(context)
+            .textTheme
+            .titleMedium
+            ?.copyWith(fontWeight: FontWeight.w800)
         : Theme.of(context).textTheme.bodyLarge;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2133,7 +2210,8 @@ class _SummaryRow extends StatelessWidget {
                 value,
                 textAlign: TextAlign.end,
                 style: base?.copyWith(
-                  color: valueColor ?? (emphasize ? AppColors.primaryBlue : null),
+                  color:
+                      valueColor ?? (emphasize ? AppColors.primaryBlue : null),
                 ),
               ),
               if (detail != null && detail!.isNotEmpty)
@@ -2233,7 +2311,8 @@ class _CheckoutBottomBar extends StatelessWidget {
                       blockedHint!,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
                   ),

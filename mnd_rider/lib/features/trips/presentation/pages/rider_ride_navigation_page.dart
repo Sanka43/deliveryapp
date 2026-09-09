@@ -381,17 +381,21 @@ class _RiderRideNavigationPageState
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: RiderMapChrome(
-                  padding: EdgeInsets.zero,
-                  borderRadius: 99,
-                  onTap: () => context.pop(),
-                  child: SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: Icon(
-                      Icons.arrow_back_rounded,
-                      color: cs.onSurface,
-                      size: 22,
+                child: Semantics(
+                  button: true,
+                  label: 'Back',
+                  child: RiderMapChrome(
+                    padding: EdgeInsets.zero,
+                    borderRadius: 99,
+                    onTap: () => context.pop(),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Icon(
+                        Icons.arrow_back_rounded,
+                        color: cs.onSurface,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),
@@ -504,17 +508,21 @@ class _RiderRideNavigationPageState
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: Row(
                 children: <Widget>[
-                  RiderMapChrome(
-                    padding: EdgeInsets.zero,
-                    borderRadius: 99,
-                    onTap: () => context.pop(),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Icon(
-                        Icons.arrow_back_rounded,
-                        color: cs.onSurface,
-                        size: 22,
+                  Semantics(
+                    button: true,
+                    label: 'Back',
+                    child: RiderMapChrome(
+                      padding: EdgeInsets.zero,
+                      borderRadius: 99,
+                      onTap: () => context.pop(),
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: Icon(
+                          Icons.arrow_back_rounded,
+                          color: cs.onSurface,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ),
@@ -526,17 +534,21 @@ class _RiderRideNavigationPageState
                   ),
                   const Spacer(),
                   if (_trip.contactPhone.isNotEmpty)
-                    RiderMapChrome(
-                      padding: EdgeInsets.zero,
-                      borderRadius: 99,
-                      onTap: _busy ? null : _callPassenger,
-                      child: SizedBox(
-                        width: 44,
-                        height: 44,
-                        child: Icon(
-                          Icons.phone_rounded,
-                          color: cs.onSurface,
-                          size: 22,
+                    Semantics(
+                      button: true,
+                      label: 'Call passenger',
+                      child: RiderMapChrome(
+                        padding: EdgeInsets.zero,
+                        borderRadius: 99,
+                        onTap: _busy ? null : _callPassenger,
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Icon(
+                            Icons.phone_rounded,
+                            color: cs.onSurface,
+                            size: 22,
+                          ),
                         ),
                       ),
                     ),
