@@ -2382,13 +2382,13 @@
                 ? `<button type="button" class="btn btn-ghost btn-sm" data-cancel-ride="${escapeHtml(t.id)}">Cancel</button>`
                 : "";
               return `<tr class="order-row" tabindex="0" data-view-trip="${escapeHtml(t.id)}" aria-label="View ride details">
-          <td><strong>${escapeHtml(tripDisplayNumber(t))}</strong><br/><small>${escapeHtml(fmtTs(t.createdAt))}</small></td>
-          <td><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
-          <td><strong>${escapeHtml(riderLabel)}</strong><br/><small>${escapeHtml(vehicle)}</small></td>
-          <td class="ongoing-route-cell">${escapeHtml(route.pickupLabel)} → ${escapeHtml(route.dropoffLabel)}</td>
-          <td>${fmtMoney(t.estimatedFareLkr)}</td>
-          <td><span class="badge ${badgeClass(stRaw)}">${escapeHtml(statusLabel(stRaw))}</span></td>
-          <td class="row-actions">${cancelBtn}</td>
+          <td data-label="Trip"><strong>${escapeHtml(tripDisplayNumber(t))}</strong><br/><small>${escapeHtml(fmtTs(t.createdAt))}</small></td>
+          <td data-label="Customer"><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
+          <td data-label="Rider"><strong>${escapeHtml(riderLabel)}</strong><br/><small>${escapeHtml(vehicle)}</small></td>
+          <td class="ongoing-route-cell" data-label="Route">${escapeHtml(route.pickupLabel)} → ${escapeHtml(route.dropoffLabel)}</td>
+          <td data-label="Fare">${fmtMoney(t.estimatedFareLkr)}</td>
+          <td data-label="Status"><span class="badge ${badgeClass(stRaw)}">${escapeHtml(statusLabel(stRaw))}</span></td>
+          <td class="row-actions" data-label="Actions">${cancelBtn}</td>
         </tr>`;
             })
             .join("");
@@ -3167,14 +3167,14 @@
                     ? `${n} <span class="muted-inline">(${booked} booked)</span>`
                     : String(n);
               return `<tr>
-        <td><strong>${escapeHtml(j.title || "—")}</strong></td>
-        <td>${escapeHtml(j.companyName || "—")}</td>
-        <td>${escapeHtml(j.salary || "—")}</td>
-        <td>${jobLaborLimit(j)} workers</td>
-        <td><span class="badge ${j.status === "active" ? "badge-delivered" : "badge-pending"}">${escapeHtml(j.status || "—")}</span></td>
-        <td>${applicantLabel}</td>
-        <td>${escapeHtml(fmtTs(j.createdAt))}</td>
-        <td class="row-actions">
+        <td data-label="Title"><strong>${escapeHtml(j.title || "—")}</strong></td>
+        <td data-label="Company">${escapeHtml(j.companyName || "—")}</td>
+        <td data-label="Salary">${escapeHtml(j.salary || "—")}</td>
+        <td data-label="Workers">${jobLaborLimit(j)} workers</td>
+        <td data-label="Status"><span class="badge ${j.status === "active" ? "badge-delivered" : "badge-pending"}">${escapeHtml(j.status || "—")}</span></td>
+        <td data-label="Applicants">${applicantLabel}</td>
+        <td data-label="Posted">${escapeHtml(fmtTs(j.createdAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-primary btn-sm" data-job-apps="${escapeHtml(j.id)}">Applications${n > 0 ? ` (${n})` : ""}</button>
           <button type="button" class="btn btn-ghost btn-sm" data-edit-job="${escapeHtml(j.id)}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-job="${escapeHtml(j.id)}">Delete</button>
@@ -3204,11 +3204,11 @@
             .map((r) => {
               const job = cache.jobs.find((x) => x.id === r.jobId);
               return `<tr>
-        <td><strong>${escapeHtml(job ? job.title : r.jobId || "—")}</strong></td>
-        <td>${escapeHtml(r.reason || "—")}</td>
-        <td>${escapeHtml(r.reporterId || "—")}</td>
-        <td>${escapeHtml(fmtTs(r.createdAt))}</td>
-        <td class="row-actions">
+        <td data-label="Job"><strong>${escapeHtml(job ? job.title : r.jobId || "—")}</strong></td>
+        <td data-label="Reason">${escapeHtml(r.reason || "—")}</td>
+        <td data-label="Reported by">${escapeHtml(r.reporterId || "—")}</td>
+        <td data-label="Reported">${escapeHtml(fmtTs(r.createdAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-dismiss-job-report="${escapeHtml(r.id)}">Dismiss</button>
         </td>
       </tr>`;
@@ -3444,14 +3444,14 @@
               const approval = riderRegistrationStatus(r);
               const isApproved = approval === "approved" || approval === "active";
               return `<tr class="rider-row" tabindex="0" data-view-rider="${escapeHtml(r.id)}" aria-label="View rider details">
-        <td>${escapeHtml(r.id)}</td>
-        <td>${escapeHtml(name)}</td>
-        <td>${escapeHtml(phone)}</td>
-        <td>${escapeHtml(riderVehicleLabel(r))}</td>
-        <td>${riderStatusBadge(r.status)}</td>
-        <td>${r.online === true ? "Yes" : "No"}</td>
-        <td>${riderCashCell(r)}</td>
-        <td class="row-actions">
+        <td data-label="ID">${escapeHtml(r.id)}</td>
+        <td data-label="Name">${escapeHtml(name)}</td>
+        <td data-label="Phone">${escapeHtml(phone)}</td>
+        <td data-label="Vehicle">${escapeHtml(riderVehicleLabel(r))}</td>
+        <td data-label="Status">${riderStatusBadge(r.status)}</td>
+        <td data-label="Online">${r.online === true ? "Yes" : "No"}</td>
+        <td data-label="Cash in hand">${riderCashCell(r)}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-approve-rider="${escapeHtml(r.id)}" ${isApproved ? "disabled" : ""}>Approve</button>
           <button type="button" class="btn btn-ghost btn-sm" data-reject-rider="${escapeHtml(r.id)}">Reject</button>
           <button type="button" class="btn btn-ghost btn-sm" data-edit-rider="${escapeHtml(r.id)}">Edit</button>
@@ -3521,7 +3521,7 @@
         : list
             .map(
               (u) => `<tr>
-        <td>
+        <td data-label="Customer">
           <div class="customer-cell">
             <div class="customer-avatar">${escapeHtml(customerInitials(u))}</div>
             <div>
@@ -3530,16 +3530,16 @@
             </div>
           </div>
         </td>
-        <td>
+        <td data-label="Contact">
           <div class="customer-contact">
             <strong>${escapeHtml(customerPhone(u) || "No phone")}</strong>
             <small>${escapeHtml(customerEmail(u) || "No email")}</small>
           </div>
         </td>
-        <td>${customerRoleBadge(u.role)}</td>
-        <td><strong>${escapeHtml(String(jobPostCreditsOf(u)))}</strong></td>
-        <td>${escapeHtml(fmtTs(u.createdAt))}</td>
-        <td class="row-actions">
+        <td data-label="Role">${customerRoleBadge(u.role)}</td>
+        <td data-label="Job credits"><strong>${escapeHtml(String(jobPostCreditsOf(u)))}</strong></td>
+        <td data-label="Joined">${escapeHtml(fmtTs(u.createdAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-view-customer="${escapeHtml(u.id)}">View</button>
           <button type="button" class="btn btn-primary btn-sm" data-grant-credits="${escapeHtml(u.id)}">Grant credits</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-customer="${escapeHtml(u.id)}">Delete</button>
@@ -5541,16 +5541,16 @@
               const hideLabel = status === "hidden" ? "Unhide" : "Hide";
               const nextStatus = status === "hidden" ? "visible" : "hidden";
               return `<tr>
-        <td>
+        <td data-label="Shop">
           <strong>${escapeHtml(r.storeName || "—")}</strong><br>
           <code style="font-size:11px">${escapeHtml(r.vendorId || "")}</code>
         </td>
-        <td><code>${escapeHtml(r.customerId || "—")}</code></td>
-        <td title="${stars}/5">${escapeHtml(starLabel)} <span style="color:var(--muted)">${stars}</span></td>
-        <td style="max-width:220px;white-space:normal">${escapeHtml(r.comment || "—")}</td>
-        <td><span class="badge">${escapeHtml(status)}</span></td>
-        <td>${escapeHtml(fmtTs(r.createdAt))}</td>
-        <td class="row-actions">
+        <td data-label="Customer"><code>${escapeHtml(r.customerId || "—")}</code></td>
+        <td data-label="Stars" title="${stars}/5">${escapeHtml(starLabel)} <span style="color:var(--muted)">${stars}</span></td>
+        <td data-label="Comment" style="max-width:220px;white-space:normal">${escapeHtml(r.comment || "—")}</td>
+        <td data-label="Status"><span class="badge">${escapeHtml(status)}</span></td>
+        <td data-label="Date">${escapeHtml(fmtTs(r.createdAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-rating-status="${escapeHtml(nextStatus)}" data-rating-id="${escapeHtml(r.id)}">${hideLabel}</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-rating="${escapeHtml(r.id)}">Delete</button>
         </td>
@@ -5906,13 +5906,13 @@
               ? vendor.name || vendor.shopName || p.vendorDocId
               : p.vendorId || p.vendorDocId || "Unknown shop";
             return `<tr>
-        <td>${escapeHtml(name)}</td>
-        <td><strong>${escapeHtml(fmtMoney(p.amountLkr))}</strong></td>
-        <td>${escapeHtml(p.payoutMethod || "—")}</td>
-        <td>${escapeHtml(p.payoutAccount || "—")}</td>
-        <td>${escapeHtml(p.note || "—")}</td>
-        <td>${escapeHtml(fmtTs(p.createdAt))}</td>
-        <td class="row-actions">
+        <td data-label="Shop">${escapeHtml(name)}</td>
+        <td data-label="Amount"><strong>${escapeHtml(fmtMoney(p.amountLkr))}</strong></td>
+        <td data-label="Method">${escapeHtml(p.payoutMethod || "—")}</td>
+        <td data-label="Account">${escapeHtml(p.payoutAccount || "—")}</td>
+        <td data-label="Note">${escapeHtml(p.note || "—")}</td>
+        <td data-label="Requested">${escapeHtml(fmtTs(p.createdAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-primary btn-sm" data-pay-vendor-payout="${escapeHtml(p.id)}" data-vendor="${escapeHtml(p.vendorDocId)}">Mark paid</button>
           <button type="button" class="btn btn-ghost btn-sm" data-reject-vendor-payout="${escapeHtml(p.id)}" data-vendor="${escapeHtml(p.vendorDocId)}">Reject</button>
         </td>
@@ -6470,13 +6470,13 @@
             const rider = cache.riders.find((r) => r.id === w.riderDocId);
             const name = rider ? riderDisplayName(rider) : w.riderId || w.riderDocId || "Unknown rider";
             return `<tr>
-        <td>${escapeHtml(name)}</td>
-        <td><strong>${escapeHtml(fmtMoney(w.amountLkr))}</strong></td>
-        <td>${escapeHtml(w.payoutMethod || "—")}</td>
-        <td>${escapeHtml(w.payoutAccount || "—")}</td>
-        <td>${escapeHtml(w.note || "—")}</td>
-        <td>${escapeHtml(fmtTs(w.createdAt))}</td>
-        <td class="row-actions">
+        <td data-label="Rider">${escapeHtml(name)}</td>
+        <td data-label="Amount"><strong>${escapeHtml(fmtMoney(w.amountLkr))}</strong></td>
+        <td data-label="Method">${escapeHtml(w.payoutMethod || "—")}</td>
+        <td data-label="Account">${escapeHtml(w.payoutAccount || "—")}</td>
+        <td data-label="Note">${escapeHtml(w.note || "—")}</td>
+        <td data-label="Requested">${escapeHtml(fmtTs(w.createdAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-primary btn-sm" data-pay-withdrawal="${escapeHtml(w.id)}" data-rider="${escapeHtml(w.riderDocId)}">Mark paid</button>
           <button type="button" class="btn btn-ghost btn-sm" data-reject-withdrawal="${escapeHtml(w.id)}" data-rider="${escapeHtml(w.riderDocId)}">Reject</button>
         </td>
@@ -6565,24 +6565,24 @@
               const declaredDiffers =
                 s.declaredAmountLkr != null && Number(s.declaredAmountLkr) !== Number(s.amountLkr);
               return `<tr>
-        <td>
+        <td data-label="Rider">
           ${escapeHtml(name)}
           <div style="color:var(--muted);font-size:12px">
             Shops ${escapeHtml(fmtMoney(b.productCashLkr))} · Service ${escapeHtml(fmtMoney(b.serviceChargeLkr))} · Commission ${escapeHtml(fmtMoney(b.rideCommissionLkr))}
           </div>
         </td>
-        <td>
+        <td data-label="Settling now">
           <strong>${escapeHtml(fmtMoney(s.amountLkr))}</strong>
           ${declaredDiffers ? `<div style="color:var(--muted);font-size:12px">Rider declared ${escapeHtml(fmtMoney(s.declaredAmountLkr))}</div>` : ""}
         </td>
-        <td>${escapeHtml(fmtMoney(s.cashCoveredLkr))}</td>
-        <td>${escapeHtml(String(s.entryCount ?? (s.entryIds || []).length))}</td>
-        <td>
+        <td data-label="Cash covered">${escapeHtml(fmtMoney(s.cashCoveredLkr))}</td>
+        <td data-label="Jobs">${escapeHtml(String(s.entryCount ?? (s.entryIds || []).length))}</td>
+        <td data-label="Method / Reference">
           ${escapeHtml(s.method || "bank")}${s.reference ? ` · ${escapeHtml(s.reference)}` : ""}
           ${s.referenceImageUrl ? `<div><a href="${escapeHtml(s.referenceImageUrl)}" target="_blank" rel="noopener noreferrer">View photo</a></div>` : ""}
         </td>
-        <td>${escapeHtml(fmtTs(s.requestedAt))}</td>
-        <td class="row-actions">
+        <td data-label="Requested">${escapeHtml(fmtTs(s.requestedAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-primary btn-sm" data-confirm-cash="${escapeHtml(s.id)}" data-rider="${escapeHtml(s.riderDocId)}">Confirm received</button>
           <button type="button" class="btn btn-ghost btn-sm" data-reject-cash="${escapeHtml(s.id)}" data-rider="${escapeHtml(s.riderDocId)}">Reject</button>
         </td>
@@ -6600,13 +6600,13 @@
             .map((r) => {
               const held = r.cashHoldActive === true;
               return `<tr>
-        <td>${escapeHtml(riderDisplayName(r))}</td>
-        <td>${escapeHtml(r.phoneNumber || r.phone || "—")}</td>
-        <td><strong>${escapeHtml(fmtMoney(riderCashInHand(r)))}</strong></td>
-        <td>${escapeHtml(fmtMoney(r.cashOwedToAdminLkr))}</td>
-        <td>${escapeHtml(fmtMoney(r.cashPendingSettlementLkr))}</td>
-        <td>${held ? '<span class="badge badge-out">On hold</span>' : '<span class="badge">Accepting jobs</span>'}</td>
-        <td class="row-actions">
+        <td data-label="Rider">${escapeHtml(riderDisplayName(r))}</td>
+        <td data-label="Phone">${escapeHtml(r.phoneNumber || r.phone || "—")}</td>
+        <td data-label="Cash in hand"><strong>${escapeHtml(fmtMoney(riderCashInHand(r)))}</strong></td>
+        <td data-label="Owed to admin">${escapeHtml(fmtMoney(r.cashOwedToAdminLkr))}</td>
+        <td data-label="Awaiting confirm">${escapeHtml(fmtMoney(r.cashPendingSettlementLkr))}</td>
+        <td data-label="State">${held ? '<span class="badge badge-out">On hold</span>' : '<span class="badge">Accepting jobs</span>'}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-view-cash-ledger="${escapeHtml(r.id)}">View ledger</button>
         </td>
       </tr>`;
@@ -6889,13 +6889,13 @@
         const vendorId = inv.vendorDocId || inv.vendorId || "";
         const monthKey = inv.monthKey || inv.id || "";
         return `<tr>
-          <td>${escapeHtml(inv.vendorName || vendorId)}</td>
-          <td>${escapeHtml(monthKey)}</td>
-          <td>${fmtMoney(inv.netSalesLkr)}</td>
-          <td>${escapeHtml(String(inv.feePercent ?? ""))}%</td>
-          <td>${fmtMoney(inv.feeLkr)}</td>
-          <td><span class="badge">${escapeHtml(inv.status || "pending")}</span></td>
-          <td class="row-actions">
+          <td data-label="Shop">${escapeHtml(inv.vendorName || vendorId)}</td>
+          <td data-label="Month">${escapeHtml(monthKey)}</td>
+          <td data-label="Net sales">${fmtMoney(inv.netSalesLkr)}</td>
+          <td data-label="Fee %">${escapeHtml(String(inv.feePercent ?? ""))}%</td>
+          <td data-label="Fee">${fmtMoney(inv.feeLkr)}</td>
+          <td data-label="Status"><span class="badge">${escapeHtml(inv.status || "pending")}</span></td>
+          <td class="row-actions" data-label="Actions">
             <button type="button" class="btn btn-ghost btn-sm" data-inv-status="invoiced" data-vendor="${escapeHtml(vendorId)}" data-month="${escapeHtml(monthKey)}">Mark invoiced</button>
             <button type="button" class="btn btn-ghost btn-sm" data-inv-status="paid" data-vendor="${escapeHtml(vendorId)}" data-month="${escapeHtml(monthKey)}">Mark paid</button>
           </td>

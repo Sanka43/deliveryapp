@@ -131,11 +131,11 @@
               const readyAttention = stLower === "ready" ? " badge-ready-attention" : "";
               const orderLabel = orderDisplayNumber(o);
               return `<tr>
-          <td><strong>${escapeHtml(orderLabel)}</strong></td>
-          <td>${escapeHtml(shopDisplayName(o))}</td>
-          <td>${fmtMoney(o.total)}</td>
-          <td><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}</td>
-          <td>${escapeHtml(fmtTs(o.createdAt))}</td>
+          <td data-label="Tracking"><strong>${escapeHtml(orderLabel)}</strong></td>
+          <td data-label="Store">${escapeHtml(shopDisplayName(o))}</td>
+          <td data-label="Total">${fmtMoney(o.total)}</td>
+          <td data-label="Status"><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}</td>
+          <td data-label="Created">${escapeHtml(fmtTs(o.createdAt))}</td>
         </tr>`;
             })
             .join("");
