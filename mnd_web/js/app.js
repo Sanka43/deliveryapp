@@ -2083,19 +2083,19 @@
                 );
               }
               return `<tr>
-        <td>
+        <td data-label="Rider">
           <div class="ongoing-rider-cell">
             <strong>${escapeHtml(name)}</strong>
             <small>${escapeHtml(phone)}</small>
             <small>${escapeHtml(vehicle)}</small>
           </div>
         </td>
-        <td>${typeBadge}</td>
-        <td><code>${escapeHtml(row.jobLabel)}</code></td>
-        <td class="ongoing-route-cell">${escapeHtml(route)}</td>
-        <td><span class="badge ${badgeClass(row.status)}">${escapeHtml(statusLabel(row.status))}</span></td>
-        <td>${escapeHtml(fmtDateTime(row.since))}</td>
-        <td class="row-actions">${actions.join(" ")}</td>
+        <td data-label="Job type">${typeBadge}</td>
+        <td data-label="Job"><code>${escapeHtml(row.jobLabel)}</code></td>
+        <td class="ongoing-route-cell" data-label="Route">${escapeHtml(route)}</td>
+        <td data-label="Status"><span class="badge ${badgeClass(row.status)}">${escapeHtml(statusLabel(row.status))}</span></td>
+        <td data-label="Since">${escapeHtml(fmtDateTime(row.since))}</td>
+        <td class="row-actions" data-label="Actions">${actions.join(" ")}</td>
       </tr>`;
             })
             .join("");
