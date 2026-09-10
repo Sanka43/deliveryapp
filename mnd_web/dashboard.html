@@ -12,12 +12,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="css/tokens.css?v=admin-redesign-phase2" />
-    <link rel="stylesheet" href="css/base.css?v=admin-redesign-phase2" />
-    <link rel="stylesheet" href="css/components.css?v=admin-redesign-phase2" />
-    <link rel="stylesheet" href="css/layout.css?v=admin-redesign-phase2" />
-    <link rel="stylesheet" href="css/utilities.css?v=admin-redesign-phase2" />
-    <link rel="stylesheet" href="css/styles.css?v=admin-redesign-phase2" />
+    <link rel="stylesheet" href="css/tokens.css?v=admin-redesign-phase2b" />
+    <link rel="stylesheet" href="css/base.css?v=admin-redesign-phase2b" />
+    <link rel="stylesheet" href="css/components.css?v=admin-redesign-phase2b" />
+    <link rel="stylesheet" href="css/layout.css?v=admin-redesign-phase2b" />
+    <link rel="stylesheet" href="css/utilities.css?v=admin-redesign-phase2b" />
+    <link rel="stylesheet" href="css/styles.css?v=admin-redesign-phase2b" />
   </head>
   <body class="dashboard-page">
     <a href="#main-content" class="skip-link">Skip to content</a>
@@ -221,6 +221,12 @@
                 <div class="label">Riders pending approval</div>
                 <div class="value" id="stat-riders-pending">0</div>
               </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Orders trend</h3>
+              </div>
+              <div id="dashboard-orders-trend"></div>
             </div>
             <div class="panel">
               <div class="panel-header">
@@ -1238,14 +1244,15 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
-    <script src="js/firebase-config.js?v=admin-redesign-phase2"></script>
-    <script src="js/firebase-boot.js?v=admin-redesign-phase2"></script>
-    <script src="js/ui-helpers.js?v=admin-redesign-phase2"></script>
-    <script src="js/core/dom.js?v=admin-redesign-phase2"></script>
-    <script src="js/core/router.js?v=admin-redesign-phase2"></script>
-    <script src="js/core/skeleton.js?v=admin-redesign-phase2"></script>
-    <script src="js/core/focus-trap.js?v=admin-redesign-phase2"></script>
-    <script src="js/core/pagination.js?v=admin-redesign-phase2"></script>
-    <script src="js/app.js?v=admin-redesign-phase2"></script>
+    <script src="js/firebase-config.js?v=admin-redesign-phase2b"></script>
+    <script src="js/firebase-boot.js?v=admin-redesign-phase2b"></script>
+    <script src="js/ui-helpers.js?v=admin-redesign-phase2b"></script>
+    <script src="js/core/dom.js?v=admin-redesign-phase2b"></script>
+    <script src="js/core/router.js?v=admin-redesign-phase2b"></script>
+    <script src="js/core/skeleton.js?v=admin-redesign-phase2b"></script>
+    <script src="js/core/focus-trap.js?v=admin-redesign-phase2b"></script>
+    <script src="js/core/pagination.js?v=admin-redesign-phase2b"></script>
+    <script src="js/core/charts.js?v=admin-redesign-phase2b"></script>
+    <script src="js/app.js?v=admin-redesign-phase2b"></script>
   </body>
 </html>

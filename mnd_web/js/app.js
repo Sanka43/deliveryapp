@@ -2373,10 +2373,56 @@
     if (elShops) elShops.textContent = String(shopsPending);
     if (elJobs) elJobs.textContent = String(jobsPending);
     if (elRiders) elRiders.textContent = String(ridersPending);
+    renderDashboardOrdersTrend();
     renderDashboardApprovalPreviews();
     renderDashboardRecentOrders();
     updateDashboardQuickActions();
     updateAllApprovalBadges();
+  }
+
+  // Buckets the already-loaded cache.orders (recent-200 snapshot, no new
+  // Firestore query) by calendar day for the last 7 days. Note: if the
+  // store does more than ~200 orders across that window, the oldest days
+  // in it can undercount once the 200-cap pushes them out of cache.orders
+  // — acceptable for a "recent trend at a glance" chart, not an exact count.
+  function renderDashboardOrdersTrend() {
+    const el = document.getElementById("dashboard-orders-trend");
+    if (!el || !window.MndCharts) return;
+    const days = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      days.push(d);
+    }
+    const counts = days.map(() => 0);
+    cache.orders.forEach((o) => {
+      const ts = o.createdAt;
+      let d = null;
+      if (ts && typeof ts.toDate === "function") d = ts.toDate();
+      else if (ts && ts.seconds != null) d = new Date(ts.seconds * 1000);
+      if (!d) return;
+      for (let i = 0; i < days.length; i++) {
+        const dayEnd = new Date(days[i]);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        if (d >= days[i] && d < dayEnd) {
+          counts[i]++;
+          break;
+        }
+      }
+    });
+    const points = days.map((d, i) => ({
+      label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      value: counts[i],
+    }));
+    window.MndCharts.renderLineChart(el, points, {
+      id: "dashboard-orders-trend",
+      title: "Orders per day (last 7 days)",
+      desc: "Count of orders created each day, from the most recently loaded orders.",
+      xLabel: "Date",
+      yLabel: "Orders",
+    });
   }
 
   function updateDashboardQuickActions() {
