@@ -1,7 +1,7 @@
 name: mnd_delivery_app
 description: MND Delivery App built with Clean Architecture.
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.2+5
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
