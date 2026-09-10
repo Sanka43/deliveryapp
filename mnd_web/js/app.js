@@ -1279,32 +1279,55 @@
   }
 
   async function loadVendors() {
+    let list;
     try {
       const snap = await db.collection(COL.vendors).orderBy("name").limit(300).get(FS_GET_SERVER);
-      cache.vendors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
       const snap = await db.collection(COL.vendors).limit(300).get(FS_GET_SERVER);
-      cache.vendors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      cache.vendors.sort((a, b) =>
-        String(a.name || "").localeCompare(String(b.name || ""))
-      );
+      list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
     }
+    // Same fix as loadRiders(): a plain capped query can silently drop a
+    // pending store once the vendors collection grows past 300 docs (return
+    // order for the general list isn't guaranteed to surface newer rows).
+    // Merge in a dedicated server-side filter so shop approvals never miss one.
+    try {
+      const pendingSnap = await db
+        .collection(COL.vendors)
+        .where("approvalStatus", "==", "pending")
+        .get(FS_GET_SERVER);
+      const byId = new Map(list.map((v) => [v.id, v]));
+      pendingSnap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
+      list = Array.from(byId.values());
+    } catch (_) {}
+    cache.vendors = list;
     updatePendingShopNavBadge();
   }
 
   async function loadJobs() {
+    let list;
     try {
       const snap = await db.collection(COL.jobs).orderBy("createdAt", "desc").limit(200).get(FS_GET_SERVER);
-      cache.jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
       const snap = await db.collection(COL.jobs).limit(200).get(FS_GET_SERVER);
-      cache.jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      cache.jobs.sort((a, b) => {
+      list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => {
         const ta = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
         const tb = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
         return tb - ta;
       });
     }
+    // Same fix as loadRiders(): merge a dedicated pending-status query so a
+    // job post can't silently fall outside the capped 200-row list.
+    try {
+      const pendingSnap = await db.collection(COL.jobs).where("status", "==", "pending").get(FS_GET_SERVER);
+      const byId = new Map(list.map((j) => [j.id, j]));
+      pendingSnap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
+      list = Array.from(byId.values());
+    } catch (_) {}
+    cache.jobs = list;
     updatePendingJobNavBadge();
   }
 
@@ -3335,67 +3358,72 @@
   }
 
   function renderShopApprovals() {
-    const tbody = document.querySelector("#table-shop-approvals tbody");
-    if (!tbody) return;
+    const list = document.getElementById("shop-approvals-list");
+    if (!list) return;
     const pending = cache.vendors.filter((v) => vendorIsPending(v));
-    tbody.innerHTML =
+    list.innerHTML =
       pending.length === 0
-        ? `<tr><td colspan="6"><div class="empty-state">No MND Shop stores waiting for approval. New registrations appear here automatically.</div></td></tr>`
+        ? `<div class="empty-state">No MND Shop stores waiting for approval. New registrations appear here automatically.</div>`
         : pending
             .map((v) => {
               const phone = v.phone || v.phoneNumber || "—";
-              return `<tr>
-        <td><strong>${escapeHtml(v.name || v.id)}</strong><br/><small style="color:var(--muted)"><code>${escapeHtml(v.id)}</code></small></td>
-        <td>${escapeHtml(v.city || "—")}</td>
-        <td>${escapeHtml(v.category || v.tag || "—")}</td>
-        <td>${escapeHtml(phone)}</td>
-        <td>${escapeHtml(fmtTs(v.createdAt))}</td>
-        <td class="row-actions">
-          <button type="button" class="btn btn-primary btn-sm" data-approve-vendor="${escapeHtml(v.id)}">Approve</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-reject-vendor="${escapeHtml(v.id)}">Reject</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-edit-vendor="${escapeHtml(v.id)}">Edit</button>
-        </td>
-      </tr>`;
+              const name = v.name || v.id;
+              return `<div class="data-card">
+        <div class="data-card__header">
+          <span class="data-card__title">${escapeHtml(name)}</span>
+          <span class="status-chip" style="background: var(--warning-soft); color: var(--warning)">Pending</span>
+        </div>
+        <div class="data-card__meta"><code>${escapeHtml(v.id)}</code></div>
+        <div class="data-card__meta">${escapeHtml(v.city || "—")} · ${escapeHtml(v.category || v.tag || "—")} · ${escapeHtml(phone)}</div>
+        <div class="data-card__meta">Registered ${escapeHtml(fmtTs(v.createdAt))}</div>
+        <div class="data-card__actions">
+          <button type="button" class="btn btn-primary btn-sm u-w-auto" data-approve-vendor="${escapeHtml(v.id)}" aria-label="Approve vendor ${escapeHtml(name)}">Approve</button>
+          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-reject-vendor="${escapeHtml(v.id)}" aria-label="Reject vendor ${escapeHtml(name)}">Reject</button>
+          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-edit-vendor="${escapeHtml(v.id)}" aria-label="Edit vendor ${escapeHtml(name)}">Edit</button>
+        </div>
+      </div>`;
             })
             .join("");
-    tbody.querySelectorAll("[data-approve-vendor]").forEach((btn) => {
+    list.querySelectorAll("[data-approve-vendor]").forEach((btn) => {
       btn.addEventListener("click", () => approveVendor(btn.getAttribute("data-approve-vendor")));
     });
-    tbody.querySelectorAll("[data-reject-vendor]").forEach((btn) => {
+    list.querySelectorAll("[data-reject-vendor]").forEach((btn) => {
       btn.addEventListener("click", () => rejectVendor(btn.getAttribute("data-reject-vendor")));
     });
-    tbody.querySelectorAll("[data-edit-vendor]").forEach((btn) => {
+    list.querySelectorAll("[data-edit-vendor]").forEach((btn) => {
       btn.addEventListener("click", () => openVendorModal(btn.getAttribute("data-edit-vendor")));
     });
   }
 
   function renderJobApprovals() {
-    const tbody = document.querySelector("#table-job-approvals tbody");
-    if (!tbody) return;
+    const list = document.getElementById("job-approvals-list");
+    if (!list) return;
     const pending = cache.jobs.filter((j) => String(j.status || "").toLowerCase() === "pending");
-    tbody.innerHTML =
+    list.innerHTML =
       pending.length === 0
-        ? `<tr><td colspan="7"><div class="empty-state">No job posts waiting for approval.</div></td></tr>`
+        ? `<div class="empty-state">No job posts waiting for approval.</div>`
         : pending
-            .map(
-              (j) => `<tr>
-        <td><strong>${escapeHtml(j.title || "—")}</strong></td>
-        <td>${escapeHtml(j.companyName || "—")}</td>
-        <td>${escapeHtml(j.salary || "—")}</td>
-        <td>${escapeHtml(j.remote ? "Remote" : j.location || "—")}</td>
-        <td>${escapeHtml(j.type || j.category || "—")}</td>
-        <td>${escapeHtml(fmtTs(j.createdAt))}</td>
-        <td class="row-actions">
-          <button type="button" class="btn btn-primary btn-sm" data-approve-job="${escapeHtml(j.id)}">Approve</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-reject-job="${escapeHtml(j.id)}">Reject</button>
-        </td>
-      </tr>`
-            )
+            .map((j) => {
+              const title = j.title || "—";
+              return `<div class="data-card">
+        <div class="data-card__header">
+          <span class="data-card__title">${escapeHtml(title)}</span>
+          <span class="status-chip" style="background: var(--warning-soft); color: var(--warning)">Pending</span>
+        </div>
+        <div class="data-card__meta">${escapeHtml(j.companyName || "—")} · ${escapeHtml(j.salary || "—")}</div>
+        <div class="data-card__meta">${escapeHtml(j.remote ? "Remote" : j.location || "—")} · ${escapeHtml(j.type || j.category || "—")}</div>
+        <div class="data-card__meta">Posted ${escapeHtml(fmtTs(j.createdAt))}</div>
+        <div class="data-card__actions">
+          <button type="button" class="btn btn-primary btn-sm u-w-auto" data-approve-job="${escapeHtml(j.id)}" aria-label="Approve job ${escapeHtml(title)}">Approve</button>
+          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-reject-job="${escapeHtml(j.id)}" aria-label="Reject job ${escapeHtml(title)}">Reject</button>
+        </div>
+      </div>`;
+            })
             .join("");
-    tbody.querySelectorAll("[data-approve-job]").forEach((btn) => {
+    list.querySelectorAll("[data-approve-job]").forEach((btn) => {
       btn.addEventListener("click", () => approveJob(btn.getAttribute("data-approve-job")));
     });
-    tbody.querySelectorAll("[data-reject-job]").forEach((btn) => {
+    list.querySelectorAll("[data-reject-job]").forEach((btn) => {
       btn.addEventListener("click", () => rejectJob(btn.getAttribute("data-reject-job")));
     });
   }
