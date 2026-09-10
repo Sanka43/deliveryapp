@@ -1163,6 +1163,11 @@
   window.rejectJob = rejectJob;
   window.approveRider = approveRider;
   window.rejectRider = rejectRider;
+  window.ACTIVE_TRIP_STATUSES = ACTIVE_TRIP_STATUSES;
+  window.riderById = riderById;
+  window.tripPickupDropoff = tripPickupDropoff;
+  window.riderVehicleTypeLabel = riderVehicleTypeLabel;
+  window.loadTrips = loadTrips;
 
   async function loadViewData(name) {
     if (!db || !auth.currentUser) return;
@@ -1183,6 +1188,7 @@
         loadRiders(),
         loadOffers(),
         loadSupportThreads(),
+        loadTrips(),
       ]);
     }
     if (name === "orders") await Promise.all([loadOrdersPage("first"), loadCustomers(), loadVendors()]);

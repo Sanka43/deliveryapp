@@ -12,12 +12,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="css/tokens.css?v=admin-redesign-phase2d" />
-    <link rel="stylesheet" href="css/base.css?v=admin-redesign-phase2d" />
-    <link rel="stylesheet" href="css/components.css?v=admin-redesign-phase2d" />
-    <link rel="stylesheet" href="css/layout.css?v=admin-redesign-phase2d" />
-    <link rel="stylesheet" href="css/utilities.css?v=admin-redesign-phase2d" />
-    <link rel="stylesheet" href="css/styles.css?v=admin-redesign-phase2d" />
+    <link rel="stylesheet" href="css/tokens.css?v=dashboard-widgets-v1" />
+    <link rel="stylesheet" href="css/base.css?v=dashboard-widgets-v1" />
+    <link rel="stylesheet" href="css/components.css?v=dashboard-widgets-v1" />
+    <link rel="stylesheet" href="css/layout.css?v=dashboard-widgets-v1" />
+    <link rel="stylesheet" href="css/utilities.css?v=dashboard-widgets-v1" />
+    <link rel="stylesheet" href="css/styles.css?v=dashboard-widgets-v1" />
   </head>
   <body class="dashboard-page">
     <a href="#main-content" class="skip-link">Skip to content</a>
@@ -202,8 +202,16 @@
                 <div class="value" id="stat-pending">0</div>
               </div>
               <div class="stat-card stat-card--brand">
-                <div class="label">In progress</div>
+                <div class="label">Processing orders</div>
                 <div class="value" id="stat-active">0</div>
+              </div>
+              <div class="stat-card stat-card--brand">
+                <div class="label">Ongoing rides</div>
+                <div class="value" id="stat-ongoing-rides">0</div>
+              </div>
+              <div class="stat-card stat-card--accent">
+                <div class="label">Online riders</div>
+                <div class="value" id="stat-online-riders">0</div>
               </div>
               <div class="stat-card stat-card--accent">
                 <div class="label">Delivered total</div>
@@ -222,11 +230,20 @@
                 <div class="value" id="stat-riders-pending">0</div>
               </div>
             </div>
-            <div class="panel">
-              <div class="panel-header">
-                <h3>Orders trend</h3>
+            <div class="dashboard-grid">
+              <div class="panel">
+                <div class="panel-header">
+                  <h3>Orders trend</h3>
+                </div>
+                <div id="dashboard-orders-trend"></div>
               </div>
-              <div id="dashboard-orders-trend"></div>
+              <div class="panel" id="dashboard-ongoing-rides-panel">
+                <div class="panel-header">
+                  <h3>Ongoing rides</h3>
+                  <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-go-nav="rides">View all</button>
+                </div>
+                <div id="dashboard-ongoing-rides-list"></div>
+              </div>
             </div>
             <div class="panel">
               <div class="panel-header">
@@ -1244,20 +1261,20 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
-    <script src="js/firebase-config.js?v=admin-redesign-phase2d"></script>
-    <script src="js/firebase-boot.js?v=admin-redesign-phase2d"></script>
-    <script src="js/ui-helpers.js?v=admin-redesign-phase2d"></script>
-    <script src="js/core/dom.js?v=admin-redesign-phase2d"></script>
-    <script src="js/core/router.js?v=admin-redesign-phase2d"></script>
-    <script src="js/core/skeleton.js?v=admin-redesign-phase2d"></script>
-    <script src="js/core/focus-trap.js?v=admin-redesign-phase2d"></script>
-    <script src="js/core/pagination.js?v=admin-redesign-phase2d"></script>
-    <script src="js/core/charts.js?v=admin-redesign-phase2d"></script>
-    <script src="js/app.js?v=admin-redesign-phase2d"></script>
-    <script src="js/views/dashboard.js?v=admin-redesign-phase2d"></script>
-    <script src="js/views/orders.js?v=admin-redesign-phase2d"></script>
-    <script src="js/views/shop-approvals.js?v=admin-redesign-phase2d"></script>
-    <script src="js/views/job-approvals.js?v=admin-redesign-phase2d"></script>
-    <script src="js/views/rider-approvals.js?v=admin-redesign-phase2d"></script>
+    <script src="js/firebase-config.js?v=dashboard-widgets-v1"></script>
+    <script src="js/firebase-boot.js?v=dashboard-widgets-v1"></script>
+    <script src="js/ui-helpers.js?v=dashboard-widgets-v1"></script>
+    <script src="js/core/dom.js?v=dashboard-widgets-v1"></script>
+    <script src="js/core/router.js?v=dashboard-widgets-v1"></script>
+    <script src="js/core/skeleton.js?v=dashboard-widgets-v1"></script>
+    <script src="js/core/focus-trap.js?v=dashboard-widgets-v1"></script>
+    <script src="js/core/pagination.js?v=dashboard-widgets-v1"></script>
+    <script src="js/core/charts.js?v=dashboard-widgets-v1"></script>
+    <script src="js/app.js?v=dashboard-widgets-v1"></script>
+    <script src="js/views/dashboard.js?v=dashboard-widgets-v1"></script>
+    <script src="js/views/orders.js?v=dashboard-widgets-v1"></script>
+    <script src="js/views/shop-approvals.js?v=dashboard-widgets-v1"></script>
+    <script src="js/views/job-approvals.js?v=dashboard-widgets-v1"></script>
+    <script src="js/views/rider-approvals.js?v=dashboard-widgets-v1"></script>
   </body>
 </html>

@@ -6,9 +6,11 @@
  * statusLabel, missedByShopBadge, orderDisplayNumber, shopDisplayName,
  * vendorIsPending, countPendingVendors, countPendingJobs,
  * countPendingRiders, updateAllApprovalBadges, approveVendor,
- * rejectVendor, approveJob, rejectJob — all still shared with other
- * views (approvals views, main Vendors/Riders views). Also uses the
- * already-global window.MndCharts and window.MndRouter.
+ * rejectVendor, approveJob, rejectJob, ACTIVE_TRIP_STATUSES, riderById,
+ * riderIsOnline, riderDisplayName, tripPickupDropoff, customerDisplayName,
+ * compactText — all still shared with other views (approvals views, main
+ * Vendors/Riders/Rides views). Also uses the already-global
+ * window.MndCharts and window.MndRouter.
  */
 (function () {
   function renderDashboard() {
@@ -37,11 +39,50 @@
     if (elShops) elShops.textContent = String(shopsPending);
     if (elJobs) elJobs.textContent = String(jobsPending);
     if (elRiders) elRiders.textContent = String(ridersPending);
+    const ongoingRides = (cache.trips || []).filter((t) =>
+      ACTIVE_TRIP_STATUSES.includes(String(t.status || "").toLowerCase())
+    );
+    const onlineRiders = (cache.riders || []).filter((r) => riderIsOnline(r));
+    const elOngoingRides = document.getElementById("stat-ongoing-rides");
+    const elOnlineRiders = document.getElementById("stat-online-riders");
+    if (elOngoingRides) elOngoingRides.textContent = String(ongoingRides.length);
+    if (elOnlineRiders) elOnlineRiders.textContent = String(onlineRiders.length);
     renderDashboardOrdersTrend();
+    renderDashboardOngoingRides(ongoingRides);
     renderDashboardApprovalPreviews();
     renderDashboardRecentOrders();
     updateDashboardQuickActions();
     updateAllApprovalBadges();
+  }
+
+  // Small live list (not just a count) of trips currently searching/
+  // accepted/arrived/in_progress — cache.trips is loaded alongside the
+  // rest of the dashboard's data (loadViewDataInner's "dashboard" branch)
+  // specifically so this widget doesn't need its own Firestore query.
+  function renderDashboardOngoingRides(ongoingRides) {
+    const panel = document.getElementById("dashboard-ongoing-rides-panel");
+    const list = document.getElementById("dashboard-ongoing-rides-list");
+    if (!panel || !list) return;
+    const rows = ongoingRides.slice(0, 6);
+    panel.hidden = false;
+    list.innerHTML =
+      rows.length === 0
+        ? '<div class="empty-state u-text-sm">No rides in progress right now.</div>'
+        : rows
+            .map((t) => {
+              const rider = riderById(compactText(t.riderId, t.assignedRiderId));
+              const riderLabel = rider ? riderDisplayName(rider) : "Unassigned — searching";
+              const route = tripPickupDropoff(t);
+              const stRaw = String(t.status || "searching");
+              return `<div class="dash-approval-row">
+            <div>
+              <strong>${escapeHtml(customerDisplayName(t))}</strong>
+              <br/><small style="color:var(--muted)">${escapeHtml(riderLabel)} · ${escapeHtml(route.pickupLabel)} → ${escapeHtml(route.dropoffLabel)}</small>
+            </div>
+            <span class="badge ${badgeClass(stRaw)}">${escapeHtml(statusLabel(stRaw))}</span>
+          </div>`;
+            })
+            .join("");
   }
 
   // Buckets the already-loaded cache.orders (recent-200 snapshot, no new
@@ -206,6 +247,7 @@
 
   window.renderDashboard = renderDashboard;
   window.renderDashboardOrdersTrend = renderDashboardOrdersTrend;
+  window.renderDashboardOngoingRides = renderDashboardOngoingRides;
   window.updateDashboardQuickActions = updateDashboardQuickActions;
   window.renderDashboardRecentOrders = renderDashboardRecentOrders;
   window.renderDashboardApprovalPreviews = renderDashboardApprovalPreviews;

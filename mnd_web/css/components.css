@@ -4,6 +4,25 @@
    already work and get formally migrated here view-by-view in Phase 2/3.
    This file only adds pieces that didn't exist before. */
 @layer components {
+  /* —— Dashboard widget grid (Orders trend + Ongoing rides side by side) —— */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    align-items: start;
+    margin-bottom: 16px;
+  }
+
+  .dashboard-grid > .panel {
+    margin: 0;
+  }
+
+  @media (max-width: 900px) {
+    .dashboard-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* —— Screen-reader-only text —— */
   .sr-only {
     position: absolute;
