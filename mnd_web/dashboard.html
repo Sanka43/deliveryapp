@@ -12,12 +12,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="css/tokens.css?v=admin-redesign-phase1" />
-    <link rel="stylesheet" href="css/base.css?v=admin-redesign-phase1" />
-    <link rel="stylesheet" href="css/components.css?v=admin-redesign-phase1" />
-    <link rel="stylesheet" href="css/layout.css?v=admin-redesign-phase1" />
-    <link rel="stylesheet" href="css/utilities.css?v=admin-redesign-phase1" />
-    <link rel="stylesheet" href="css/styles.css?v=admin-redesign-phase1" />
+    <link rel="stylesheet" href="css/tokens.css?v=admin-redesign-phase2" />
+    <link rel="stylesheet" href="css/base.css?v=admin-redesign-phase2" />
+    <link rel="stylesheet" href="css/components.css?v=admin-redesign-phase2" />
+    <link rel="stylesheet" href="css/layout.css?v=admin-redesign-phase2" />
+    <link rel="stylesheet" href="css/utilities.css?v=admin-redesign-phase2" />
+    <link rel="stylesheet" href="css/styles.css?v=admin-redesign-phase2" />
   </head>
   <body class="dashboard-page">
     <a href="#main-content" class="skip-link">Skip to content</a>
@@ -295,20 +295,11 @@
                   <option value="cancelled">Cancelled</option>
                 </select>
               </div>
-              <div class="table-wrap">
-                <table id="table-orders">
-                  <thead>
-                    <tr>
-                      <th>Order</th>
-                      <th>Customer</th>
-                      <th>Shop / address</th>
-                      <th>Total</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
+              <div id="orders-list" class="card-list"></div>
+              <div class="u-flex u-items-center u-gap-8 u-mt-16">
+                <button type="button" id="btn-orders-prev" class="btn btn-ghost btn-sm u-w-auto" disabled>Previous</button>
+                <span id="orders-page-label" class="u-text-muted u-text-sm">Page 1</span>
+                <button type="button" id="btn-orders-next" class="btn btn-ghost btn-sm u-w-auto" disabled>Next</button>
               </div>
             </div>
           </section>
@@ -1247,13 +1238,14 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
-    <script src="js/firebase-config.js?v=admin-redesign-phase1"></script>
-    <script src="js/firebase-boot.js?v=admin-redesign-phase1"></script>
-    <script src="js/ui-helpers.js?v=admin-redesign-phase1"></script>
-    <script src="js/core/dom.js?v=admin-redesign-phase1"></script>
-    <script src="js/core/router.js?v=admin-redesign-phase1"></script>
-    <script src="js/core/skeleton.js?v=admin-redesign-phase1"></script>
-    <script src="js/core/focus-trap.js?v=admin-redesign-phase1"></script>
-    <script src="js/app.js?v=admin-redesign-phase1"></script>
+    <script src="js/firebase-config.js?v=admin-redesign-phase2"></script>
+    <script src="js/firebase-boot.js?v=admin-redesign-phase2"></script>
+    <script src="js/ui-helpers.js?v=admin-redesign-phase2"></script>
+    <script src="js/core/dom.js?v=admin-redesign-phase2"></script>
+    <script src="js/core/router.js?v=admin-redesign-phase2"></script>
+    <script src="js/core/skeleton.js?v=admin-redesign-phase2"></script>
+    <script src="js/core/focus-trap.js?v=admin-redesign-phase2"></script>
+    <script src="js/core/pagination.js?v=admin-redesign-phase2"></script>
+    <script src="js/app.js?v=admin-redesign-phase2"></script>
   </body>
 </html>

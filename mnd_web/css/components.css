@@ -172,8 +172,9 @@
   .data-card__header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px 12px;
     margin-bottom: 8px;
   }
 

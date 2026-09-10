@@ -180,6 +180,13 @@
     vendorSupportThreads: [],
   };
 
+  // Orders view: real cursor pagination (js/core/pagination.js), separate
+  // from cache.orders (which stays a fixed recent-200 snapshot used for
+  // Dashboard stats / Customers) — this is the paged data source the
+  // Orders list actually renders from.
+  let ordersPager = null;
+  let ordersPageDocs = [];
+
   let ongoingUnsubs = [];
   let supportThreadsUnsub = null;
   let supportMessagesUnsub = null;
@@ -866,7 +873,7 @@
     if (!db) return;
     if (cache.riders.length === 0) await loadRiders();
     if (cache.vendors.length === 0) await loadVendors();
-    const o = cache.orders.find((x) => x.id === orderId);
+    const o = findOrder(orderId);
     if (!o) return;
     const vid = String(o.vendorId || o.vendorStoreId || "").trim();
     const vendor = await getVendorDocForOrder(vid);
@@ -1067,7 +1074,10 @@
       });
       closeModal();
       await loadOrders();
-      if (currentView === "orders") renderOrders();
+      if (currentView === "orders") {
+        await loadOrdersPage("first");
+        renderOrders();
+      }
       if (currentView === "dashboard") renderDashboard();
     } catch (err) {
       alert(err.message || String(err));
@@ -1182,7 +1192,7 @@
         loadSupportThreads(),
       ]);
     }
-    if (name === "orders") await Promise.all([loadOrders(), loadCustomers(), loadVendors()]);
+    if (name === "orders") await Promise.all([loadOrdersPage("first"), loadCustomers(), loadVendors()]);
     if (name === "rides") await Promise.all([loadTrips(), loadCustomers(), loadRiders()]);
     if (name === "vendors" || name === "shop-approvals") {
       await loadVendors();
@@ -1265,6 +1275,32 @@
       const snap = await db.collection(COL.orders).limit(200).get(FS_GET_SERVER);
       cache.orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
+  }
+
+  // Looks in both order sources: cache.orders (recent-200, used by
+  // Dashboard/Customers) and ordersPageDocs (the Orders view's current
+  // paginated page, which can reach older orders cache.orders doesn't
+  // have) — so a click on any order actually visible in the Orders list
+  // resolves, regardless of which page it came from.
+  function findOrder(id) {
+    return cache.orders.find((x) => x.id === id) || ordersPageDocs.find((x) => x.id === id) || null;
+  }
+
+  // Orders view's own paged data source (js/core/pagination.js) — replaces
+  // the fixed .limit(200) with real forward/backward paging so an order
+  // older than the most recent 200 is still reachable, not silently gone.
+  // direction: "first" (fresh page 1, e.g. on view entry) | "next" | "prev".
+  async function loadOrdersPage(direction) {
+    if (!direction || direction === "first" || !ordersPager) {
+      ordersPager = window.MndPagination.createPager({
+        query: db.collection(COL.orders).orderBy("createdAt", "desc"),
+        pageSize: 50,
+        getOpts: FS_GET_SERVER,
+      });
+      ordersPageDocs = await ordersPager.first();
+      return;
+    }
+    ordersPageDocs = direction === "prev" ? await ordersPager.prev() : await ordersPager.next();
   }
 
   async function loadTrips() {
@@ -2458,10 +2494,14 @@
     });
   }
 
+  // Filters/searches only within the currently loaded page of orders
+  // (ordersPageDocs, ~50 rows) rather than the whole collection — Firestore
+  // has no full-text search, so browsing further back means paging with
+  // Next, same tradeoff loadOrdersPage's cursor pagination is built on.
   function renderOrders() {
     const q = (document.getElementById("filter-orders")?.value || "").toLowerCase();
     const st = document.getElementById("filter-order-status")?.value || "";
-    let list = [...cache.orders];
+    let list = [...ordersPageDocs];
     if (st) list = list.filter((o) => String(o.status || "").toLowerCase() === st);
     if (q) {
       list = list.filter((o) => {
@@ -2479,10 +2519,10 @@
         );
       });
     }
-    const tbody = document.querySelector("#table-orders tbody");
-    tbody.innerHTML =
+    const listEl = document.getElementById("orders-list");
+    listEl.innerHTML =
       list.length === 0
-        ? `<tr><td colspan="6"><div class="empty-state">No orders.</div></td></tr>`
+        ? `<div class="empty-state">No orders${q || st ? " match this page's filter." : "."}</div>`
         : list
             .map((o) => {
               const stRaw = String(o.status || "placed");
@@ -2495,23 +2535,25 @@
               const shopName = shopDisplayName(o);
               const assignBtn =
                 stLower === "ready" && !isSelfPickupOrder(o)
-                  ? `<button type="button" class="btn btn-ghost btn-sm" data-assign-rider-order="${escapeHtml(o.id)}">Assign rider</button>`
+                  ? `<button type="button" class="btn btn-ghost btn-sm u-w-auto" data-assign-rider-order="${escapeHtml(o.id)}" aria-label="Assign rider for order ${escapeHtml(orderLabel)}">Assign rider</button>`
                   : "";
-              return `<tr class="order-row" tabindex="0" data-view-order="${escapeHtml(o.id)}" aria-label="View order details">
-          <td><strong>${escapeHtml(orderLabel)}</strong><br/><small>${escapeHtml(fmtTs(o.createdAt))}</small></td>
-          <td><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
-          <td><strong>${escapeHtml(shopName)}</strong><br/><small>${escapeHtml(orderAddrLine(o))}</small></td>
-          <td>${fmtMoney(o.total)}</td>
-          <td><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}</td>
-          <td class="row-actions">
+              return `<div class="data-card order-row" tabindex="0" data-view-order="${escapeHtml(o.id)}" aria-label="View details for order ${escapeHtml(orderLabel)}">
+          <div class="data-card__header">
+            <span class="data-card__title">${escapeHtml(orderLabel)}</span>
+            <span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}
+          </div>
+          <div class="data-card__meta">${escapeHtml(customerName)}${customerMeta ? ` · ${escapeHtml(customerMeta)}` : ""}</div>
+          <div class="data-card__meta">${escapeHtml(shopName)} · ${escapeHtml(orderAddrLine(o))}</div>
+          <div class="data-card__meta">${fmtMoney(o.total)} · ${escapeHtml(fmtTs(o.createdAt))}</div>
+          <div class="data-card__actions">
             ${assignBtn}
-            <button type="button" class="btn btn-ghost btn-sm" data-edit-order="${escapeHtml(o.id)}">Edit</button>
-            <button type="button" class="btn btn-ghost btn-sm" data-del-order="${escapeHtml(o.id)}">Delete</button>
-          </td>
-        </tr>`;
+            <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-edit-order="${escapeHtml(o.id)}" aria-label="Edit order ${escapeHtml(orderLabel)}">Edit</button>
+            <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-del-order="${escapeHtml(o.id)}" aria-label="Delete order ${escapeHtml(orderLabel)}">Delete</button>
+          </div>
+        </div>`;
             })
             .join("");
-    tbody.querySelectorAll("[data-view-order]").forEach((row) => {
+    listEl.querySelectorAll("[data-view-order]").forEach((row) => {
       const open = () => openOrderDetails(row.getAttribute("data-view-order"));
       row.addEventListener("click", (e) => {
         if (e.target.closest("button, a, input, select, textarea")) return;
@@ -2524,12 +2566,12 @@
         open();
       });
     });
-    tbody.querySelectorAll("[data-assign-rider-order]").forEach((btn) => {
+    listEl.querySelectorAll("[data-assign-rider-order]").forEach((btn) => {
       btn.addEventListener("click", () => {
         openAssignRiderModal(btn.getAttribute("data-assign-rider-order")).catch((e) => alert(e.message || String(e)));
       });
     });
-    tbody.querySelectorAll("[data-edit-order]").forEach((btn) => {
+    listEl.querySelectorAll("[data-edit-order]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         try {
           await openOrderEdit(btn.getAttribute("data-edit-order"));
@@ -2538,9 +2580,20 @@
         }
       });
     });
-    tbody.querySelectorAll("[data-del-order]").forEach((btn) => {
+    listEl.querySelectorAll("[data-del-order]").forEach((btn) => {
       btn.addEventListener("click", () => deleteOrder(btn.getAttribute("data-del-order")));
     });
+    renderOrdersPaginationControls();
+  }
+
+  function renderOrdersPaginationControls() {
+    const prevBtn = document.getElementById("btn-orders-prev");
+    const nextBtn = document.getElementById("btn-orders-next");
+    const label = document.getElementById("orders-page-label");
+    if (!ordersPager) return;
+    if (prevBtn) prevBtn.disabled = !ordersPager.hasPrev();
+    if (nextBtn) nextBtn.disabled = !ordersPager.hasNext();
+    if (label) label.textContent = `Page ${ordersPager.pageNumber()}`;
   }
 
   function tripDisplayNumber(trip) {
@@ -4040,7 +4093,7 @@
   }
 
   function openOrderDetails(id) {
-    const o = cache.orders.find((x) => x.id === id);
+    const o = findOrder(id);
     if (!o) return;
     const customer = customerById(o.customerId);
     const rider = cache.riders.find((x) => x.id === compactText(o.riderId, o.assignedRiderId));
@@ -4119,7 +4172,7 @@
     if (cache.riders.length === 0) {
       await loadRiders();
     }
-    const o = cache.orders.find((x) => x.id === id);
+    const o = findOrder(id);
     if (!o) return;
     const currentRiderId = o.riderId || o.assignedRiderId || "";
     const riderOptions = [
@@ -5523,7 +5576,7 @@
   }
 
   async function deleteOrder(id) {
-    const o = cache.orders.find((x) => x.id === id);
+    const o = findOrder(id);
     const label = o ? orderDisplayNumber(o) : "this order";
     if (!confirm(`Delete ${label}?`)) return;
     await db.collection(COL.orders).doc(id).delete();
@@ -7472,6 +7525,14 @@
   });
 
   document.getElementById("btn-new-order")?.addEventListener("click", openOrderCreate);
+  document.getElementById("btn-orders-prev")?.addEventListener("click", async () => {
+    await loadOrdersPage("prev");
+    renderOrders();
+  });
+  document.getElementById("btn-orders-next")?.addEventListener("click", async () => {
+    await loadOrdersPage("next");
+    renderOrders();
+  });
   document.getElementById("btn-save-platform-fees")?.addEventListener("click", () => {
     savePlatformFeesFromForm().catch((e) => toast(e.message || String(e), "error"));
   });
