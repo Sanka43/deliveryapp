@@ -131,12 +131,26 @@
 
     .table-responsive td {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
-      gap: 12px;
+      gap: 8px 12px;
       padding: 6px 0;
       border: none;
       text-align: right;
+    }
+
+    /* Action cells often hold several buttons — stack the label above them
+       and let the buttons wrap onto their own row instead of squeezing
+       everything into one line. */
+    .table-responsive td.row-actions {
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    .table-responsive td.row-actions::before {
+      margin-bottom: 4px;
     }
 
     .table-responsive td::before {

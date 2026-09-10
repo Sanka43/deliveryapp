@@ -2492,12 +2492,12 @@
               const approval = String(v.approvalStatus || "pending").toLowerCase();
               const isApproved = approval === "approved";
               return `<tr>
-        <td>${escapeHtml(v.id)}</td>
-        <td>${escapeHtml(v.name || "—")}</td>
-        <td>${escapeHtml(v.tag || v.category || "—")}</td>
-        <td>${approvalBadge(v.approvalStatus)}</td>
-        <td>${v.active === true ? "Yes" : "No"}</td>
-        <td class="row-actions">
+        <td data-label="ID">${escapeHtml(v.id)}</td>
+        <td data-label="Name">${escapeHtml(v.name || "—")}</td>
+        <td data-label="Tag">${escapeHtml(v.tag || v.category || "—")}</td>
+        <td data-label="Approval">${approvalBadge(v.approvalStatus)}</td>
+        <td data-label="Active">${v.active === true ? "Yes" : "No"}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-approve-vendor="${escapeHtml(v.id)}" ${isApproved ? "disabled" : ""}>Approve</button>
           <button type="button" class="btn btn-ghost btn-sm" data-reject-vendor="${escapeHtml(v.id)}">Reject</button>
           <button type="button" class="btn btn-ghost btn-sm" data-edit-vendor="${escapeHtml(v.id)}">Edit</button>
@@ -2643,11 +2643,11 @@
               const shopName = resolveProductShopName(p);
               return `<tr>
         <td class="cell-product-img" data-product-img="${escapeHtml(p.id)}"></td>
-        <td><strong>${escapeHtml(p.name || "—")}</strong></td>
-        <td>${escapeHtml(shopName)}</td>
-        <td>${fmtMoney(p.price)}</td>
-        <td>${productActiveBadge(p.active)}</td>
-        <td class="row-actions">
+        <td data-label="Name"><strong>${escapeHtml(p.name || "—")}</strong></td>
+        <td data-label="Shop">${escapeHtml(shopName)}</td>
+        <td data-label="Price">${fmtMoney(p.price)}</td>
+        <td data-label="Active">${productActiveBadge(p.active)}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-edit-product="${escapeHtml(p.id)}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-product="${escapeHtml(p.id)}">Delete</button>
         </td>
@@ -2672,11 +2672,11 @@
         : list
             .map(
               (b) => `<tr>
-        <td>${escapeHtml(b.id)}</td>
-        <td>${escapeHtml(b.title || "—")}</td>
-        <td>${Number(b.order) || 0}</td>
-        <td>${b.active === true ? "Yes" : "No"}</td>
-        <td class="row-actions">
+        <td data-label="ID">${escapeHtml(b.id)}</td>
+        <td data-label="Title">${escapeHtml(b.title || "—")}</td>
+        <td data-label="Order">${Number(b.order) || 0}</td>
+        <td data-label="Active">${b.active === true ? "Yes" : "No"}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-edit-banner="${escapeHtml(b.id)}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-banner="${escapeHtml(b.id)}">Delete</button>
         </td>
@@ -2738,17 +2738,17 @@
                      <button type="button" class="btn btn-ghost btn-sm" data-reject-coupon="${escapeHtml(c.id)}">Reject</button>`
                   : "";
               return `<tr>
-        <td><code>${escapeHtml(c.id)}</code></td>
-        <td>${escapeHtml(couponStoreLabel(c))}</td>
-        <td>${couponStatusLabel(c)}</td>
-        <td>${escapeHtml(discountLabel)}</td>
-        <td>${escapeHtml(minOrder)}</td>
-        <td>${escapeHtml(expires)}</td>
-        <td>${escapeHtml(maxUses)}</td>
-        <td>${escapeHtml(perCustomer)}</td>
-        <td>${Number(c.totalUsed) || 0}</td>
-        <td><input type="checkbox" data-toggle-coupon="${escapeHtml(c.id)}" ${c.active === true ? "checked" : ""}></td>
-        <td class="row-actions">
+        <td data-label="Code"><code>${escapeHtml(c.id)}</code></td>
+        <td data-label="Store">${escapeHtml(couponStoreLabel(c))}</td>
+        <td data-label="Status">${couponStatusLabel(c)}</td>
+        <td data-label="Discount">${escapeHtml(discountLabel)}</td>
+        <td data-label="Min order">${escapeHtml(minOrder)}</td>
+        <td data-label="Expires">${escapeHtml(expires)}</td>
+        <td data-label="Max uses">${escapeHtml(maxUses)}</td>
+        <td data-label="Per customer">${escapeHtml(perCustomer)}</td>
+        <td data-label="Used">${Number(c.totalUsed) || 0}</td>
+        <td data-label="Active"><input type="checkbox" data-toggle-coupon="${escapeHtml(c.id)}" ${c.active === true ? "checked" : ""}></td>
+        <td class="row-actions" data-label="Actions">
           ${approvalActions}
           <button type="button" class="btn btn-ghost btn-sm" data-edit-coupon="${escapeHtml(c.id)}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-coupon="${escapeHtml(c.id)}">Delete</button>
@@ -2829,7 +2829,7 @@
                 ? `<img src="${escapeHtml(img)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:8px" />`
                 : "—";
               return `<tr>
-        <td>
+        <td data-label="Offer">
           <div style="display:flex;gap:10px;align-items:center">
             ${thumb}
             <div>
@@ -2838,11 +2838,11 @@
             </div>
           </div>
         </td>
-        <td>${escapeHtml(o.storeName || o.storeId || "—")}<br/><small style="color:var(--muted)"><code>${escapeHtml(o.storeId || "")}</code></small></td>
-        <td>LKR ${Number(o.priceLkr) || 0}</td>
-        <td>${escapeHtml(fmtTs(o.endsAt))}</td>
-        <td>${escapeHtml(fmtTs(o.createdAt))}</td>
-        <td class="row-actions">
+        <td data-label="Shop">${escapeHtml(o.storeName || o.storeId || "—")}<br/><small style="color:var(--muted)"><code>${escapeHtml(o.storeId || "")}</code></small></td>
+        <td data-label="Price">LKR ${Number(o.priceLkr) || 0}</td>
+        <td data-label="Ends">${escapeHtml(fmtTs(o.endsAt))}</td>
+        <td data-label="Created">${escapeHtml(fmtTs(o.createdAt))}</td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-primary btn-sm" data-approve-offer="${escapeHtml(o.id)}">Approve</button>
           <button type="button" class="btn btn-ghost btn-sm" data-reject-offer="${escapeHtml(o.id)}">Reject</button>
         </td>
@@ -2885,13 +2885,13 @@
                   ? `<br/><small style="color:var(--muted)">${escapeHtml(o.rejectionReason)}</small>`
                   : "";
               return `<tr>
-        <td>${thumb}</td>
-        <td><strong>${escapeHtml(o.title || "—")}</strong><br/><small style="color:var(--muted)"><code>${escapeHtml(o.id)}</code></small></td>
-        <td>${escapeHtml(o.storeName || o.storeId || "—")}</td>
-        <td>LKR ${Number(o.priceLkr) || 0}</td>
-        <td><span class="badge">${escapeHtml(status)}</span>${rejectNote}</td>
-        <td>${escapeHtml(fmtTs(o.endsAt))}</td>
-        <td class="row-actions">
+        <td data-label="Image">${thumb}</td>
+        <td data-label="Title"><strong>${escapeHtml(o.title || "—")}</strong><br/><small style="color:var(--muted)"><code>${escapeHtml(o.id)}</code></small></td>
+        <td data-label="Shop">${escapeHtml(o.storeName || o.storeId || "—")}</td>
+        <td data-label="Price">LKR ${Number(o.priceLkr) || 0}</td>
+        <td data-label="Status"><span class="badge">${escapeHtml(status)}</span>${rejectNote}</td>
+        <td data-label="Ends">${escapeHtml(fmtTs(o.endsAt))}</td>
+        <td class="row-actions" data-label="Actions">
           ${
             status === "pending"
               ? `<button type="button" class="btn btn-primary btn-sm" data-approve-offer="${escapeHtml(o.id)}">Approve</button>
@@ -2986,11 +2986,11 @@
               const active = c.active !== false;
               const isGrocery = c.isGrocery === true;
               return `<tr>
-        <td>${escapeHtml(c.label || "—")}</td>
-        <td>${Number(c.order) || 0}</td>
-        <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-category-active="${escapeHtml(c.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
-        <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-category-grocery="${escapeHtml(c.id)}" ${isGrocery ? "checked" : ""} /> <span>${isGrocery ? "Grocery" : "Food"}</span></label></td>
-        <td class="row-actions">
+        <td data-label="Label">${escapeHtml(c.label || "—")}</td>
+        <td data-label="Order">${Number(c.order) || 0}</td>
+        <td data-label="Active"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-category-active="${escapeHtml(c.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
+        <td data-label="Grocery"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-category-grocery="${escapeHtml(c.id)}" ${isGrocery ? "checked" : ""} /> <span>${isGrocery ? "Grocery" : "Food"}</span></label></td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-del-shop-category="${escapeHtml(c.id)}">Delete</button>
         </td>
       </tr>`;
@@ -3050,11 +3050,11 @@
             .map((t) => {
               const active = t.active !== false;
               return `<tr>
-        <td>${escapeHtml(shopCategoryLabelById(t.categoryId))}</td>
-        <td>${escapeHtml(t.label || "—")}</td>
-        <td>${Number(t.order) || 0}</td>
-        <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-type-active="${escapeHtml(t.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
-        <td class="row-actions">
+        <td data-label="Category">${escapeHtml(shopCategoryLabelById(t.categoryId))}</td>
+        <td data-label="Label">${escapeHtml(t.label || "—")}</td>
+        <td data-label="Order">${Number(t.order) || 0}</td>
+        <td data-label="Active"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-shop-type-active="${escapeHtml(t.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-del-shop-type="${escapeHtml(t.id)}">Delete</button>
         </td>
       </tr>`;
@@ -3104,10 +3104,10 @@
             .map((a) => {
               const active = a.active !== false;
               return `<tr>
-        <td>${escapeHtml(a.label || "—")}</td>
-        <td>${Number(a.order) || 0}</td>
-        <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-grocery-aisle-active="${escapeHtml(a.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
-        <td class="row-actions">
+        <td data-label="Label">${escapeHtml(a.label || "—")}</td>
+        <td data-label="Order">${Number(a.order) || 0}</td>
+        <td data-label="Active"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-grocery-aisle-active="${escapeHtml(a.id)}" ${active ? "checked" : ""} /> <span>${active ? "Shown" : "Hidden"}</span></label></td>
+        <td class="row-actions" data-label="Actions">
           <button type="button" class="btn btn-ghost btn-sm" data-edit-grocery-aisle="${escapeHtml(a.id)}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-grocery-aisle="${escapeHtml(a.id)}">Delete</button>
         </td>
