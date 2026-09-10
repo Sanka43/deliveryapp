@@ -5,6 +5,7 @@ import {
 } from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
+import {writeVendorNotification} from "./orderNotifications";
 import {notifyAdmins} from "./orderVendorAcceptReminders";
 import {refundPayHerePayment} from "./payHereRefund";
 
@@ -45,6 +46,10 @@ function orderTracking(data: DocumentData, orderId: string): string {
   return String(data.trackingNumber ?? "").trim() || orderId;
 }
 
+function vendorIdOf(data: DocumentData): string {
+  return String(data.vendorId ?? data.vendorStoreId ?? "").trim();
+}
+
 async function notifyCustomer(input: {
   customerId: string;
   orderId: string;
@@ -76,6 +81,8 @@ async function notifyCustomer(input: {
 async function finalizeOnlineRefund(input: {
   orderId: string;
   customerId: string;
+  vendorId: string;
+  trackingNumber: string;
   amount: number;
   paymentTransactionId: string;
   refundReason: "customer_cancelled" | "customer_requested";
@@ -99,13 +106,28 @@ async function finalizeOnlineRefund(input: {
       refundRequestStatus: "completed",
       updatedAt: FieldValue.serverTimestamp(),
     });
-    await notifyCustomer({
-      customerId: input.customerId,
-      orderId: input.orderId,
-      type: "payment",
-      title: "Payment refunded",
-      body: input.successBody,
-    });
+    await Promise.all([
+      notifyCustomer({
+        customerId: input.customerId,
+        orderId: input.orderId,
+        type: "payment",
+        title: "Payment refunded",
+        body: input.successBody,
+      }),
+      // The vendor already got an "Order cancelled" push when the status
+      // flipped (customer-cancel path) or nothing at all (post-acceptance
+      // refund request path) — either way they were never told money left
+      // the order, so they could keep preparing/dispatching a refunded order.
+      writeVendorNotification({
+        vendorId: input.vendorId,
+        notificationId: `${input.orderId}_order_refunded`,
+        orderId: input.orderId,
+        type: "order_refunded",
+        title: "Order refunded",
+        body: `Rs. ${input.amount.toFixed(2)} refunded to the customer` +
+          (input.trackingNumber ? ` — order ${input.trackingNumber}.` : "."),
+      }),
+    ]);
     return {refunded: true};
   }
 
@@ -228,6 +250,8 @@ export const cancelOrderByCustomer = onCall({region: REGION}, async (request) =>
   const {refunded} = await finalizeOnlineRefund({
     orderId,
     customerId: uid,
+    vendorId: vendorIdOf(orderData),
+    trackingNumber: orderTracking(orderData, orderId),
     amount: Number(orderData.total ?? 0),
     paymentTransactionId: String(orderData.paymentTransactionId ?? ""),
     refundReason: "customer_cancelled",
@@ -336,6 +360,18 @@ export const requestOrderRefund = onCall({region: REGION}, async (request) => {
         title: "Refund request received",
         body: "We received your refund request. Our team will review it and get back to you.",
       }),
+      // This branch covers orders the vendor already accepted/delivered
+      // (past the customer's self-cancel window) — the vendor previously had
+      // no way to learn a customer was disputing one of their orders.
+      writeVendorNotification({
+        vendorId: vendorIdOf(phase.data),
+        notificationId: `${orderId}_refund_requested`,
+        orderId,
+        type: "refund_requested",
+        title: "Refund requested",
+        body: `Order ${tracking}: the customer requested a refund.` +
+          (reason ? ` "${reason}"` : ""),
+      }),
     ]);
     return {outcome: "pending_review"};
   }
@@ -343,6 +379,8 @@ export const requestOrderRefund = onCall({region: REGION}, async (request) => {
   const {refunded} = await finalizeOnlineRefund({
     orderId,
     customerId: uid,
+    vendorId: vendorIdOf(phase.data),
+    trackingNumber: orderTracking(phase.data, orderId),
     amount: Number(phase.data.total ?? 0),
     paymentTransactionId: String(phase.data.paymentTransactionId ?? ""),
     refundReason: "customer_requested",

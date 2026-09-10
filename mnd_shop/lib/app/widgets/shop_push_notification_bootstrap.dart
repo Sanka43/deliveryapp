@@ -1,9 +1,11 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_shop/app/navigation/root_navigator_key.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/app/providers/vendor_shell_tab_provider.dart';
 import 'package:mnd_shop/core/notifications/shop_push_message.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
+import 'package:mnd_shop/features/support/presentation/pages/vendor_support_chat_page.dart';
 
 class ShopPushNotificationBootstrap extends ConsumerStatefulWidget {
   const ShopPushNotificationBootstrap({super.key});
@@ -43,6 +45,10 @@ class _ShopPushNotificationBootstrapState
         ref.read(vendorShellTabIndexProvider.notifier).state = 2;
       case ShopPushType.approval:
         ref.read(vendorShellTabIndexProvider.notifier).state = 4;
+      case ShopPushType.supportReply:
+        rootNavigatorKey.currentState?.push<void>(
+          MaterialPageRoute<void>(builder: (_) => const VendorSupportChatPage()),
+        );
       case ShopPushType.unknown:
         break;
     }

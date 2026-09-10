@@ -124,10 +124,14 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       // the coupon may have expired or hit its usage limit since it was
       // applied. A silent failure here just leaves it unapplied; the coupon
       // code is still restored into the text field below for a manual retry.
+      final CartState resumedCart = ref.read(cartProvider);
       final CouponValidationResult result =
           await ref.read(couponRepositoryProvider).validate(
                 code: snapshot.couponCode!,
-                subtotalLkr: ref.read(cartProvider).subtotal,
+                subtotalLkr: resumedCart.subtotal,
+                storeId: resumedCart.items.isEmpty
+                    ? ''
+                    : resumedCart.items.first.storeId,
               );
       if (result.isSuccess && mounted) {
         cartNotifier.setCoupon(result.coupon!);
@@ -1460,9 +1464,11 @@ class _CheckoutCouponCardState extends ConsumerState<_CheckoutCouponCard> {
     }
     setState(() => _validating = true);
     final CartState cart = ref.read(cartProvider);
-    final CouponValidationResult result = await ref
-        .read(couponRepositoryProvider)
-        .validate(code: code, subtotalLkr: cart.subtotal);
+    final CouponValidationResult result = await ref.read(couponRepositoryProvider).validate(
+          code: code,
+          subtotalLkr: cart.subtotal,
+          storeId: cart.items.isEmpty ? '' : cart.items.first.storeId,
+        );
     if (!mounted) {
       return;
     }

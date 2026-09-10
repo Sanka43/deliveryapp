@@ -25,6 +25,9 @@ class VendorNotification {
   static const String kTypeOrderNew = 'order_new';
   static const String kTypeOrderReminder = 'order_reminder';
   static const String kTypeOrderCancelled = 'order_cancelled';
+  static const String kTypeOrderRefunded = 'order_refunded';
+  static const String kTypeRefundRequested = 'refund_requested';
+  static const String kTypePayoutSettled = 'payout_settled';
   static const String kTypeApproval = 'approval';
   static const String kTypeSystem = 'system';
 

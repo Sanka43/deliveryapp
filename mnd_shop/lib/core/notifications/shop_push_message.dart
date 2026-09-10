@@ -5,6 +5,7 @@ enum ShopPushType {
   orderReminder,
   orderCancelled,
   approval,
+  supportReply,
   unknown,
 }
 
@@ -52,6 +53,8 @@ class ShopPushMessage {
       case 'approval':
       case 'shop_approval':
         return ShopPushType.approval;
+      case 'support_reply':
+        return ShopPushType.supportReply;
       default:
         return ShopPushType.unknown;
     }
@@ -71,6 +74,7 @@ class ShopPushMessage {
       ShopPushType.orderReminder => 'Order waiting',
       ShopPushType.orderCancelled => 'Order cancelled',
       ShopPushType.approval => 'Shop approval update',
+      ShopPushType.supportReply => 'Support replied',
       ShopPushType.unknown => 'MND Shop',
     };
   }
@@ -81,6 +85,7 @@ class ShopPushMessage {
       ShopPushType.orderReminder => 'Please confirm or reject this order.',
       ShopPushType.orderCancelled => 'An order was cancelled.',
       ShopPushType.approval => 'Your shop approval status changed.',
+      ShopPushType.supportReply => 'Our support team replied to your message.',
       ShopPushType.unknown => 'You have a new notification.',
     };
   }
@@ -115,6 +120,7 @@ class ShopPushMessage {
       'orderReminder' => ShopPushType.orderReminder,
       'orderCancelled' => ShopPushType.orderCancelled,
       'approval' => ShopPushType.approval,
+      'supportReply' => ShopPushType.supportReply,
       _ => ShopPushType.unknown,
     };
     return ShopPushMessage(

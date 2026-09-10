@@ -6,6 +6,11 @@ import {computeServiceChargeLkr} from "./serviceCharge";
 
 export type CouponDiscountType = "flat" | "percent";
 
+/** `pending` | `approved` | `rejected` — vendor-submitted coupons only; an
+ * admin-created coupon has no `status` at all and is usable immediately
+ * (see `couponUsableForVendor`). */
+export type CouponApprovalStatus = "pending" | "approved" | "rejected";
+
 export interface CouponDoc {
   code: string;
   discountType: CouponDiscountType;
@@ -18,6 +23,34 @@ export interface CouponDoc {
   maxUses?: number;
   /** Caps how many times a single customer may redeem this coupon. */
   perCustomerLimit?: number;
+  /** Set only for a vendor-submitted coupon — scopes it to that one store.
+   * Absent for a platform-wide admin coupon. */
+  storeId?: string;
+  /** Vendor-submitted coupons start `pending`; admin approves/rejects before
+   * they can ever discount an order. Absent (admin-created) == usable. */
+  status?: CouponApprovalStatus;
+  createdBy?: "admin" | "vendor";
+}
+
+/**
+ * Whether [coupon] may discount an order placed with vendor [vendorId] —
+ * separate from [computeDiscountLkr]'s amount math, which doesn't know about
+ * store scoping or approval state.
+ *
+ * - A vendor-submitted coupon (`storeId` set) only ever applies to that
+ *   store's own orders, and only once admin has approved it.
+ * - A platform-wide admin coupon (no `storeId`) has no `status` field at all
+ *   and applies everywhere — unaffected by this check.
+ */
+export function couponUsableForVendor(coupon: CouponDoc, vendorId: string): boolean {
+  if (coupon.status === "pending" || coupon.status === "rejected") {
+    return false;
+  }
+  const storeId = String(coupon.storeId ?? "").trim();
+  if (storeId && storeId !== vendorId.trim()) {
+    return false;
+  }
+  return true;
 }
 
 export function normalizeCouponCode(raw: string): string {
@@ -203,6 +236,11 @@ export const validateCoupon = onCall(
 
     const code = normalizeCouponCode(String(request.data?.code ?? ""));
     const subtotalLkr = Number(request.data?.subtotalLkr ?? 0);
+    // The cart's single vendor — required to check a vendor-submitted
+    // coupon's store scope. Older clients that don't send it simply can't
+    // redeem store-scoped coupons; platform-wide (admin) coupons are
+    // unaffected either way.
+    const storeId = String(request.data?.storeId ?? "").trim();
     if (!code) {
       throw new HttpsError("invalid-argument", "Coupon code is required.");
     }
@@ -213,6 +251,9 @@ export const validateCoupon = onCall(
     const coupon = await loadCoupon(code);
     if (!coupon) {
       return {valid: false, error: "Coupon not found."};
+    }
+    if (!couponUsableForVendor(coupon, storeId)) {
+      return {valid: false, error: "This coupon is not valid for this store."};
     }
 
     const discountLkr = computeDiscountLkr(coupon, Math.floor(subtotalLkr));
@@ -269,10 +310,14 @@ export const onOrderCreatedValidateCoupon = onDocumentCreated(
     const subtotal = Number(data.subtotal ?? 0);
     const deliveryFee = Number(data.deliveryFee ?? 0);
     const customerId = String(data.customerId ?? "").trim();
+    const vendorId = String(data.vendorId ?? data.vendorStoreId ?? "").trim();
     const couponRef = couponRefFor(code);
     const coupon = await loadCoupon(code);
 
-    let expectedDiscount = coupon ? computeDiscountLkr(coupon, subtotal) : 0;
+    let expectedDiscount =
+      coupon && couponUsableForVendor(coupon, vendorId) ?
+        computeDiscountLkr(coupon, subtotal) :
+        0;
     if (expectedDiscount > 0 && coupon && customerId) {
       const usageCheck = await checkCouponUsageLimits(coupon, couponRef, customerId);
       if (!usageCheck.ok) {
@@ -318,3 +363,147 @@ export const onOrderCreatedValidateCoupon = onDocumentCreated(
     }
   },
 );
+
+const MAX_CODE_LEN = 20;
+const MIN_CODE_LEN = 3;
+const MAX_FLAT_VALUE_LKR = 100000;
+const MAX_PERCENT_VALUE = 70;
+const MAX_COUPON_LIFETIME_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Vendor self-service coupon creation — the gap that previously left coupons
+ * 100% admin-driven with no vendor visibility or involvement at all. Coupon
+ * discounts already come out of `productCashLkr` (the shop's own cut, see
+ * `placeCashOnDeliveryOrder`), so a vendor-submitted coupon is naturally
+ * vendor-funded with no extra bookkeeping needed.
+ *
+ * Starts `pending`: an admin must approve it (mnd_web Coupons page, same
+ * approve/reject pattern as vendor-submitted `offers`) before
+ * `couponUsableForVendor` will ever let it discount an order — a vendor
+ * cannot make their own promo live unsupervised.
+ */
+export const requestVendorCoupon = onCall({region: "asia-south1"}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in to create a coupon.");
+  }
+  const vendorId = request.auth.uid;
+
+  const code = normalizeCouponCode(String(request.data?.code ?? ""));
+  if (code.length < MIN_CODE_LEN || code.length > MAX_CODE_LEN) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Coupon code must be ${MIN_CODE_LEN}-${MAX_CODE_LEN} characters.`,
+    );
+  }
+  if (!/^[A-Z0-9]+$/.test(code)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Coupon code may only contain letters and numbers.",
+    );
+  }
+
+  const discountTypeRaw = String(request.data?.discountType ?? "").trim().toLowerCase();
+  const discountType: CouponDiscountType | "" =
+    discountTypeRaw === "flat" || discountTypeRaw === "percent" ? discountTypeRaw : "";
+  if (!discountType) {
+    throw new HttpsError("invalid-argument", "Choose flat or percent discount.");
+  }
+
+  const value = Math.floor(Number(request.data?.value ?? 0));
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new HttpsError("invalid-argument", "Enter a valid discount value.");
+  }
+  if (discountType === "percent" && value > MAX_PERCENT_VALUE) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Percent discount cannot exceed ${MAX_PERCENT_VALUE}%.`,
+    );
+  }
+  if (discountType === "flat" && value > MAX_FLAT_VALUE_LKR) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Flat discount cannot exceed Rs. ${MAX_FLAT_VALUE_LKR}.`,
+    );
+  }
+
+  const expiresAtMs = Number(request.data?.expiresAtMs ?? NaN);
+  if (!Number.isFinite(expiresAtMs)) {
+    throw new HttpsError("invalid-argument", "Choose when this coupon expires.");
+  }
+  const now = Date.now();
+  if (expiresAtMs <= now) {
+    throw new HttpsError("invalid-argument", "Expiry must be in the future.");
+  }
+  if (expiresAtMs - now > MAX_COUPON_LIFETIME_MS) {
+    throw new HttpsError("invalid-argument", "Expiry cannot be more than a year away.");
+  }
+
+  const minSubtotalRaw = request.data?.minSubtotalLkr;
+  const minSubtotalLkr =
+    minSubtotalRaw == null ? undefined : Math.max(0, Math.floor(Number(minSubtotalRaw)));
+  if (minSubtotalRaw != null && !Number.isFinite(minSubtotalLkr)) {
+    throw new HttpsError("invalid-argument", "Invalid minimum order amount.");
+  }
+
+  const maxDiscountRaw = request.data?.maxDiscountLkr;
+  const maxDiscountLkr =
+    maxDiscountRaw == null ? undefined : Math.max(1, Math.floor(Number(maxDiscountRaw)));
+  if (maxDiscountRaw != null && !Number.isFinite(maxDiscountLkr)) {
+    throw new HttpsError("invalid-argument", "Invalid maximum discount amount.");
+  }
+
+  const maxUsesRaw = request.data?.maxUses;
+  const maxUses = maxUsesRaw == null ? undefined : Math.max(1, Math.floor(Number(maxUsesRaw)));
+  if (maxUsesRaw != null && !Number.isFinite(maxUses)) {
+    throw new HttpsError("invalid-argument", "Invalid usage limit.");
+  }
+
+  const perCustomerLimitRaw = request.data?.perCustomerLimit;
+  const perCustomerLimit =
+    perCustomerLimitRaw == null ? undefined : Math.max(1, Math.floor(Number(perCustomerLimitRaw)));
+  if (perCustomerLimitRaw != null && !Number.isFinite(perCustomerLimit)) {
+    throw new HttpsError("invalid-argument", "Invalid per-customer limit.");
+  }
+
+  const db = getFirestore();
+  const vendorSnap = await db.collection("vendors").doc(vendorId).get();
+  if (!vendorSnap.exists) {
+    throw new HttpsError("permission-denied", "Shop profile required.");
+  }
+  const approvalStatus = String(vendorSnap.data()?.approvalStatus ?? "").trim().toLowerCase();
+  if (approvalStatus && approvalStatus !== "approved") {
+    throw new HttpsError(
+      "permission-denied",
+      "Your shop must be approved before creating coupons.",
+    );
+  }
+
+  const couponRef = couponRefFor(code);
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(couponRef);
+    if (existing.exists) {
+      throw new HttpsError("already-exists", "That coupon code is already taken.");
+    }
+    const doc: CouponDoc = {
+      code,
+      discountType,
+      value,
+      active: true,
+      storeId: vendorId,
+      status: "pending",
+      createdBy: "vendor",
+      expiresAt: Timestamp.fromMillis(expiresAtMs),
+      ...(minSubtotalLkr != null ? {minSubtotalLkr} : {}),
+      ...(maxDiscountLkr != null ? {maxDiscountLkr} : {}),
+      ...(maxUses != null ? {maxUses} : {}),
+      ...(perCustomerLimit != null ? {perCustomerLimit} : {}),
+    };
+    tx.set(couponRef, {
+      ...doc,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return {code, status: "pending"};
+});

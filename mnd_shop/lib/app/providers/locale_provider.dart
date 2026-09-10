@@ -51,6 +51,8 @@ String describeAppLocaleChoice(Locale? explicit) {
       return 'English';
     case 'si':
       return 'සිංහල';
+    case 'ta':
+      return 'தமிழ்';
     default:
       return explicit.languageCode;
   }

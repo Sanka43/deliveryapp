@@ -253,6 +253,37 @@ Admin grants credits from `mnd_web` Customers (amounts 1 / 5 / 10 / 20). Custome
 
 ---
 
+### 3.5c `coupons` / `{code}`
+
+**Purpose:** Checkout discount codes. Doc id is the code itself (uppercased). Two origins: platform-wide (admin-created, no `storeId`) and vendor-submitted (`storeId` set, admin-approved) — a vendor-submitted coupon only ever discounts an order placed at that one store, and its discount comes out of the shop's own `productCashLkr` cut, same as any other coupon.
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `discountType` | string | `flat` \| `percent` |
+| `value` | int | Flat LKR or percent (1-70 for vendor-submitted) |
+| `active` | bool | Owner's on/off switch |
+| `minSubtotalLkr` | int? | Optional minimum cart subtotal |
+| `maxDiscountLkr` | int? | Optional cap for `percent` |
+| `expiresAt` | timestamp | Required for vendor-submitted; ≤1 year out |
+| `maxUses` | int? | Global redemption cap (tracked via `usage_shards`, not this field) |
+| `perCustomerLimit` | int? | Per-customer cap (tracked via `customer_usage`) |
+| `storeId` | string? | Set only for a vendor-submitted coupon; absent = platform-wide |
+| `status` | string? | `pending` \| `approved` \| `rejected` — vendor-submitted only; absent (admin-created) == usable |
+| `createdBy` | string? | `admin` \| `vendor` |
+| `createdAt`, `updatedAt` | timestamp | |
+
+Subcollections `usage_shards/{shardId}` and `customer_usage/{uid}` are Cloud-Function-only counters (see 3.7's sibling pattern) — never client-writable, not even by admin.
+
+**Create (vendor):** `requestVendorCoupon` callable only (functions/src/coupons.ts) — validates code format/length, discount bounds, expiry window, and that the shop is `approved`; writes `status: 'pending'`. A vendor cannot create a coupon doc directly.
+
+**Approve/reject (admin):** Direct Firestore update on `status` from the mnd_web Coupons page (same pattern as `offers`).
+
+**Eligibility:** `couponUsableForVendor(coupon, vendorId)` — `status` must not be `pending`/`rejected`, and if `storeId` is set it must match the order's vendor. Checked in `validateCoupon` (customer app passes the cart's `storeId`), `onOrderCreatedValidateCoupon`, and `placeOrder.ts`'s coupon loader — all three, so a store-scoped coupon can never discount another vendor's order regardless of entry point.
+
+**Rules:** Never customer-readable. Admin full read/write. A vendor may read their own (`storeId` match) coupon docs and update only the `active` field on them; everything else (including `status`) is admin-only.
+
+---
+
 ### 3.6 `riders` / `{riderId}`
 
 **Purpose:** Operational rider profile + **live location** for tracking UI.
@@ -630,6 +661,7 @@ Auto-refund on that same timeout, when the order was paid via PayHere (`paymentS
 | `store_ratings` | `vendorId` ASC, `createdAt` DESC | Ratings by shop |
 | `store_ratings` | `status` ASC, `createdAt` DESC | Admin filter |
 | `store_ratings` | `vendorId` ASC, `status` ASC | CF aggregation query |
+| `store_ratings` | `vendorId` ASC, `status` ASC, `createdAt` DESC | Vendor reviews list (`mnd_shop`) — visible-only, newest first |
 | `rider_ratings` | `riderId` ASC, `createdAt` DESC | Ratings by rider |
 | `rider_ratings` | `status` ASC, `createdAt` DESC | Admin filter |
 | `rider_ratings` | `riderId` ASC, `status` ASC | CF aggregation query |

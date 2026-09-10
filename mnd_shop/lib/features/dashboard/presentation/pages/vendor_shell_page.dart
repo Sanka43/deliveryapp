@@ -17,32 +17,34 @@ class VendorShellPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final int index = ref.watch(vendorShellTabIndexProvider);
-    final bool isSinhala = Localizations.localeOf(context).languageCode == 'si';
+    final String languageCode = Localizations.localeOf(context).languageCode;
+    final bool isSinhala = languageCode == 'si';
+    final bool isTamil = languageCode == 'ta';
     final List<VendorNavItem> navItems = <VendorNavItem>[
       VendorNavItem(
         icon: Icons.home_outlined,
         activeIcon: Icons.home,
-        label: isSinhala ? 'මුල් පිටුව' : 'Home',
+        label: isSinhala ? 'මුල් පිටුව' : (isTamil ? 'முகப்பு' : 'Home'),
       ),
       VendorNavItem(
         icon: Icons.inventory_2_outlined,
         activeIcon: Icons.inventory_2,
-        label: isSinhala ? 'නිෂ්පාදන' : 'Products',
+        label: isSinhala ? 'නිෂ්පාදන' : (isTamil ? 'பொருட்கள்' : 'Products'),
       ),
       VendorNavItem(
         icon: Icons.receipt_long_outlined,
         activeIcon: Icons.receipt_long,
-        label: isSinhala ? 'ඇණවුම්' : 'Orders',
+        label: isSinhala ? 'ඇණවුම්' : (isTamil ? 'ஆர்டர்கள்' : 'Orders'),
       ),
       VendorNavItem(
         icon: Icons.insights_outlined,
         activeIcon: Icons.insights,
-        label: isSinhala ? 'විශ්ලේෂණ' : 'Analytics',
+        label: isSinhala ? 'විශ්ලේෂණ' : (isTamil ? 'பகுப்பாய்வு' : 'Analytics'),
       ),
       VendorNavItem(
         icon: Icons.settings_outlined,
         activeIcon: Icons.settings,
-        label: isSinhala ? 'සැකසුම්' : 'Settings',
+        label: isSinhala ? 'සැකසුම්' : (isTamil ? 'அமைப்புகள்' : 'Settings'),
       ),
     ];
     final bool useTabletLayout = vendorUsesTabletLayout(context);

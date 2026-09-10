@@ -62,6 +62,7 @@
           <button type="button" class="nav-btn" data-nav="coupons">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H4a1 1 0 00-1 1v4a2.5 2.5 0 010 5v4a1 1 0 001 1h5"/><path d="M15 5h5a1 1 0 011 1v4a2.5 2.5 0 000 5v4a1 1 0 01-1 1h-5"/><path d="M9 5v14M15 5v14" stroke-dasharray="2 2"/></svg>
             Coupons
+            <span id="nav-pending-coupons" class="nav-badge" hidden>0</span>
           </button>
           <button type="button" class="nav-btn" data-nav="offers">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -108,6 +109,11 @@
             Withdrawals
             <span id="nav-withdrawals" class="nav-badge" hidden>0</span>
           </button>
+          <button type="button" class="nav-btn" data-nav="vendor-payouts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M2 11h20M6 16h4"/></svg>
+            Vendor payouts
+            <span id="nav-vendor-payouts" class="nav-badge" hidden>0</span>
+          </button>
           <button type="button" class="nav-btn" data-nav="customers">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
             Customers
@@ -116,6 +122,11 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
             Support
             <span id="nav-pending-support" class="nav-badge" hidden>0</span>
+          </button>
+          <button type="button" class="nav-btn" data-nav="vendor-support">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21l1.4-3.8A8 8 0 113 21z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>
+            Vendor support
+            <span id="nav-pending-vendor-support" class="nav-badge" hidden>0</span>
           </button>
           <p class="nav-group-label">System</p>
           <button type="button" class="nav-btn" data-nav="ride-fares">
@@ -416,13 +427,16 @@
               </div>
               <p style="color: var(--muted); margin-top: 0">
                 Codes customers enter at checkout. Validity (active, expiry, minimum order, usage limits) is
-                enforced server-side — this is the only place codes are created or changed.
+                enforced server-side. Rows with a Store are vendor-submitted — approve or reject them here
+                before they can discount an order; platform-wide codes are created directly with "+ New coupon".
               </p>
               <div class="table-wrap">
                 <table id="table-coupons">
                   <thead>
                     <tr>
                       <th>Code</th>
+                      <th>Store</th>
+                      <th>Status</th>
                       <th>Discount</th>
                       <th>Min order</th>
                       <th>Expires</th>
@@ -897,6 +911,66 @@
                   <thead>
                     <tr>
                       <th>Rider</th>
+                      <th>Amount</th>
+                      <th>Method</th>
+                      <th>Account</th>
+                      <th>Note</th>
+                      <th>Requested</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section data-view="vendor-support" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Vendor support</h3>
+                  <p class="panel-sub">Chat with shops. A reply here notifies their app instantly.</p>
+                </div>
+              </div>
+              <div class="support-layout">
+                <div class="support-thread-panel">
+                  <div class="toolbar">
+                    <input type="search" id="filter-vendor-support-threads" placeholder="Search shop, phone…" />
+                  </div>
+                  <div id="vendor-support-thread-list" class="support-thread-list"></div>
+                </div>
+                <div class="support-conversation-panel">
+                  <div id="vendor-support-conversation-header" class="support-conversation-header"></div>
+                  <div id="vendor-support-messages" class="support-messages">
+                    <div class="empty-state">Select a conversation to view messages.</div>
+                  </div>
+                  <div class="support-composer">
+                    <textarea id="vendor-support-reply-input" rows="1" placeholder="Type a reply…"></textarea>
+                    <button type="button" id="btn-send-vendor-support-reply" class="btn btn-primary btn-sm" style="width: auto">Send</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section data-view="vendor-payouts" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Vendor payout requests</h3>
+                  <p class="panel-sub">
+                    Shops cashing out their wallet balance for online-paid orders (bank/mobile payout) &middot;
+                    Firestore <code>vendors/{id}/payouts</code>
+                  </p>
+                </div>
+                <button type="button" id="btn-reload-vendor-payouts" class="btn btn-ghost btn-sm" style="width: auto">Reload</button>
+              </div>
+              <div class="table-wrap">
+                <table id="table-vendor-payouts">
+                  <thead>
+                    <tr>
+                      <th>Shop</th>
                       <th>Amount</th>
                       <th>Method</th>
                       <th>Account</th>

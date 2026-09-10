@@ -64,10 +64,6 @@ abstract final class VendorSettingsActions {
     }
   }
 
-  static Future<void> openHelpSupport(BuildContext context) {
-    return launchSupportWhatsApp(context);
-  }
-
   static Future<void> launchSupportPhone(BuildContext context) {
     return _launchUri(
       context,

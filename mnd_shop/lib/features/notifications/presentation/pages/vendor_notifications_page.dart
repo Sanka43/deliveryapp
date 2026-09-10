@@ -26,6 +26,11 @@ class VendorNotificationsPage extends ConsumerWidget {
         return Icons.receipt_long_rounded;
       case VendorNotification.kTypeOrderCancelled:
         return Icons.cancel_outlined;
+      case VendorNotification.kTypeOrderRefunded:
+      case VendorNotification.kTypeRefundRequested:
+        return Icons.currency_exchange_rounded;
+      case VendorNotification.kTypePayoutSettled:
+        return Icons.account_balance_wallet_outlined;
       case VendorNotification.kTypeApproval:
         return Icons.verified_outlined;
       default:

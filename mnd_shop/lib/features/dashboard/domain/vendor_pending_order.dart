@@ -31,6 +31,10 @@ class VendorPendingOrder {
     this.productCashLkr = 0,
     this.paymentMethod = 'cashOnDelivery',
     this.paymentStatus = '',
+    this.cancelledBy = '',
+    this.cancellationReason = '',
+    this.cancellationReasonDetail = '',
+    this.refundRequestStatus = '',
   });
 
   final String id;
@@ -95,7 +99,40 @@ class VendorPendingOrder {
   /// which never get this field until online-paid at all).
   final String paymentStatus;
 
+  /// `customer` | `vendor` | `system` — who cancelled the order, empty when not cancelled.
+  final String cancelledBy;
+
+  /// e.g. `vendor_rejected`, `vendor_no_response`, or a customer-picked reason id.
+  final String cancellationReason;
+
+  /// Free-text detail when [cancellationReason] is `other`.
+  final String cancellationReasonDetail;
+
+  /// `processing` | `pending_review` | `completed` from Firestore, empty when no refund was requested.
+  final String refundRequestStatus;
+
   bool get isSelfPickup => fulfillmentMode == 'selfPickup';
+
+  bool get isRefunded => paymentStatus == 'refunded';
+
+  bool get hasPendingRefundRequest =>
+      refundRequestStatus == 'processing' || refundRequestStatus == 'pending_review';
+
+  /// Short label for the cancelled-orders history card, e.g. "Cancelled by customer".
+  String get cancelledByLabel {
+    switch (cancelledBy) {
+      case 'customer':
+        return 'Cancelled by customer';
+      case 'vendor':
+        return 'Cancelled by you';
+      case 'system':
+        return cancellationReason == 'vendor_no_response'
+            ? 'Auto-cancelled (no response)'
+            : 'Auto-cancelled';
+      default:
+        return '';
+    }
+  }
 
   /// True once the customer has already paid online (PayHere) — the shop
   /// doesn't need to collect cash on delivery/pickup for this order.
@@ -211,6 +248,13 @@ class VendorPendingOrder {
           : 'cashOnDelivery',
       paymentStatus:
           (data['paymentStatus'] as String?)?.trim().toLowerCase() ?? '',
+      cancelledBy: (data['cancelledBy'] as String?)?.trim().toLowerCase() ?? '',
+      cancellationReason:
+          (data['cancellationReason'] as String?)?.trim().toLowerCase() ?? '',
+      cancellationReasonDetail:
+          (data['cancellationReasonDetail'] as String?)?.trim() ?? '',
+      refundRequestStatus:
+          (data['refundRequestStatus'] as String?)?.trim().toLowerCase() ?? '',
     );
   }
 

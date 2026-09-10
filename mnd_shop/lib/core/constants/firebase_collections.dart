@@ -33,4 +33,22 @@ class FirebaseCollections {
   static const String vendorYearlyStats = 'yearly_stats';
   static const String vendorProductStats = 'product_stats';
   static const String vendorProductDailyStats = 'product_daily_stats';
+
+  /// Subcollection: `vendors/{vendorId}/wallet/summary` (server-written only).
+  static const String vendorWallet = 'wallet';
+  static const String vendorWalletSummaryDocId = 'summary';
+  /// Subcollection: `vendors/{vendorId}/transactions/{transactionId}` (server-written only).
+  static const String vendorTransactions = 'transactions';
+  /// Subcollection: `vendors/{vendorId}/payouts/{payoutId}` (server-written only).
+  static const String vendorPayouts = 'payouts';
+
+  /// One thread per shop: `vendor_support_threads/{vendorId}`.
+  static const String vendorSupportThreads = 'vendor_support_threads';
+  static const String vendorSupportMessages = 'messages';
+
+  /// Top-level: `store_ratings/{orderId}` (doc id == the rated order's id).
+  static const String storeRatings = 'store_ratings';
+
+  /// Top-level: `coupons/{code}` (doc id == the coupon code itself).
+  static const String coupons = 'coupons';
 }

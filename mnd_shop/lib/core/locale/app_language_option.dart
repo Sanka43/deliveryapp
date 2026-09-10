@@ -25,10 +25,17 @@ class AppLanguageOption {
     subtitle: 'Sinhala',
   );
 
+  static const AppLanguageOption tamil = AppLanguageOption._(
+    id: 'ta',
+    title: 'தமிழ்',
+    subtitle: 'Tamil',
+  );
+
   static const List<AppLanguageOption> ordered = <AppLanguageOption>[
     system,
     english,
     sinhala,
+    tamil,
   ];
 
   final String id;
@@ -41,4 +48,5 @@ class AppLanguageOption {
 const List<Locale> kAppSupportedLocales = <Locale>[
   Locale('en'),
   Locale('si'),
+  Locale('ta'),
 ];

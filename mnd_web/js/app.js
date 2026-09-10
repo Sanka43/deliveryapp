@@ -27,8 +27,10 @@
     riderCashLedger: "cash_ledger",
     riderCashSettlements: "cash_settlements",
     riderWithdrawals: "withdrawals",
+    vendorPayouts: "payouts",
     storeRatings: "store_ratings",
     supportThreads: "support_threads",
+    vendorSupportThreads: "vendor_support_threads",
   };
 
   const ACTIVE_DELIVERY_STATUSES = ["out_for_delivery", "picked_up", "on_the_way"];
@@ -173,13 +175,18 @@
     cashSettlements: [],
     cashRiders: [],
     withdrawals: [],
+    vendorPayouts: [],
     supportThreads: [],
+    vendorSupportThreads: [],
   };
 
   let ongoingUnsubs = [];
   let supportThreadsUnsub = null;
   let supportMessagesUnsub = null;
   let activeSupportThreadId = null;
+  let vendorSupportThreadsUnsub = null;
+  let vendorSupportMessagesUnsub = null;
+  let activeVendorSupportThreadId = null;
   let riderTrackUnsub = null;
   let riderTrackMap = null;
   let riderTrackRiderMarker = null;
@@ -1084,6 +1091,8 @@
     support: "Support",
     "rider-cash": "Rider cash",
     withdrawals: "Withdrawals",
+    "vendor-payouts": "Vendor payouts",
+    "vendor-support": "Vendor support",
     "ride-fares": "Ride fares",
     ratings: "Rating Management",
     "platform-fees": "Fees & commissions",
@@ -1105,6 +1114,9 @@
     }
     if (currentView === "support" && name !== "support") {
       stopSupportListeners();
+    }
+    if (currentView === "vendor-support" && name !== "vendor-support") {
+      stopVendorSupportListeners();
     }
     currentView = name;
     elPageTitle.textContent = titles[name] || name;
@@ -1170,7 +1182,9 @@
     }
     if (name === "customers") await Promise.all([loadCustomers(), loadOrders()]);
     if (name === "support") await startSupportThreadsListener();
+    if (name === "vendor-support") await startVendorSupportThreadsListener();
     if (name === "withdrawals") await loadWithdrawals();
+    if (name === "vendor-payouts") await loadVendorPayouts();
     if (name === "rider-cash") await loadRiderCash();
     if (name === "ride-fares") await loadRideFares();
     if (name === "ratings") await loadRatings();
@@ -1206,6 +1220,7 @@
     if (name === "ongoing-riders") renderOngoingRiders();
     if (name === "customers") renderCustomers();
     if (name === "withdrawals") renderWithdrawals();
+    if (name === "vendor-payouts") renderVendorPayouts();
     if (name === "rider-cash") renderRiderCash();
     if (name === "ride-fares") renderRideFares();
     if (name === "ratings") renderRatings();
@@ -1564,6 +1579,9 @@
   }
 
   async function loadCoupons() {
+    if (cache.vendors.length === 0) {
+      await loadVendors();
+    }
     const snap = await db.collection(COL.coupons).limit(200).get(FS_GET_SERVER);
     const coupons = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     await Promise.all(
@@ -1582,6 +1600,9 @@
     );
     coupons.sort((a, b) => a.id.localeCompare(b.id));
     cache.coupons = coupons;
+    setPendingCouponsNavBadge(
+      coupons.filter((c) => c.storeId && String(c.status || "").toLowerCase() === "pending").length
+    );
   }
 
   async function loadOffers() {
@@ -2837,12 +2858,36 @@
     });
   }
 
+  /**
+   * Vendor-submitted coupons (functions/src/coupons.ts requestVendorCoupon)
+   * land in this same `coupons` collection with `storeId` + `status:
+   * "pending"` — this table is the only place they can be approved, since
+   * firestore.rules only lets a vendor create as pending and toggle `active`,
+   * never approve their own submission.
+   */
+  function couponStoreLabel(c) {
+    if (!c.storeId) {
+      return "—";
+    }
+    const vendor = cache.vendors.find((v) => v.id === c.storeId);
+    return vendor ? vendor.name || vendor.shopName || c.storeId : c.storeId;
+  }
+
+  function couponStatusLabel(c) {
+    if (!c.storeId) {
+      return `<span class="badge">Platform</span>`;
+    }
+    const status = String(c.status || "pending").toLowerCase();
+    const cls = status === "approved" ? "badge-delivered" : status === "rejected" ? "badge-cancelled" : "badge-pending";
+    return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
+  }
+
   function renderCoupons() {
     const tbody = document.querySelector("#table-coupons tbody");
     const list = [...cache.coupons];
     tbody.innerHTML =
       list.length === 0
-        ? `<tr><td colspan="9"><div class="empty-state">No coupons yet.</div></td></tr>`
+        ? `<tr><td colspan="11"><div class="empty-state">No coupons yet.</div></td></tr>`
         : list
             .map((c) => {
               const discountLabel =
@@ -2853,8 +2898,16 @@
               const expires = fmtDate(c.expiresAt);
               const maxUses = c.maxUses != null ? String(c.maxUses) : "Unlimited";
               const perCustomer = c.perCustomerLimit != null ? String(c.perCustomerLimit) : "Unlimited";
+              const status = String(c.status || "").toLowerCase();
+              const approvalActions =
+                c.storeId && status === "pending"
+                  ? `<button type="button" class="btn btn-primary btn-sm" data-approve-coupon="${escapeHtml(c.id)}">Approve</button>
+                     <button type="button" class="btn btn-ghost btn-sm" data-reject-coupon="${escapeHtml(c.id)}">Reject</button>`
+                  : "";
               return `<tr>
         <td><code>${escapeHtml(c.id)}</code></td>
+        <td>${escapeHtml(couponStoreLabel(c))}</td>
+        <td>${couponStatusLabel(c)}</td>
         <td>${escapeHtml(discountLabel)}</td>
         <td>${escapeHtml(minOrder)}</td>
         <td>${escapeHtml(expires)}</td>
@@ -2863,6 +2916,7 @@
         <td>${Number(c.totalUsed) || 0}</td>
         <td><input type="checkbox" data-toggle-coupon="${escapeHtml(c.id)}" ${c.active === true ? "checked" : ""}></td>
         <td class="row-actions">
+          ${approvalActions}
           <button type="button" class="btn btn-ghost btn-sm" data-edit-coupon="${escapeHtml(c.id)}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-del-coupon="${escapeHtml(c.id)}">Delete</button>
         </td>
@@ -2874,6 +2928,12 @@
     });
     tbody.querySelectorAll("[data-del-coupon]").forEach((btn) => {
       btn.addEventListener("click", () => deleteCoupon(btn.getAttribute("data-del-coupon")));
+    });
+    tbody.querySelectorAll("[data-approve-coupon]").forEach((btn) => {
+      btn.addEventListener("click", () => approveVendorCoupon(btn.getAttribute("data-approve-coupon")));
+    });
+    tbody.querySelectorAll("[data-reject-coupon]").forEach((btn) => {
+      btn.addEventListener("click", () => rejectVendorCoupon(btn.getAttribute("data-reject-coupon")));
     });
     tbody.querySelectorAll("[data-toggle-coupon]").forEach((el) => {
       el.addEventListener("change", async (e) => {
@@ -2887,6 +2947,37 @@
         }
       });
     });
+  }
+
+  async function approveVendorCoupon(id) {
+    if (!id) return;
+    try {
+      await db.collection(COL.coupons).doc(id).update({
+        status: "approved",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      toast("Coupon approved", "success");
+      await loadCoupons();
+      renderCoupons();
+    } catch (err) {
+      alert(err.message || String(err));
+    }
+  }
+
+  async function rejectVendorCoupon(id) {
+    if (!id) return;
+    try {
+      await db.collection(COL.coupons).doc(id).update({
+        status: "rejected",
+        active: false,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      toast("Coupon rejected", "success");
+      await loadCoupons();
+      renderCoupons();
+    } catch (err) {
+      alert(err.message || String(err));
+    }
   }
 
   function renderOfferApprovals() {
@@ -6168,6 +6259,115 @@
     }
   }
 
+  function setPendingCouponsNavBadge(n) {
+    const navBadge = document.getElementById("nav-pending-coupons");
+    if (!navBadge) return;
+    if (n > 0) {
+      navBadge.textContent = String(n);
+      navBadge.hidden = false;
+    } else {
+      navBadge.hidden = true;
+    }
+  }
+
+  function setVendorPayoutsNavBadge(n) {
+    const navBadge = document.getElementById("nav-vendor-payouts");
+    if (!navBadge) return;
+    if (n > 0) {
+      navBadge.textContent = String(n);
+      navBadge.hidden = false;
+    } else {
+      navBadge.hidden = true;
+    }
+  }
+
+  /**
+   * Vendor wallet payouts — the online-order counterpart to Rider
+   * withdrawals above: the platform owes the shop money for PayHere-paid
+   * sales, and the shop has asked to cash out via bank/mobile transfer.
+   * Backed by requestVendorPayout / adminSettleVendorPayout
+   * (functions/src/vendorEarnings.ts). Named `payouts` (not `withdrawals`)
+   * so the collectionGroup query here never mixes with rider withdrawals.
+   */
+  async function loadVendorPayouts() {
+    if (cache.vendors.length === 0) {
+      await loadVendors();
+    }
+    try {
+      const snap = await db
+        .collectionGroup(COL.vendorPayouts)
+        .where("status", "==", "pending")
+        .orderBy("createdAt", "desc")
+        .limit(100)
+        .get(FS_GET_SERVER);
+      cache.vendorPayouts = snap.docs.map((d) => ({
+        id: d.id,
+        vendorDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
+        ...d.data(),
+      }));
+    } catch (e) {
+      cache.vendorPayouts = [];
+      toast(e.message || String(e), "error");
+    }
+    setVendorPayoutsNavBadge(cache.vendorPayouts.length);
+  }
+
+  function renderVendorPayouts() {
+    const tbody = document.querySelector("#table-vendor-payouts tbody");
+    if (!tbody) return;
+    const list = cache.vendorPayouts || [];
+    tbody.innerHTML = list.length === 0
+      ? '<tr><td colspan="7"><div class="empty-state">No payout requests waiting.</div></td></tr>'
+      : list
+          .map((p) => {
+            const vendor = cache.vendors.find((v) => v.id === p.vendorDocId);
+            const name = vendor
+              ? vendor.name || vendor.shopName || p.vendorDocId
+              : p.vendorId || p.vendorDocId || "Unknown shop";
+            return `<tr>
+        <td>${escapeHtml(name)}</td>
+        <td><strong>${escapeHtml(fmtMoney(p.amountLkr))}</strong></td>
+        <td>${escapeHtml(p.payoutMethod || "—")}</td>
+        <td>${escapeHtml(p.payoutAccount || "—")}</td>
+        <td>${escapeHtml(p.note || "—")}</td>
+        <td>${escapeHtml(fmtTs(p.createdAt))}</td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-pay-vendor-payout="${escapeHtml(p.id)}" data-vendor="${escapeHtml(p.vendorDocId)}">Mark paid</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-reject-vendor-payout="${escapeHtml(p.id)}" data-vendor="${escapeHtml(p.vendorDocId)}">Reject</button>
+        </td>
+      </tr>`;
+          })
+          .join("");
+  }
+
+  /**
+   * Marks a vendor payout as physically sent (bank/mobile transfer done) or
+   * rejected. The callable moves pending → lifetimeWithdrawn on pay, or
+   * restores the wallet balance on reject — never done client-side, since
+   * that would let a client fabricate a balance.
+   */
+  async function settleVendorPayout(vendorId, payoutId, action) {
+    if (!vendorId || !payoutId) return;
+    const paying = action === "paid";
+    if (paying) {
+      if (!confirm("Confirm you have sent this payout to the shop?")) return;
+    } else if (!confirm("Reject this payout and return the amount to the shop's balance?")) {
+      return;
+    }
+    try {
+      await functionsClient.httpsCallable("adminSettleVendorPayout")({
+        vendorId,
+        payoutId,
+        action,
+      });
+      await loadVendorPayouts();
+      renderVendorPayouts();
+      toast(paying ? "Payout marked paid." : "Payout rejected.", "success");
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+  }
+
   /**
    * Customer <-> support chat. One thread per customer (doc id = customer
    * uid) at support_threads/{customerId}, with a messages subcollection.
@@ -6401,6 +6601,236 @@
       await db
         .collection(COL.supportThreads)
         .doc(activeSupportThreadId)
+        .collection("messages")
+        .add({
+          senderId: auth.currentUser ? auth.currentUser.uid : "support",
+          senderType: "staff",
+          text,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (e) {
+      input.value = text;
+      toast(e.message || String(e), "error");
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
+  }
+
+  /**
+   * Vendor <-> support chat. Same shape as the customer support chat above,
+   * one thread per shop (doc id = vendor doc id) at
+   * vendor_support_threads/{vendorId}, with a messages subcollection.
+   * Aggregate fields are owned by onVendorSupportMessageCreated
+   * (functions/src/supportChat.ts) — this panel only ever appends a
+   * `senderType: "staff"` message doc and toggles `status`.
+   */
+  function countUnreadVendorSupportThreads() {
+    return cache.vendorSupportThreads.filter((t) => Number(t.unreadByStaff || 0) > 0).length;
+  }
+
+  function updatePendingVendorSupportNavBadge() {
+    const n = countUnreadVendorSupportThreads();
+    const navBadge = document.getElementById("nav-pending-vendor-support");
+    if (navBadge) {
+      if (n > 0) {
+        navBadge.textContent = String(n);
+        navBadge.hidden = false;
+      } else {
+        navBadge.hidden = true;
+      }
+    }
+  }
+
+  /** Resolves once the first snapshot has rendered, then keeps listening live. */
+  function startVendorSupportThreadsListener() {
+    stopVendorSupportThreadsListener();
+    return new Promise((resolve) => {
+      let settled = false;
+      vendorSupportThreadsUnsub = db
+        .collection(COL.vendorSupportThreads)
+        .orderBy("lastMessageAt", "desc")
+        .limit(200)
+        .onSnapshot(
+          (snap) => {
+            cache.vendorSupportThreads = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            updatePendingVendorSupportNavBadge();
+            renderVendorSupportThreads();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          },
+          (err) => {
+            toast(err.message || String(err), "error");
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          }
+        );
+    });
+  }
+
+  function stopVendorSupportThreadsListener() {
+    if (typeof vendorSupportThreadsUnsub === "function") {
+      try {
+        vendorSupportThreadsUnsub();
+      } catch (_) {}
+    }
+    vendorSupportThreadsUnsub = null;
+  }
+
+  function stopVendorSupportMessagesListener() {
+    if (typeof vendorSupportMessagesUnsub === "function") {
+      try {
+        vendorSupportMessagesUnsub();
+      } catch (_) {}
+    }
+    vendorSupportMessagesUnsub = null;
+  }
+
+  function stopVendorSupportListeners() {
+    stopVendorSupportThreadsListener();
+    stopVendorSupportMessagesListener();
+    activeVendorSupportThreadId = null;
+  }
+
+  function vendorSupportThreadDisplayName(t) {
+    return String(t.vendorName || "").trim() || "Shop";
+  }
+
+  function activeVendorSupportThread() {
+    return cache.vendorSupportThreads.find((t) => t.id === activeVendorSupportThreadId) || null;
+  }
+
+  function renderVendorSupportThreads() {
+    const wrap = document.getElementById("vendor-support-thread-list");
+    if (!wrap) return;
+    const q = (document.getElementById("filter-vendor-support-threads")?.value || "").trim().toLowerCase();
+    let threads = cache.vendorSupportThreads.slice();
+    if (q) {
+      threads = threads.filter((t) => {
+        const hay = `${vendorSupportThreadDisplayName(t)} ${t.vendorPhone || ""} ${t.lastMessageText || ""}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    if (threads.length === 0) {
+      wrap.innerHTML = `<div class="empty-state">No vendor conversations yet.</div>`;
+      return;
+    }
+    wrap.innerHTML = threads
+      .map((t) => {
+        const unread = Number(t.unreadByStaff || 0) > 0;
+        const active = t.id === activeVendorSupportThreadId;
+        const preview = escapeHtml(String(t.lastMessageText || "").slice(0, 80));
+        const closed = String(t.status || "open") === "closed";
+        return `
+          <button type="button" class="support-thread-item${active ? " active" : ""}${unread ? " unread" : ""}" data-vendor-thread-id="${t.id}">
+            <div class="support-thread-item-top">
+              <span class="support-thread-name">${escapeHtml(vendorSupportThreadDisplayName(t))}</span>
+              <span class="support-thread-time">${fmtDateTime(t.lastMessageAt)}</span>
+            </div>
+            <div class="support-thread-item-bottom">
+              <span class="support-thread-preview">${preview || "&nbsp;"}</span>
+              ${unread ? '<span class="support-unread-dot"></span>' : ""}
+            </div>
+            ${closed ? '<span class="badge badge-cancelled">Closed</span>' : ""}
+          </button>`;
+      })
+      .join("");
+  }
+
+  function renderVendorSupportConversationHeader() {
+    const header = document.getElementById("vendor-support-conversation-header");
+    if (!header) return;
+    const t = activeVendorSupportThread();
+    if (!t) {
+      header.innerHTML = "";
+      return;
+    }
+    const closed = String(t.status || "open") === "closed";
+    header.innerHTML = `
+      <div>
+        <strong>${escapeHtml(vendorSupportThreadDisplayName(t))}</strong>
+        <div class="support-conversation-sub">${escapeHtml(t.vendorPhone || "—")}</div>
+      </div>
+      <button type="button" id="btn-toggle-vendor-support-thread-status" class="btn btn-ghost btn-sm" style="width: auto">
+        ${closed ? "Reopen" : "Mark closed"}
+      </button>`;
+    document.getElementById("btn-toggle-vendor-support-thread-status")?.addEventListener("click", () => {
+      toggleActiveVendorSupportThreadStatus().catch((e) => toast(e.message || String(e), "error"));
+    });
+  }
+
+  async function toggleActiveVendorSupportThreadStatus() {
+    const t = activeVendorSupportThread();
+    if (!t) return;
+    const nextStatus = String(t.status || "open") === "closed" ? "open" : "closed";
+    await db.collection(COL.vendorSupportThreads).doc(t.id).update({ status: nextStatus });
+    toast(nextStatus === "closed" ? "Conversation closed." : "Conversation reopened.", "success");
+  }
+
+  function renderVendorSupportMessages(messages) {
+    const list = document.getElementById("vendor-support-messages");
+    if (!list) return;
+    if (messages.length === 0) {
+      list.innerHTML = `<div class="empty-state">No messages yet.</div>`;
+      return;
+    }
+    list.innerHTML = messages
+      .map((m) => {
+        const fromStaff = String(m.senderType || "") === "staff";
+        return `
+          <div class="support-bubble-row ${fromStaff ? "from-staff" : "from-customer"}">
+            <div class="support-bubble">${escapeHtml(m.text || "")}</div>
+            <div class="support-bubble-time">${fmtDateTime(m.createdAt)}</div>
+          </div>`;
+      })
+      .join("");
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function openVendorSupportThread(vendorId) {
+    if (!vendorId || vendorId === activeVendorSupportThreadId) return;
+    activeVendorSupportThreadId = vendorId;
+    stopVendorSupportMessagesListener();
+    renderVendorSupportThreads();
+    renderVendorSupportConversationHeader();
+    const list = document.getElementById("vendor-support-messages");
+    if (list) list.innerHTML = `<div class="empty-state">Loading messages…</div>`;
+
+    vendorSupportMessagesUnsub = db
+      .collection(COL.vendorSupportThreads)
+      .doc(vendorId)
+      .collection("messages")
+      .orderBy("createdAt")
+      .limitToLast(200)
+      .onSnapshot(
+        (snap) => {
+          const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          renderVendorSupportMessages(messages);
+        },
+        (err) => toast(err.message || String(err), "error")
+      );
+
+    db.collection(COL.vendorSupportThreads)
+      .doc(vendorId)
+      .update({ unreadByStaff: 0 })
+      .catch(() => {});
+  }
+
+  async function sendActiveVendorSupportReply() {
+    const input = document.getElementById("vendor-support-reply-input");
+    if (!input || !activeVendorSupportThreadId) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    input.disabled = true;
+    try {
+      await db
+        .collection(COL.vendorSupportThreads)
+        .doc(activeVendorSupportThreadId)
         .collection("messages")
         .add({
           senderId: auth.currentUser ? auth.currentUser.uid : "support",
@@ -7006,6 +7436,22 @@
       settleWithdrawal(rejectBtn.getAttribute("data-rider"), rejectBtn.getAttribute("data-reject-withdrawal"), "rejected");
     }
   });
+  document.getElementById("btn-reload-vendor-payouts")?.addEventListener("click", () => {
+    loadVendorPayouts()
+      .then(() => renderVendorPayouts())
+      .catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.querySelector("#table-vendor-payouts")?.addEventListener("click", (e) => {
+    const payBtn = e.target.closest("[data-pay-vendor-payout]");
+    if (payBtn) {
+      settleVendorPayout(payBtn.getAttribute("data-vendor"), payBtn.getAttribute("data-pay-vendor-payout"), "paid");
+      return;
+    }
+    const rejectBtn = e.target.closest("[data-reject-vendor-payout]");
+    if (rejectBtn) {
+      settleVendorPayout(rejectBtn.getAttribute("data-vendor"), rejectBtn.getAttribute("data-reject-vendor-payout"), "rejected");
+    }
+  });
   document.getElementById("btn-reload-rider-cash")?.addEventListener("click", () => {
     loadRiderCash()
       .then(() => renderRiderCash())
@@ -7102,6 +7548,24 @@
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendActiveSupportReply().catch((err) => toast(err.message || String(err), "error"));
+    }
+  });
+  const debouncedRenderVendorSupportThreads = ui().debounce
+    ? ui().debounce(() => renderVendorSupportThreads(), 200)
+    : () => renderVendorSupportThreads();
+  document.getElementById("filter-vendor-support-threads")?.addEventListener("input", debouncedRenderVendorSupportThreads);
+  document.getElementById("vendor-support-thread-list")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-vendor-thread-id]");
+    if (!btn) return;
+    openVendorSupportThread(btn.getAttribute("data-vendor-thread-id"));
+  });
+  document.getElementById("btn-send-vendor-support-reply")?.addEventListener("click", () => {
+    sendActiveVendorSupportReply().catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.getElementById("vendor-support-reply-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendActiveVendorSupportReply().catch((err) => toast(err.message || String(err), "error"));
     }
   });
   const debouncedRenderOngoing = ui().debounce

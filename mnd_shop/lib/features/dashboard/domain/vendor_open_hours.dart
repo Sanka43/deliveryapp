@@ -326,22 +326,27 @@ String localizeVendorOpenSubtitle(
 }) {
   final String clock = subtitle.clock;
   final bool si = languageCode == 'si';
+  final bool ta = languageCode == 'ta';
   switch (subtitle.kind) {
     case VendorOpenSubtitleKind.awaitingApproval:
-      return si
-          ? 'Admin අනුමත කළ පසු මෙය සක්‍රීය වේ'
-          : 'Available after admin approves your shop';
+      if (si) return 'Admin අනුමත කළ පසු මෙය සක්‍රීය වේ';
+      if (ta) return 'நிர்வாகி உங்கள் கடையை அனுமதித்த பிறகு இது செயல்படும்';
+      return 'Available after admin approves your shop';
     case VendorOpenSubtitleKind.autoOpenUntil:
-      return si ? 'විවෘතයි $clock දක්වා' : 'Open until $clock';
+      if (si) return 'විවෘතයි $clock දක්වා';
+      if (ta) return '$clock வரை திறந்துள்ளது';
+      return 'Open until $clock';
     case VendorOpenSubtitleKind.autoOpensAt:
-      return si ? 'විවෘත වන්නේ $clock' : 'Opens at $clock';
+      if (si) return 'විවෘත වන්නේ $clock';
+      if (ta) return '$clock மணிக்கு திறக்கும்';
+      return 'Opens at $clock';
     case VendorOpenSubtitleKind.manualOpenUntil:
-      return si
-          ? 'අතින් විවෘතයි $clock දක්වා'
-          : 'Manually open until $clock';
+      if (si) return 'අතින් විවෘතයි $clock දක්වා';
+      if (ta) return '$clock வரை கைமுறையாக திறந்துள்ளது';
+      return 'Manually open until $clock';
     case VendorOpenSubtitleKind.manualClosedUntil:
-      return si
-          ? 'අතින් වසා ඇත $clock දක්වා'
-          : 'Manually closed until $clock';
+      if (si) return 'අතින් වසා ඇත $clock දක්වා';
+      if (ta) return '$clock வரை கைமுறையாக மூடப்பட்டுள்ளது';
+      return 'Manually closed until $clock';
   }
 }

@@ -32,6 +32,7 @@ class CouponRepository {
   Future<CouponValidationResult> validate({
     required String code,
     required int subtotalLkr,
+    required String storeId,
   }) async {
     final String trimmed = code.trim();
     if (trimmed.isEmpty) {
@@ -43,6 +44,7 @@ class CouponRepository {
           .call(<String, dynamic>{
         'code': trimmed,
         'subtotalLkr': subtotalLkr,
+        'storeId': storeId.trim(),
       });
       final Map<String, dynamic> data =
           Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);

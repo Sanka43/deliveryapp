@@ -7,6 +7,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {
   checkCouponUsageLimits,
   computeDiscountLkr,
+  couponUsableForVendor,
   CouponDoc,
   incrementCouponUsageTx,
   incrementCustomerCouponUsageTx,
@@ -609,6 +610,7 @@ async function loadAndPriceCoupon(
   couponRaw: string,
   subtotal: number,
   uid: string,
+  vendorId: string,
 ): Promise<{code: string; couponRef: FirebaseFirestore.DocumentReference; discount: number}> {
   const db = getFirestore();
   const code = normalizeCouponCode(couponRaw);
@@ -618,6 +620,12 @@ async function loadAndPriceCoupon(
     throw new HttpsError("not-found", "Coupon not found.");
   }
   const coupon = couponSnap.data() as CouponDoc;
+  if (!couponUsableForVendor(coupon, vendorId)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This coupon is not valid for this store.",
+    );
+  }
   const discount = computeDiscountLkr(coupon, subtotal);
   if (discount <= 0) {
     throw new HttpsError(
@@ -638,12 +646,13 @@ async function consumeCouponAndSequence(
   couponRaw: string,
   subtotal: number,
   uid: string,
+  vendorId: string,
 ): Promise<{discount: number; couponCode: string | undefined; trackingNumber: string}> {
   let discount = 0;
   let couponCode: string | undefined;
   let couponRef: FirebaseFirestore.DocumentReference | undefined;
   if (couponRaw) {
-    const loaded = await loadAndPriceCoupon(tx, couponRaw, subtotal, uid);
+    const loaded = await loadAndPriceCoupon(tx, couponRaw, subtotal, uid, vendorId);
     couponRef = loaded.couponRef;
     discount = loaded.discount;
     couponCode = loaded.code;
@@ -672,6 +681,7 @@ async function previewCouponAndSequence(
   couponRaw: string,
   subtotal: number,
   uid: string,
+  vendorId: string,
 ): Promise<{discount: number; couponCode: string | undefined; trackingNumber: string}> {
   let discount = 0;
   let couponCode: string | undefined;
@@ -681,6 +691,7 @@ async function previewCouponAndSequence(
       couponRaw,
       subtotal,
       uid,
+      vendorId,
     );
     discount = d;
     couponCode = code;
@@ -716,7 +727,13 @@ export const placeCashOnDeliveryOrder = onCall(
       );
 
       const {discount, couponCode, trackingNumber} =
-        await consumeCouponAndSequence(tx, prepared.couponRaw, subtotal, uid);
+        await consumeCouponAndSequence(
+          tx,
+          prepared.couponRaw,
+          subtotal,
+          uid,
+          prepared.vendorId,
+        );
 
       const serviceCharge = computeServiceChargeLkr(
         subtotal,
@@ -833,7 +850,13 @@ export const createPayHereCheckoutForOrder = onCall(
       );
 
       const {discount, couponCode, trackingNumber} =
-        await previewCouponAndSequence(tx, prepared.couponRaw, subtotal, uid);
+        await previewCouponAndSequence(
+          tx,
+          prepared.couponRaw,
+          subtotal,
+          uid,
+          prepared.vendorId,
+        );
 
       const serviceCharge = computeServiceChargeLkr(
         subtotal,

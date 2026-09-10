@@ -5,6 +5,7 @@ initializeApp();
 export {
   validateCoupon,
   onOrderCreatedValidateCoupon,
+  requestVendorCoupon,
 } from "./coupons";
 export {
   onOrderCreatedNotify,
@@ -17,7 +18,10 @@ export {
   onOrderDeliveredIssueReferralReward,
 } from "./referrals";
 export {onTripStatusUpdatedNotify} from "./tripNotifications";
-export {onSupportMessageCreated} from "./supportChat";
+export {
+  onSupportMessageCreated,
+  onVendorSupportMessageCreated,
+} from "./supportChat";
 export {
   onOrderCreatedVendorStats,
   onOrderUpdatedVendorStats,
@@ -54,6 +58,11 @@ export {
   requestRiderWithdrawal,
   adminSettleRiderWithdrawal,
 } from "./riderEarnings";
+export {
+  onOrderCompletedCreditVendor,
+  requestVendorPayout,
+  adminSettleVendorPayout,
+} from "./vendorEarnings";
 export {
   riderRequestCashSettlement,
   adminConfirmCashSettlement,

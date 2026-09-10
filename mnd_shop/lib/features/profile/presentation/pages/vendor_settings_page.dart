@@ -12,6 +12,10 @@ import 'package:mnd_shop/core/media/shop_cover_image_spec.dart';
 import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/billing/presentation/pages/vendor_monthly_fees_page.dart';
+import 'package:mnd_shop/features/billing/presentation/pages/vendor_payouts_page.dart';
+import 'package:mnd_shop/features/coupons/presentation/pages/vendor_coupons_page.dart';
+import 'package:mnd_shop/features/ratings/presentation/pages/vendor_reviews_page.dart';
+import 'package:mnd_shop/features/support/presentation/pages/vendor_support_chat_page.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_open_hours.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
@@ -215,7 +219,18 @@ class VendorSettingsPage extends ConsumerWidget {
             VendorSettingsNavTile(
               icon: Icons.help_outline_rounded,
               label: _vTxt(context, en: 'Help & support', si: 'උදව් සහ සහාය'),
-              onTap: () => VendorSettingsActions.openHelpSupport(context),
+              subtitle: _vTxt(
+                context,
+                en: 'Chat with our support team',
+                si: 'අපේ support team එකත් සමග chat කරන්න',
+              ),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const VendorSupportChatPage(),
+                  ),
+                );
+              },
             ),
             VendorSettingsNavTile(
               icon: Icons.info_outline_rounded,
@@ -280,6 +295,38 @@ class VendorSettingsPage extends ConsumerWidget {
               },
             ),
             VendorSettingsNavTile(
+              icon: Icons.confirmation_number_outlined,
+              label: _vTxt(context, en: 'Coupons', si: 'Coupons'),
+              subtitle: _vTxt(
+                context,
+                en: 'Create promo codes for your store',
+                si: 'ඔබේ store එකට promo codes හදන්න',
+              ),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const VendorCouponsPage(),
+                  ),
+                );
+              },
+            ),
+            VendorSettingsNavTile(
+              icon: Icons.star_outline_rounded,
+              label: _vTxt(context, en: 'Reviews', si: 'ඇගයීම්'),
+              subtitle: _vTxt(
+                context,
+                en: 'See what customers are saying',
+                si: 'Customers කියන දේවල් බලන්න',
+              ),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const VendorReviewsPage(),
+                  ),
+                );
+              },
+            ),
+            VendorSettingsNavTile(
               icon: Icons.work_outline_rounded,
               label: _vTxt(context, en: 'Jobs', si: 'රැකියා'),
               subtitle: _vTxt(
@@ -291,6 +338,22 @@ class VendorSettingsPage extends ConsumerWidget {
                 Navigator.of(context).push<void>(
                   MaterialPageRoute<void>(
                     builder: (_) => const VendorJobsPage(),
+                  ),
+                );
+              },
+            ),
+            VendorSettingsNavTile(
+              icon: Icons.account_balance_wallet_outlined,
+              label: _vTxt(context, en: 'Payouts', si: 'ගෙවීම්'),
+              subtitle: _vTxt(
+                context,
+                en: 'View balance and request a payout',
+                si: 'ශේෂය බලා ගෙවීමක් ඉල්ලන්න',
+              ),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const VendorPayoutsPage(),
                   ),
                 );
               },

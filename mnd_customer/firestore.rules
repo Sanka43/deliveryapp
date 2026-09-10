@@ -103,6 +103,18 @@ service cloud.firestore {
             : '');
     }
 
+    /// True when the signed-in vendor owns [vendorId] — either the self-serve
+    /// case (vendors/{authUid}) or the legacy profile-linked store id case.
+    /// Shared by any top-level collection scoped by a vendor id field
+    /// (coupons, vendor_support_threads, ...) where the owning `vendors/{id}`
+    /// match's own `vendorNonAdminStoreOwner` isn't in scope — Firestore
+    /// rules functions declared inside one match block aren't visible to a
+    /// sibling top-level match.
+    function vendorOwnsStoreScopedDoc(vendorId) {
+      return isSelf(vendorId)
+        || (isVendor() && vendorStoreId().size() > 0 && vendorId == vendorStoreId());
+    }
+
     /// Canonical store id on an order: [vendorId] (primary) or [vendorStoreId] (alias — same value as vendors doc id / profile vendorStoreId).
     function orderVendorStoreKey() {
       let o = resource.data;
@@ -369,6 +381,31 @@ service cloud.firestore {
           && (vendorNonAdminStoreOwner(vendorId) || isAdmin());
         allow create, update, delete: if isAdmin();
       }
+
+      // Wallet balance is server-authoritative: credited by the
+      // onOrderCompletedCreditVendor trigger and debited by the
+      // requestVendorPayout callable (Admin SDK, which bypasses rules).
+      // Clients may only read — self-writes were a balance-inflation vector.
+      match /wallet/{docId} {
+        allow read: if vendorNonAdminStoreOwner(vendorId) || isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Ledger is written server-side (order-credit trigger / payout
+      // callable). Clients read only so earnings cannot be fabricated.
+      match /transactions/{transactionId} {
+        allow read: if vendorNonAdminStoreOwner(vendorId) || isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Created only via the requestVendorPayout callable (Admin SDK), which
+      // verifies balance server-side. Admin settles status on payout. Named
+      // `payouts` (not `withdrawals`) so it does not collide with the
+      // collectionGroup('withdrawals') query the rider admin page runs.
+      match /payouts/{payoutId} {
+        allow read: if vendorNonAdminStoreOwner(vendorId) || isAdmin();
+        allow write: if isAdmin();
+      }
     }
 
     // Admin web billing / fee config (mnd_web). Any signed-in user may read —
@@ -447,8 +484,32 @@ service cloud.firestore {
     // reverse-engineered by reading Firestore directly. Only the admin
     // dashboard (mnd_web) manages coupons.
     match /coupons/{code} {
-      allow read: if isAdmin();
-      allow create, update, delete: if isAdmin();
+      // A vendor-submitted coupon (storeId set) is visible to its own shop;
+      // a platform-wide admin coupon (no storeId) stays admin-only-read —
+      // there was never a public "browse coupons" surface and this doesn't
+      // add one.
+      allow read: if isAdmin()
+        || (isSignedIn() && 'storeId' in resource.data
+            && vendorOwnsStoreScopedDoc(resource.data.storeId));
+
+      // Vendor self-service creation goes through the requestVendorCoupon
+      // callable (Admin SDK, which validates the code/value/expiry and
+      // checks shop approval) — never a direct client write. Only admin
+      // writes coupons directly (dashboard create/edit, and approve/reject
+      // on a vendor submission).
+      allow create: if isAdmin();
+
+      // A vendor may only flip `active` (pause/resume their own promo) —
+      // everything else, including the pending/approved/rejected `status`
+      // gate, stays admin-only.
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && 'storeId' in resource.data
+          && vendorOwnsStoreScopedDoc(resource.data.storeId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+        );
+      allow delete: if isAdmin();
 
       // Usage counters are maintained only by Cloud Functions (admin SDK).
       match /usage_shards/{shardId} {
@@ -1808,6 +1869,12 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
+    // Collection-group query for the admin web's vendor-payouts panel. Nested
+    // vendors/{id}/payouts rules do not cover collectionGroup('payouts').
+    match /{path=**}/payouts/{payoutId} {
+      allow read: if isAdmin();
+    }
+
     // Collection-group query behind the admin panel's pending-handover queue.
     // Same reason as withdrawals: the nested riders/{id}/cash_settlements rule
     // does not cover collectionGroup('cash_settlements').
@@ -1847,6 +1914,43 @@ service cloud.firestore {
 
         allow read: if isSelf(customerId) || isAdmin();
         allow create: if isAdmin() || validCustomerSupportMessageCreate();
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Vendor <-> support chat. Same shape as support_threads above, one
+    // thread per shop (doc id = vendor doc id). Aggregate fields are
+    // Cloud-Function-owned (onVendorSupportMessageCreated); the client only
+    // ever clears its own unread counter. Message docs are append-only from
+    // the vendor's side. Ownership check is the shared
+    // `vendorOwnsStoreScopedDoc` helper (declared near the top) — this is a
+    // top-level collection, not a subcollection of vendors.
+    match /vendor_support_threads/{vendorId} {
+      allow read: if vendorOwnsStoreScopedDoc(vendorId) || isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          vendorOwnsStoreScopedDoc(vendorId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['unreadByVendor'])
+          && request.resource.data.unreadByVendor == 0
+        );
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        function validVendorSupportMessageCreate() {
+          let d = request.resource.data;
+          return vendorOwnsStoreScopedDoc(vendorId)
+            && d.senderId == request.auth.uid
+            && d.senderType == 'vendor'
+            && d.text is string
+            && d.text.size() > 0
+            && d.text.size() <= 2000
+            && d.createdAt is timestamp;
+        }
+
+        allow read: if vendorOwnsStoreScopedDoc(vendorId) || isAdmin();
+        allow create: if isAdmin() || validVendorSupportMessageCreate();
         allow update, delete: if isAdmin();
       }
     }

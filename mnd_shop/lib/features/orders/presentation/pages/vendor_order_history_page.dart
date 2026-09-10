@@ -173,6 +173,7 @@ class VendorOrderHistoryPage extends ConsumerWidget {
                                 order: order,
                                 moneyLabel: _money(order.shopTotal),
                                 onOpen: () => _openDetail(context, order),
+                                showCancellationInfo: true,
                               ),
                             ),
                           ),
@@ -197,11 +198,15 @@ class _VendorOrderHistoryCard extends StatelessWidget {
     required this.order,
     required this.moneyLabel,
     required this.onOpen,
+    this.showCancellationInfo = false,
   });
 
   final VendorPendingOrder order;
   final String moneyLabel;
   final VoidCallback onOpen;
+
+  /// Shows who cancelled + refund status — only relevant in the cancelled section.
+  final bool showCancellationInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -269,6 +274,33 @@ class _VendorOrderHistoryCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
+                if (showCancellationInfo &&
+                    (order.cancelledByLabel.isNotEmpty ||
+                        order.isRefunded ||
+                        order.hasPendingRefundRequest)) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: <Widget>[
+                      if (order.cancelledByLabel.isNotEmpty)
+                        _InfoChip(
+                          label: order.cancellationReason == 'other' &&
+                                  order.cancellationReasonDetail.isNotEmpty
+                              ? '${order.cancelledByLabel}: ${order.cancellationReasonDetail}'
+                              : order.cancelledByLabel,
+                          color: AppColors.orderRejectRed,
+                        ),
+                      if (order.isRefunded)
+                        _InfoChip(label: 'Refunded', color: AppColors.openGreen)
+                      else if (order.hasPendingRefundRequest)
+                        _InfoChip(
+                          label: 'Refund pending',
+                          color: AppColors.pendingAmber,
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 10),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -314,6 +346,35 @@ class _VendorOrderHistoryCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = VendorOrdersTheme.isDark(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.22 : 0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
