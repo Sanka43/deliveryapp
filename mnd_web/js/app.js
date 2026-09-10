@@ -180,13 +180,6 @@
     vendorSupportThreads: [],
   };
 
-  // Orders view: real cursor pagination (js/core/pagination.js), separate
-  // from cache.orders (which stays a fixed recent-200 snapshot used for
-  // Dashboard stats / Customers) — this is the paged data source the
-  // Orders list actually renders from.
-  let ordersPager = null;
-  let ordersPageDocs = [];
-
   let ongoingUnsubs = [];
   let supportThreadsUnsub = null;
   let supportMessagesUnsub = null;
@@ -869,73 +862,8 @@
     return { id: snap.id, ...snap.data() };
   }
 
-  async function openAssignRiderModal(orderId) {
-    if (!db) return;
-    if (cache.riders.length === 0) await loadRiders();
-    if (cache.vendors.length === 0) await loadVendors();
-    const o = findOrder(orderId);
-    if (!o) return;
-    const vid = String(o.vendorId || o.vendorStoreId || "").trim();
-    const vendor = await getVendorDocForOrder(vid);
-    const shopPt = readLatLng(vendor || {});
-    const shopName = String(o.storeName || vendor?.name || "—").trim() || "—";
-    const track = String(o.trackingNumber || "").trim();
-    const titleLabel = track || o.id;
-
-    const online = cache.riders.filter(riderIsOnline);
-    const rows = online.map((r) => {
-      const riderPt = readLatLng(r);
-      let distKm = null;
-      if (shopPt && riderPt) distKm = haversineKm(riderPt.lat, riderPt.lng, shopPt.lat, shopPt.lng);
-      return { r, riderPt, distKm };
-    });
-    rows.sort((a, b) => {
-      const aOk = a.distKm != null && Number.isFinite(a.distKm);
-      const bOk = b.distKm != null && Number.isFinite(b.distKm);
-      if (aOk && bOk) return a.distKm - b.distKm;
-      if (aOk) return -1;
-      if (bOk) return 1;
-      return riderDisplayName(a.r).localeCompare(riderDisplayName(b.r));
-    });
-
-    let tableBody =
-      rows.length === 0
-        ? `<tr><td colspan="5"><div class="empty-state">No online riders (<code>online: true</code> on <code>riders</code>).</div></td></tr>`
-        : rows
-            .map(({ r, riderPt, distKm }) => {
-              const name = riderDisplayName(r);
-              const distLabel =
-                distKm != null && Number.isFinite(distKm) ? `${distKm.toFixed(1)} km` : "— (no coordinates)";
-              const locBlock = `<div class="assign-loc"><span>Rider</span> ${escapeHtml(fmtCoordPair(riderPt))}<br/><span>Shop</span> ${escapeHtml(fmtCoordPair(shopPt))}</div>`;
-              return `<tr>
-          <td><strong>${escapeHtml(name)}</strong></td>
-          <td>${escapeHtml(shopName)}</td>
-          <td class="assign-loc-cell">${locBlock}</td>
-          <td>${escapeHtml(distLabel)}</td>
-          <td><button type="button" class="btn btn-primary btn-sm" data-assign-rider="${escapeHtml(r.id)}" data-assign-order="${escapeHtml(orderId)}">Assign</button></td>
-        </tr>`;
-            })
-            .join("");
-
-    const shopWarn =
-      !shopPt && vid
-        ? `<p class="assign-warn">Shop has no map coordinates in <code>vendors/${escapeHtml(vid)}</code> — distances show as —. Add latitude/longitude in vendor Edit.</p>`
-        : !vid
-          ? `<p class="assign-warn">Order has no <code>vendorId</code> — cannot resolve shop location.</p>`
-          : "";
-
-    const html = `<p style="margin-top:0;color:var(--muted);font-size:0.9rem">Order <strong>${escapeHtml(titleLabel)}</strong> · Pick an online rider (nearest first when both rider and shop have coordinates).</p>
-      ${shopWarn}
-      <div class="table-wrap assign-rider-wrap">
-        <table class="assign-rider-table">
-          <thead><tr><th>Rider</th><th>Shop</th><th>Coordinates</th><th>Distance</th><th></th></tr></thead>
-          <tbody>${tableBody}</tbody>
-        </table>
-      </div>`;
-
-    openModal(`Assign rider — ${titleLabel}`, html, "assign-rider", orderId);
-    modalSave.style.display = "none";
-  }
+  // openAssignRiderModal moved to js/views/orders.js (Phase 2 file-split)
+  // — exposed as window.openAssignRiderModal there.
 
   function openModal(title, html, mode, editId) {
     modalTitle.textContent = title;
@@ -1171,6 +1099,71 @@
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Bridge for js/views/*.js (Phase 2 file-split): dashboard.js, orders.js,
+  // shop-approvals.js, job-approvals.js and rider-approvals.js were cut
+  // out of this file verbatim. They call back into these shared
+  // helpers/state exactly as before — a bare, unqualified identifier
+  // inside another script's own closure falls through to `window` when
+  // not found locally (same mechanism window.__legacyShowView above
+  // already relies on), so nothing here is new state or new behavior,
+  // just exposing what already existed so the moved code keeps working.
+  // db is reassigned once by initFirebase(), so it's a live getter rather
+  // than a plain snapshot; everything else here is a stable reference.
+  // ---------------------------------------------------------------------
+  Object.defineProperty(window, "db", { get: () => db, configurable: true });
+  window.COL = COL;
+  window.cache = cache;
+  window.FS_GET_SERVER = FS_GET_SERVER;
+  window.ORDER_STATUSES = ORDER_STATUSES;
+  window.toast = toast;
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+  window.modalSave = modalSave;
+  window.escapeHtml = escapeHtml;
+  window.fmtMoney = fmtMoney;
+  window.fmtTs = fmtTs;
+  window.fmtCoordPair = fmtCoordPair;
+  window.badgeClass = badgeClass;
+  window.statusLabel = statusLabel;
+  window.missedByShopBadge = missedByShopBadge;
+  window.orderMissedByShop = orderMissedByShop;
+  window.isSelfPickupOrder = isSelfPickupOrder;
+  window.resolveOrderStatusOptions = resolveOrderStatusOptions;
+  window.orderAddrLine = orderAddrLine;
+  window.orderDisplayNumber = orderDisplayNumber;
+  window.orderItemRows = orderItemRows;
+  window.orderDetailLine = orderDetailLine;
+  window.paymentMethodLabel = paymentMethodLabel;
+  window.readLatLng = readLatLng;
+  window.haversineKm = haversineKm;
+  window.getVendorDocForOrder = getVendorDocForOrder;
+  window.compactText = compactText;
+  window.customerById = customerById;
+  window.customerDisplayName = customerDisplayName;
+  window.shopDisplayName = shopDisplayName;
+  window.riderRegistrationStatus = riderRegistrationStatus;
+  window.riderDisplayName = riderDisplayName;
+  window.riderVehicleLabel = riderVehicleLabel;
+  window.riderIsOnline = riderIsOnline;
+  window.bindRiderRowOpen = bindRiderRowOpen;
+  window.vendorIsPending = vendorIsPending;
+  window.countPendingVendors = countPendingVendors;
+  window.countPendingJobs = countPendingJobs;
+  window.countPendingRiders = countPendingRiders;
+  window.updateAllApprovalBadges = updateAllApprovalBadges;
+  window.loadRiders = loadRiders;
+  window.loadVendors = loadVendors;
+  window.loadOrders = loadOrders;
+  window.loadViewData = loadViewData;
+  window.approveVendor = approveVendor;
+  window.rejectVendor = rejectVendor;
+  window.openVendorModal = openVendorModal;
+  window.approveJob = approveJob;
+  window.rejectJob = rejectJob;
+  window.approveRider = approveRider;
+  window.rejectRider = rejectRider;
+
   async function loadViewData(name) {
     if (!db || !auth.currentUser) return;
     if (window.MndFirebase.ensureFirestoreAuth) {
@@ -1277,31 +1270,9 @@
     }
   }
 
-  // Looks in both order sources: cache.orders (recent-200, used by
-  // Dashboard/Customers) and ordersPageDocs (the Orders view's current
-  // paginated page, which can reach older orders cache.orders doesn't
-  // have) — so a click on any order actually visible in the Orders list
-  // resolves, regardless of which page it came from.
-  function findOrder(id) {
-    return cache.orders.find((x) => x.id === id) || ordersPageDocs.find((x) => x.id === id) || null;
-  }
-
-  // Orders view's own paged data source (js/core/pagination.js) — replaces
-  // the fixed .limit(200) with real forward/backward paging so an order
-  // older than the most recent 200 is still reachable, not silently gone.
-  // direction: "first" (fresh page 1, e.g. on view entry) | "next" | "prev".
-  async function loadOrdersPage(direction) {
-    if (!direction || direction === "first" || !ordersPager) {
-      ordersPager = window.MndPagination.createPager({
-        query: db.collection(COL.orders).orderBy("createdAt", "desc"),
-        pageSize: 50,
-        getOpts: FS_GET_SERVER,
-      });
-      ordersPageDocs = await ordersPager.first();
-      return;
-    }
-    ordersPageDocs = direction === "prev" ? await ordersPager.prev() : await ordersPager.next();
-  }
+  // findOrder / loadOrdersPage moved to js/views/orders.js (Phase 2
+  // file-split), along with the ordersPager/ordersPageDocs state they
+  // own — exposed as window.findOrder / window.loadOrdersPage there.
 
   async function loadTrips() {
     try {
@@ -2347,300 +2318,14 @@
       );
   }
 
-  function renderDashboard() {
-    const list = cache.orders;
-    const pending = list.filter((o) => {
-      const s = String(o.status || "").toLowerCase();
-      return s === "placed" || s === "confirmed";
-    }).length;
-    const active = list.filter((o) => {
-      const s = String(o.status || "").toLowerCase();
-      return ["preparing", "ready", "out_for_delivery", "on_the_way"].includes(s);
-    }).length;
-    const revenue = list
-      .filter((o) => String(o.status || "").toLowerCase() === "delivered")
-      .reduce((s, o) => s + (Number(o.total) || 0), 0);
-    document.getElementById("stat-orders").textContent = String(list.length);
-    document.getElementById("stat-pending").textContent = String(pending);
-    document.getElementById("stat-active").textContent = String(active);
-    document.getElementById("stat-revenue").textContent = fmtMoney(revenue);
-    const shopsPending = countPendingVendors();
-    const jobsPending = countPendingJobs();
-    const ridersPending = countPendingRiders();
-    const elShops = document.getElementById("stat-shops-pending");
-    const elJobs = document.getElementById("stat-jobs-pending");
-    const elRiders = document.getElementById("stat-riders-pending");
-    if (elShops) elShops.textContent = String(shopsPending);
-    if (elJobs) elJobs.textContent = String(jobsPending);
-    if (elRiders) elRiders.textContent = String(ridersPending);
-    renderDashboardOrdersTrend();
-    renderDashboardApprovalPreviews();
-    renderDashboardRecentOrders();
-    updateDashboardQuickActions();
-    updateAllApprovalBadges();
-  }
+  // renderDashboard and its helpers (renderDashboardOrdersTrend,
+  // updateDashboardQuickActions, renderDashboardRecentOrders,
+  // renderDashboardApprovalPreviews) moved to js/views/dashboard.js
+  // (Phase 2 file-split) — exposed on window there.
 
-  // Buckets the already-loaded cache.orders (recent-200 snapshot, no new
-  // Firestore query) by calendar day for the last 7 days. Note: if the
-  // store does more than ~200 orders across that window, the oldest days
-  // in it can undercount once the 200-cap pushes them out of cache.orders
-  // — acceptable for a "recent trend at a glance" chart, not an exact count.
-  function renderDashboardOrdersTrend() {
-    const el = document.getElementById("dashboard-orders-trend");
-    if (!el || !window.MndCharts) return;
-    const days = [];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      d.setHours(0, 0, 0, 0);
-      days.push(d);
-    }
-    const counts = days.map(() => 0);
-    cache.orders.forEach((o) => {
-      const ts = o.createdAt;
-      let d = null;
-      if (ts && typeof ts.toDate === "function") d = ts.toDate();
-      else if (ts && ts.seconds != null) d = new Date(ts.seconds * 1000);
-      if (!d) return;
-      for (let i = 0; i < days.length; i++) {
-        const dayEnd = new Date(days[i]);
-        dayEnd.setDate(dayEnd.getDate() + 1);
-        if (d >= days[i] && d < dayEnd) {
-          counts[i]++;
-          break;
-        }
-      }
-    });
-    const points = days.map((d, i) => ({
-      label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-      value: counts[i],
-    }));
-    window.MndCharts.renderLineChart(el, points, {
-      id: "dashboard-orders-trend",
-      title: "Orders per day (last 7 days)",
-      desc: "Count of orders created each day, from the most recently loaded orders.",
-      xLabel: "Date",
-      yLabel: "Orders",
-    });
-  }
-
-  function updateDashboardQuickActions() {
-    const shops = countPendingVendors();
-    const jobs = countPendingJobs();
-    const riders = countPendingRiders();
-    const setQa = (id, btnId, n) => {
-      const btn = document.getElementById(btnId);
-      const pill = document.getElementById(id);
-      if (!btn) return;
-      if (n > 0) {
-        btn.hidden = false;
-        if (pill) pill.textContent = String(n);
-      } else {
-        btn.hidden = true;
-      }
-    };
-    setQa("qa-shops-n", "qa-shops", shops);
-    setQa("qa-jobs-n", "qa-jobs", jobs);
-    setQa("qa-riders-n", "qa-riders", riders);
-  }
-
-  function renderDashboardRecentOrders() {
-    const tbody = document.querySelector("#table-dashboard-orders tbody");
-    if (!tbody) return;
-    const readyFirst = [...cache.orders].sort((a, b) => {
-      const ar = String(a.status || "").toLowerCase() === "ready" ? 0 : 1;
-      const br = String(b.status || "").toLowerCase() === "ready" ? 0 : 1;
-      if (ar !== br) return ar - br;
-      const ta = a.createdAt?.seconds || 0;
-      const tb = b.createdAt?.seconds || 0;
-      return tb - ta;
-    });
-    const list = readyFirst.slice(0, 8);
-    tbody.innerHTML =
-      list.length === 0
-        ? `<tr><td colspan="5"><div class="empty-state"><div class="empty-state__icon">📦</div>No orders yet.</div></td></tr>`
-        : list
-            .map((o) => {
-              const stRaw = String(o.status || "placed");
-              const stLower = stRaw.toLowerCase();
-              const readyAttention = stLower === "ready" ? " badge-ready-attention" : "";
-              const orderLabel = orderDisplayNumber(o);
-              return `<tr>
-          <td><strong>${escapeHtml(orderLabel)}</strong></td>
-          <td>${escapeHtml(shopDisplayName(o))}</td>
-          <td>${fmtMoney(o.total)}</td>
-          <td><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}</td>
-          <td>${escapeHtml(fmtTs(o.createdAt))}</td>
-        </tr>`;
-            })
-            .join("");
-  }
-
-  function renderDashboardApprovalPreviews() {
-    const shopPanel = document.getElementById("dashboard-shop-approvals-panel");
-    const shopList = document.getElementById("dashboard-shop-approvals-list");
-    const jobPanel = document.getElementById("dashboard-job-approvals-panel");
-    const jobList = document.getElementById("dashboard-job-approvals-list");
-    const pendingShops = cache.vendors.filter((v) => vendorIsPending(v)).slice(0, 5);
-    const pendingJobs = cache.jobs
-      .filter((j) => String(j.status || "").toLowerCase() === "pending")
-      .slice(0, 5);
-
-    if (shopPanel && shopList) {
-      shopPanel.hidden = pendingShops.length === 0;
-      shopList.innerHTML =
-        pendingShops.length === 0
-          ? ""
-          : pendingShops
-              .map(
-                (v) => `<div class="dash-approval-row">
-            <div><strong>${escapeHtml(v.name || v.id)}</strong><br/><small style="color:var(--muted)">${escapeHtml(v.city || "—")} · ${escapeHtml(v.category || v.tag || "—")}</small></div>
-            <div class="row-actions">
-              <button type="button" class="btn btn-primary btn-sm" data-approve-vendor="${escapeHtml(v.id)}">Approve</button>
-              <button type="button" class="btn btn-ghost btn-sm" data-reject-vendor="${escapeHtml(v.id)}">Reject</button>
-            </div>
-          </div>`
-              )
-              .join("");
-      shopList.querySelectorAll("[data-approve-vendor]").forEach((btn) => {
-        btn.addEventListener("click", () => approveVendor(btn.getAttribute("data-approve-vendor")));
-      });
-      shopList.querySelectorAll("[data-reject-vendor]").forEach((btn) => {
-        btn.addEventListener("click", () => rejectVendor(btn.getAttribute("data-reject-vendor")));
-      });
-    }
-
-    if (jobPanel && jobList) {
-      jobPanel.hidden = pendingJobs.length === 0;
-      jobList.innerHTML =
-        pendingJobs.length === 0
-          ? ""
-          : pendingJobs
-              .map(
-                (j) => `<div class="dash-approval-row">
-            <div><strong>${escapeHtml(j.title || "—")}</strong><br/><small style="color:var(--muted)">${escapeHtml(j.companyName || "—")} · ${escapeHtml(j.salary || "—")}</small></div>
-            <div class="row-actions">
-              <button type="button" class="btn btn-primary btn-sm" data-approve-job="${escapeHtml(j.id)}">Approve</button>
-              <button type="button" class="btn btn-ghost btn-sm" data-reject-job="${escapeHtml(j.id)}">Reject</button>
-            </div>
-          </div>`
-              )
-              .join("");
-      jobList.querySelectorAll("[data-approve-job]").forEach((btn) => {
-        btn.addEventListener("click", () => approveJob(btn.getAttribute("data-approve-job")));
-      });
-      jobList.querySelectorAll("[data-reject-job]").forEach((btn) => {
-        btn.addEventListener("click", () => rejectJob(btn.getAttribute("data-reject-job")));
-      });
-    }
-
-    document.querySelectorAll("[data-go-nav]").forEach((btn) => {
-      btn.addEventListener("click", () => window.MndRouter.navigate(btn.getAttribute("data-go-nav")));
-    });
-  }
-
-  // Filters/searches only within the currently loaded page of orders
-  // (ordersPageDocs, ~50 rows) rather than the whole collection — Firestore
-  // has no full-text search, so browsing further back means paging with
-  // Next, same tradeoff loadOrdersPage's cursor pagination is built on.
-  function renderOrders() {
-    const q = (document.getElementById("filter-orders")?.value || "").toLowerCase();
-    const st = document.getElementById("filter-order-status")?.value || "";
-    let list = [...ordersPageDocs];
-    if (st) list = list.filter((o) => String(o.status || "").toLowerCase() === st);
-    if (q) {
-      list = list.filter((o) => {
-        const id = o.id.toLowerCase();
-        const track = String(o.trackingNumber || "").toLowerCase().trim();
-        const cust = customerDisplayName(o).toLowerCase();
-        const store = shopDisplayName(o).toLowerCase();
-        const addr = orderAddrLine(o).toLowerCase();
-        return (
-          id.includes(q) ||
-          (track && track.includes(q)) ||
-          cust.includes(q) ||
-          store.includes(q) ||
-          addr.includes(q)
-        );
-      });
-    }
-    const listEl = document.getElementById("orders-list");
-    listEl.innerHTML =
-      list.length === 0
-        ? `<div class="empty-state">No orders${q || st ? " match this page's filter." : "."}</div>`
-        : list
-            .map((o) => {
-              const stRaw = String(o.status || "placed");
-              const stLower = String(stRaw || "").toLowerCase();
-              const readyAttention = stLower === "ready" ? " badge-ready-attention" : "";
-              const orderLabel = orderDisplayNumber(o);
-              const customerName = customerDisplayName(o);
-              const customer = customerById(o.customerId);
-              const customerMeta = compactText(customer?.phoneNumber, customer?.phone, o.deliveryAddress?.phone);
-              const shopName = shopDisplayName(o);
-              const assignBtn =
-                stLower === "ready" && !isSelfPickupOrder(o)
-                  ? `<button type="button" class="btn btn-ghost btn-sm u-w-auto" data-assign-rider-order="${escapeHtml(o.id)}" aria-label="Assign rider for order ${escapeHtml(orderLabel)}">Assign rider</button>`
-                  : "";
-              return `<div class="data-card order-row" tabindex="0" data-view-order="${escapeHtml(o.id)}" aria-label="View details for order ${escapeHtml(orderLabel)}">
-          <div class="data-card__header">
-            <span class="data-card__title">${escapeHtml(orderLabel)}</span>
-            <span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}
-          </div>
-          <div class="data-card__meta">${escapeHtml(customerName)}${customerMeta ? ` · ${escapeHtml(customerMeta)}` : ""}</div>
-          <div class="data-card__meta">${escapeHtml(shopName)} · ${escapeHtml(orderAddrLine(o))}</div>
-          <div class="data-card__meta">${fmtMoney(o.total)} · ${escapeHtml(fmtTs(o.createdAt))}</div>
-          <div class="data-card__actions">
-            ${assignBtn}
-            <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-edit-order="${escapeHtml(o.id)}" aria-label="Edit order ${escapeHtml(orderLabel)}">Edit</button>
-            <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-del-order="${escapeHtml(o.id)}" aria-label="Delete order ${escapeHtml(orderLabel)}">Delete</button>
-          </div>
-        </div>`;
-            })
-            .join("");
-    listEl.querySelectorAll("[data-view-order]").forEach((row) => {
-      const open = () => openOrderDetails(row.getAttribute("data-view-order"));
-      row.addEventListener("click", (e) => {
-        if (e.target.closest("button, a, input, select, textarea")) return;
-        open();
-      });
-      row.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter" && e.key !== " ") return;
-        if (e.target.closest("button, a, input, select, textarea")) return;
-        e.preventDefault();
-        open();
-      });
-    });
-    listEl.querySelectorAll("[data-assign-rider-order]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        openAssignRiderModal(btn.getAttribute("data-assign-rider-order")).catch((e) => alert(e.message || String(e)));
-      });
-    });
-    listEl.querySelectorAll("[data-edit-order]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        try {
-          await openOrderEdit(btn.getAttribute("data-edit-order"));
-        } catch (e) {
-          alert(e.message || String(e));
-        }
-      });
-    });
-    listEl.querySelectorAll("[data-del-order]").forEach((btn) => {
-      btn.addEventListener("click", () => deleteOrder(btn.getAttribute("data-del-order")));
-    });
-    renderOrdersPaginationControls();
-  }
-
-  function renderOrdersPaginationControls() {
-    const prevBtn = document.getElementById("btn-orders-prev");
-    const nextBtn = document.getElementById("btn-orders-next");
-    const label = document.getElementById("orders-page-label");
-    if (!ordersPager) return;
-    if (prevBtn) prevBtn.disabled = !ordersPager.hasPrev();
-    if (nextBtn) nextBtn.disabled = !ordersPager.hasNext();
-    if (label) label.textContent = `Page ${ordersPager.pageNumber()}`;
-  }
+  // renderOrders / renderOrdersPaginationControls moved to
+  // js/views/orders.js (Phase 2 file-split) — exposed as
+  // window.renderOrders / window.renderOrdersPaginationControls there.
 
   function tripDisplayNumber(trip) {
     return `Trip ${String(trip?.id || "").slice(0, 8).toUpperCase()}`;
@@ -3456,76 +3141,9 @@
     });
   }
 
-  function renderShopApprovals() {
-    const list = document.getElementById("shop-approvals-list");
-    if (!list) return;
-    const pending = cache.vendors.filter((v) => vendorIsPending(v));
-    list.innerHTML =
-      pending.length === 0
-        ? `<div class="empty-state">No MND Shop stores waiting for approval. New registrations appear here automatically.</div>`
-        : pending
-            .map((v) => {
-              const phone = v.phone || v.phoneNumber || "—";
-              const name = v.name || v.id;
-              return `<div class="data-card">
-        <div class="data-card__header">
-          <span class="data-card__title">${escapeHtml(name)}</span>
-          <span class="status-chip" style="background: var(--warning-soft); color: var(--warning)">Pending</span>
-        </div>
-        <div class="data-card__meta"><code>${escapeHtml(v.id)}</code></div>
-        <div class="data-card__meta">${escapeHtml(v.city || "—")} · ${escapeHtml(v.category || v.tag || "—")} · ${escapeHtml(phone)}</div>
-        <div class="data-card__meta">Registered ${escapeHtml(fmtTs(v.createdAt))}</div>
-        <div class="data-card__actions">
-          <button type="button" class="btn btn-primary btn-sm u-w-auto" data-approve-vendor="${escapeHtml(v.id)}" aria-label="Approve vendor ${escapeHtml(name)}">Approve</button>
-          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-reject-vendor="${escapeHtml(v.id)}" aria-label="Reject vendor ${escapeHtml(name)}">Reject</button>
-          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-edit-vendor="${escapeHtml(v.id)}" aria-label="Edit vendor ${escapeHtml(name)}">Edit</button>
-        </div>
-      </div>`;
-            })
-            .join("");
-    list.querySelectorAll("[data-approve-vendor]").forEach((btn) => {
-      btn.addEventListener("click", () => approveVendor(btn.getAttribute("data-approve-vendor")));
-    });
-    list.querySelectorAll("[data-reject-vendor]").forEach((btn) => {
-      btn.addEventListener("click", () => rejectVendor(btn.getAttribute("data-reject-vendor")));
-    });
-    list.querySelectorAll("[data-edit-vendor]").forEach((btn) => {
-      btn.addEventListener("click", () => openVendorModal(btn.getAttribute("data-edit-vendor")));
-    });
-  }
-
-  function renderJobApprovals() {
-    const list = document.getElementById("job-approvals-list");
-    if (!list) return;
-    const pending = cache.jobs.filter((j) => String(j.status || "").toLowerCase() === "pending");
-    list.innerHTML =
-      pending.length === 0
-        ? `<div class="empty-state">No job posts waiting for approval.</div>`
-        : pending
-            .map((j) => {
-              const title = j.title || "—";
-              return `<div class="data-card">
-        <div class="data-card__header">
-          <span class="data-card__title">${escapeHtml(title)}</span>
-          <span class="status-chip" style="background: var(--warning-soft); color: var(--warning)">Pending</span>
-        </div>
-        <div class="data-card__meta">${escapeHtml(j.companyName || "—")} · ${escapeHtml(j.salary || "—")}</div>
-        <div class="data-card__meta">${escapeHtml(j.remote ? "Remote" : j.location || "—")} · ${escapeHtml(j.type || j.category || "—")}</div>
-        <div class="data-card__meta">Posted ${escapeHtml(fmtTs(j.createdAt))}</div>
-        <div class="data-card__actions">
-          <button type="button" class="btn btn-primary btn-sm u-w-auto" data-approve-job="${escapeHtml(j.id)}" aria-label="Approve job ${escapeHtml(title)}">Approve</button>
-          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-reject-job="${escapeHtml(j.id)}" aria-label="Reject job ${escapeHtml(title)}">Reject</button>
-        </div>
-      </div>`;
-            })
-            .join("");
-    list.querySelectorAll("[data-approve-job]").forEach((btn) => {
-      btn.addEventListener("click", () => approveJob(btn.getAttribute("data-approve-job")));
-    });
-    list.querySelectorAll("[data-reject-job]").forEach((btn) => {
-      btn.addEventListener("click", () => rejectJob(btn.getAttribute("data-reject-job")));
-    });
-  }
+  // renderShopApprovals moved to js/views/shop-approvals.js, renderJobApprovals
+  // to js/views/job-approvals.js (Phase 2 file-split) — exposed as
+  // window.renderShopApprovals / window.renderJobApprovals there.
 
   function renderPublishedJobs() {
     const tbody = document.querySelector("#table-jobs-published tbody");
@@ -3810,53 +3428,8 @@
     modalSave.style.display = "inline-flex";
   }
 
-  function renderRiderApprovals() {
-    const list = document.getElementById("rider-approvals-list");
-    if (!list) {
-      return;
-    }
-    const pending = cache.riders.filter((r) => riderRegistrationStatus(r) === "pending");
-    list.innerHTML =
-      pending.length === 0
-        ? `<div class="empty-state">No riders waiting for approval.</div>`
-        : pending
-            .map((r) => {
-              const docs = [];
-              if (r.profilePhotoUrl) {
-                docs.push(
-                  `<a href="${escapeHtml(r.profilePhotoUrl)}" target="_blank" rel="noopener">Profile</a>`
-                );
-              }
-              if (r.licensePhotoUrl) {
-                docs.push(
-                  `<a href="${escapeHtml(r.licensePhotoUrl)}" target="_blank" rel="noopener">License</a>`
-                );
-              }
-              const docsHtml = docs.length ? docs.join(" · ") : "—";
-              const name = riderDisplayName(r);
-              return `<div class="data-card rider-row" tabindex="0" data-view-rider="${escapeHtml(r.id)}" aria-label="View details for ${escapeHtml(name)}">
-        <div class="data-card__header">
-          <span class="data-card__title">${escapeHtml(name)}</span>
-          <span class="status-chip" style="background: var(--warning-soft); color: var(--warning)">Pending</span>
-        </div>
-        <div class="data-card__meta">${escapeHtml(r.phone || r.phoneNumber || "—")} · NIC ${escapeHtml(r.nicNumber || "—")} · ${escapeHtml(r.city || r.address || "—")}</div>
-        <div class="data-card__meta">${escapeHtml(riderVehicleLabel(r))} · Documents: ${docsHtml}</div>
-        <div class="data-card__meta">Registered ${escapeHtml(fmtTs(r.createdAt))}</div>
-        <div class="data-card__actions">
-          <button type="button" class="btn btn-primary btn-sm u-w-auto" data-approve-rider="${escapeHtml(r.id)}" aria-label="Approve rider ${escapeHtml(name)}">Approve</button>
-          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-reject-rider="${escapeHtml(r.id)}" aria-label="Reject rider ${escapeHtml(name)}">Reject</button>
-        </div>
-      </div>`;
-            })
-            .join("");
-    bindRiderRowOpen(list);
-    list.querySelectorAll("[data-approve-rider]").forEach((btn) => {
-      btn.addEventListener("click", () => approveRider(btn.getAttribute("data-approve-rider")));
-    });
-    list.querySelectorAll("[data-reject-rider]").forEach((btn) => {
-      btn.addEventListener("click", () => rejectRider(btn.getAttribute("data-reject-rider")));
-    });
-  }
+  // renderRiderApprovals moved to js/views/rider-approvals.js (Phase 2
+  // file-split) — exposed as window.renderRiderApprovals there.
 
   function renderRiders() {
     const tbody = document.querySelector("#table-riders tbody");
@@ -4138,149 +3711,10 @@
     });
   }
 
-  function openOrderDetails(id) {
-    const o = findOrder(id);
-    if (!o) return;
-    const customer = customerById(o.customerId);
-    const rider = cache.riders.find((x) => x.id === compactText(o.riderId, o.assignedRiderId));
-    const customerName = customerDisplayName(o);
-    const customerPhone = compactText(customer?.phoneNumber, customer?.phone, o.deliveryAddress?.phone);
-    const customerEmail = compactText(customer?.email);
-    const shopName = shopDisplayName(o);
-    const title = orderDisplayNumber(o);
-    const fulfillment = isSelfPickupOrder(o) ? "Self pickup" : "Delivery";
-    const note = compactText(o.deliveryNote, o.specialInstructions);
-    const riderLabel = rider ? riderDisplayName(rider) : compactText(o.riderName, o.riderId ? "Assigned" : "Unassigned");
-    const items = Array.isArray(o.items) ? o.items : [];
-    const itemCount = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
-    const address = orderAddrLine(o);
-    const html = `<div class="order-detail">
-      <div class="order-detail-receipt">
-        <div class="order-detail-head">
-          <span class="order-detail-kicker">MND Delivery Bill</span>
-          <h4>${escapeHtml(title)}</h4>
-          <p>${escapeHtml(shopName)}</p>
-        </div>
-
-        <div class="order-detail-meta">
-          ${orderDetailLine("Date", fmtTs(o.createdAt))}
-          ${orderDetailLine("Customer", customerName)}
-          ${orderDetailLine("Phone", customerPhone)}
-          ${customerEmail ? orderDetailLine("Email", customerEmail) : ""}
-          ${orderDetailLine("Order type", fulfillment)}
-          ${orderDetailLine("Status", statusLabel(o.status || "placed"))}
-          ${orderMissedByShop(o) ? orderDetailLine("Cancel reason", "Missed by shop (no confirm)") : ""}
-          ${orderDetailLine("Rider", riderLabel)}
-          ${orderDetailLine("Payment", paymentMethodLabel(o.paymentMethod))}
-        </div>
-
-        <div class="order-detail-status">
-          <span>${escapeHtml(itemCount ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : "Items not recorded")}</span>
-          <span>${escapeHtml(fulfillment)}</span>
-        </div>
-        <span class="badge ${badgeClass(o.status)}">${escapeHtml(statusLabel(o.status || "placed"))}</span>${missedByShopBadge(o)}
-
-        <div class="order-detail-divider"></div>
-
-        <div class="order-detail-section order-detail-section--items">
-          <h5>Items</h5>
-          ${orderItemRows(o)}
-        </div>
-
-        <div class="order-detail-section order-detail-section--payment">
-          ${orderDetailLine("Subtotal", fmtMoney(o.subtotal))}
-          ${orderDetailLine("Discount", fmtMoney(o.discount))}
-          ${Number(o.orderCommissionLkr) > 0 ? orderDetailLine("Order commission", fmtMoney(o.orderCommissionLkr)) : ""}
-          ${Number(o.baseDeliveryFeeLkr) > 0 || Number(o.riderCommissionLkr) > 0
-            ? orderDetailLine(
-                "Delivery (base + rider)",
-                `${fmtMoney(o.baseDeliveryFeeLkr || 0)} + ${fmtMoney(o.riderCommissionLkr || 0)}`
-              )
-            : ""}
-          ${orderDetailLine("Delivery fee", fmtMoney(o.deliveryFee))}
-          ${orderDetailLine("Total", fmtMoney(o.total), "order-detail-line--total")}
-        </div>
-
-        <div class="order-detail-section">
-          <h5>${isSelfPickupOrder(o) ? "Pickup" : "Delivery address"}</h5>
-          <p class="order-detail-address">${escapeHtml(address)}</p>
-          ${note ? `<div class="order-detail-note"><span>Note</span>${escapeHtml(note)}</div>` : ""}
-        </div>
-
-        <p class="order-detail-footer">Thank you for using MND Delivery</p>
-      </div>
-    </div>`;
-    openModal("Order details", html, "order-detail", id);
-    modalSave.style.display = "none";
-  }
-
-  async function openOrderEdit(id) {
-    if (cache.riders.length === 0) {
-      await loadRiders();
-    }
-    const o = findOrder(id);
-    if (!o) return;
-    const currentRiderId = o.riderId || o.assignedRiderId || "";
-    const riderOptions = [
-      `<option value="">Unassigned</option>`,
-      ...cache.riders.map((r) => {
-        const riderId = String(r.id || "").trim();
-        const firstLast = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
-        const riderName = r.fullName || firstLast || r.displayName || r.name || riderId || "Unnamed rider";
-        const riderPhone = r.phoneNumber || r.phone || "";
-        const riderLabel = riderPhone ? `${riderName} (${riderPhone})` : riderName;
-        const selected = riderId === currentRiderId ? "selected" : "";
-        return `<option value="${escapeHtml(riderId)}" ${selected}>${escapeHtml(riderLabel)}</option>`;
-      }),
-    ].join("");
-    const selfPickup = isSelfPickupOrder(o);
-    const statusOptions = resolveOrderStatusOptions(o);
-    const opts = statusOptions
-      .map(
-        (s) =>
-          `<option value="${escapeHtml(s)}" ${String(o.status).toLowerCase() === s ? "selected" : ""}>${escapeHtml(statusLabel(s))}</option>`
-      )
-      .join("");
-    const riderField = selfPickup
-      ? ""
-      : `<div class="form-group"><label>Rider (optional)</label><select id="f-ord-rider">${riderOptions}</select></div>`;
-    const fulfillmentHint = selfPickup
-      ? `<p style="color:var(--muted);font-size:0.85rem;margin:0 0 12px">Self pickup — delivery statuses are hidden.</p>`
-      : "";
-    openModal(
-      "Edit order",
-      `${fulfillmentHint}<div class="form-group"><label>Status</label><select id="f-ord-status">${opts}</select></div>
-      ${riderField}
-      <div class="form-group"><label>Subtotal (LKR)</label><input type="number" id="f-ord-sub" min="0" step="1" value="${Number(o.subtotal) || 0}"></div>
-      <div class="form-group"><label>Discount</label><input type="number" id="f-ord-disc" min="0" step="1" value="${Number(o.discount) || 0}"></div>
-      <div class="form-group"><label>Order commission</label><input type="number" id="f-ord-commission" min="0" step="1" value="${Number(o.orderCommissionLkr) || 0}"></div>
-      <div class="form-group"><label>Base delivery fee</label><input type="number" id="f-ord-base-fee" min="0" step="1" value="${Number(o.baseDeliveryFeeLkr) || 0}"></div>
-      <div class="form-group"><label>Rider commission</label><input type="number" id="f-ord-rider-fee" min="0" step="1" value="${Number(o.riderCommissionLkr) || 0}"></div>
-      <div class="form-group"><label>Delivery fee (base + rider)</label><input type="number" id="f-ord-fee" min="0" step="1" value="${Number(o.deliveryFee) || 0}"></div>
-      <div class="form-group"><label>Total</label><input type="number" id="f-ord-total" min="0" step="1" value="${Number(o.total) || 0}"></div>`,
-      "order-edit",
-      id
-    );
-    modalSave.style.display = "inline-flex";
-  }
-
-  function openOrderCreate() {
-    openModal(
-      "New order (admin)",
-      `<p style="color:var(--muted);font-size:0.85rem;margin-top:0">Creates one line item matching <code>total</code>. Requires valid customer/vendor IDs.</p>
-      <div class="form-group"><label>Customer UID</label><input type="text" id="f-no-cust" required placeholder="customers doc id (Auth UID)"></div>
-      <div class="form-group"><label>Vendor / store ID</label><input type="text" id="f-no-vend" required></div>
-      <div class="form-group"><label>Store name</label><input type="text" id="f-no-store" required></div>
-      <div class="form-group"><label>Status</label><select id="f-no-status">${ORDER_STATUSES.map((s) => `<option value="${s}">${statusLabel(s)}</option>`).join("")}</select></div>
-      <div class="form-group"><label>Total (LKR)</label><input type="number" id="f-no-total" min="1" step="1" value="500" required></div>
-      <div class="form-group"><label>Address line 1</label><input type="text" id="f-no-l1" required></div>
-      <div class="form-group"><label>City</label><input type="text" id="f-no-city" required></div>
-      <div class="form-group"><label>Phone</label><input type="text" id="f-no-phone" required minlength="8"></div>`,
-      "order-create",
-      null
-    );
-    modalSave.style.display = "inline-flex";
-  }
+  // openOrderDetails / openOrderEdit / openOrderCreate moved to
+  // js/views/orders.js (Phase 2 file-split) — exposed as
+  // window.openOrderDetails / window.openOrderEdit / window.openOrderCreate
+  // there.
 
   function openVendorModal(id) {
     const v = id ? cache.vendors.find((x) => x.id === id) : null;
@@ -5621,15 +5055,8 @@
     }
   }
 
-  async function deleteOrder(id) {
-    const o = findOrder(id);
-    const label = o ? orderDisplayNumber(o) : "this order";
-    if (!confirm(`Delete ${label}?`)) return;
-    await db.collection(COL.orders).doc(id).delete();
-    await loadViewData("orders");
-    await loadOrders();
-    renderDashboard();
-  }
+  // deleteOrder moved to js/views/orders.js (Phase 2 file-split) —
+  // exposed as window.deleteOrder there.
 
   async function deleteVendor(id) {
     if (!confirm(`Delete vendor ${id}?`)) return;
@@ -7570,7 +6997,7 @@
     btn.addEventListener("click", () => window.MndRouter.navigate(btn.getAttribute("data-nav")));
   });
 
-  document.getElementById("btn-new-order")?.addEventListener("click", openOrderCreate);
+  document.getElementById("btn-new-order")?.addEventListener("click", () => openOrderCreate());
   document.getElementById("btn-orders-prev")?.addEventListener("click", async () => {
     await loadOrdersPage("prev");
     renderOrders();
