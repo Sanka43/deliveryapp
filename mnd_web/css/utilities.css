@@ -1,0 +1,64 @@
+/* MND Admin — small utility classes replacing the most common inline
+   style="..." patterns found in dashboard.html (width:auto on buttons,
+   muted intro paragraphs, flex/gap toolbars). Applied incrementally —
+   not every inline style needs to move on day one. */
+@layer utilities {
+  .u-w-auto {
+    width: auto;
+  }
+
+  .u-flex {
+    display: flex;
+  }
+
+  .u-flex-wrap {
+    flex-wrap: wrap;
+  }
+
+  .u-items-center {
+    align-items: center;
+  }
+
+  .u-items-end {
+    align-items: flex-end;
+  }
+
+  .u-justify-between {
+    justify-content: space-between;
+  }
+
+  .u-gap-4 {
+    gap: 4px;
+  }
+  .u-gap-8 {
+    gap: 8px;
+  }
+  .u-gap-12 {
+    gap: 12px;
+  }
+
+  .u-mt-0 {
+    margin-top: 0;
+  }
+  .u-mt-8 {
+    margin-top: 8px;
+  }
+  .u-mt-16 {
+    margin-top: 16px;
+  }
+  .u-mb-0 {
+    margin-bottom: 0;
+  }
+
+  .u-text-muted {
+    color: var(--muted);
+  }
+
+  .u-text-sm {
+    font-size: 0.875rem;
+  }
+
+  .u-min-h-1_25 {
+    min-height: 1.25rem;
+  }
+}

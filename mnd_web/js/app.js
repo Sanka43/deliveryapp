@@ -241,6 +241,7 @@
   }
 
   function escapeHtml(s) {
+    if (window.MndDom) return window.MndDom.esc(s);
     if (s == null) return "";
     const d = document.createElement("div");
     d.textContent = s;
@@ -956,6 +957,7 @@
       );
     }
     modalBackdrop.classList.add("visible");
+    if (window.MndFocusTrap && dialog) window.MndFocusTrap.activate(dialog);
   }
 
   function teardownRiderTrack() {
@@ -975,6 +977,7 @@
     if (modalMode === "rider-track") {
       teardownRiderTrack();
     }
+    if (window.MndFocusTrap) window.MndFocusTrap.deactivate();
     modalBackdrop.classList.remove("visible");
     modalMode = null;
     modalEditId = null;
@@ -1108,7 +1111,12 @@
     ongoingUnsubs = [];
   }
 
-  function showView(name) {
+  // Renamed from showView: still the single place that swaps view sections
+  // and kicks off data loading. Reachable directly (legacy call sites are
+  // all gone — see Router.register below) and through window.__legacyShowView,
+  // which Router uses as the bridge for every view not yet split into its
+  // own js/views/<name>.js module (see mnd_web redesign plan, Phase 1/2/3).
+  function __legacyShowView(name) {
     if (currentView === "ongoing-riders" && name !== "ongoing-riders") {
       stopOngoingListeners();
     }
@@ -1120,28 +1128,46 @@
     }
     currentView = name;
     elPageTitle.textContent = titles[name] || name;
+    let targetSection = null;
     elViews.forEach((v) => {
-      v.hidden = v.getAttribute("data-view") !== name;
+      const isTarget = v.getAttribute("data-view") === name;
+      v.hidden = !isTarget;
+      if (isTarget) targetSection = v;
     });
-    elNav.forEach((b) => b.classList.toggle("active", b.getAttribute("data-nav") === name));
-    loadViewData(name).catch((e) => {
-      toast(e.message || String(e), "error");
+    elNav.forEach((b) => {
+      const isActive = b.getAttribute("data-nav") === name;
+      b.classList.toggle("active", isActive);
+      if (isActive) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
+    const skeleton = window.MndSkeleton;
+    if (skeleton && targetSection) skeleton.showIn(targetSection);
+    loadViewData(name)
+      .then(() => {
+        if (skeleton && targetSection) skeleton.hide(targetSection);
+      })
+      .catch((e) => {
+        toast(e.message || String(e), "error");
+        if (skeleton && targetSection) {
+          skeleton.showError(targetSection, e.message || String(e), () => __legacyShowView(name));
+        }
+      });
+  }
+  window.__legacyShowView = __legacyShowView;
+
+  if (window.MndRouter) {
+    Object.keys(titles).forEach((name) => {
+      window.MndRouter.register(name, () => window.__legacyShowView(name));
     });
   }
 
   async function loadViewData(name) {
     if (!db || !auth.currentUser) return;
-    const setLoading = ui().setLoading;
-    if (setLoading) setLoading(true, "Loading data…");
-    try {
-      if (window.MndFirebase.ensureFirestoreAuth) {
-        await window.MndFirebase.ensureFirestoreAuth();
-      }
-      await loadViewDataInner(name);
-      if (ui().setLastSync) ui().setLastSync();
-    } finally {
-      if (setLoading) setLoading(false);
+    if (window.MndFirebase.ensureFirestoreAuth) {
+      await window.MndFirebase.ensureFirestoreAuth();
     }
+    await loadViewDataInner(name);
+    if (ui().setLastSync) ui().setLastSync();
   }
 
   async function loadViewDataInner(name) {
@@ -2405,7 +2431,7 @@
     }
 
     document.querySelectorAll("[data-go-nav]").forEach((btn) => {
-      btn.addEventListener("click", () => showView(btn.getAttribute("data-go-nav")));
+      btn.addEventListener("click", () => window.MndRouter.navigate(btn.getAttribute("data-go-nav")));
     });
   }
 
@@ -7413,7 +7439,7 @@
   });
 
   elNav.forEach((btn) => {
-    btn.addEventListener("click", () => showView(btn.getAttribute("data-nav")));
+    btn.addEventListener("click", () => window.MndRouter.navigate(btn.getAttribute("data-nav")));
   });
 
   document.getElementById("btn-new-order")?.addEventListener("click", openOrderCreate);
@@ -7637,7 +7663,7 @@
 
   document.getElementById("dashboard-quick-actions")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-go-nav]");
-    if (btn) showView(btn.getAttribute("data-go-nav"));
+    if (btn) window.MndRouter.navigate(btn.getAttribute("data-go-nav"));
   });
 
   try {
@@ -7661,8 +7687,12 @@
       await assertAdmin(user.uid);
       hideAuthGate();
       if (elTopEmail) elTopEmail.textContent = user.email || user.uid;
-      await loadViewData(currentView);
-      if (currentView === "dashboard") renderDashboard();
+      if (window.MndRouter) {
+        window.MndRouter.init({ defaultName: "dashboard" });
+      } else {
+        await loadViewData(currentView);
+        if (currentView === "dashboard") renderDashboard();
+      }
       dashboardSessionReady = true;
     } catch (err) {
       try {

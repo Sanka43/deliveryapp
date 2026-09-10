@@ -9,9 +9,19 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="favicon.png" type="image/png" sizes="32x32" />
     <link rel="shortcut icon" href="favicon.ico" />
-    <link rel="stylesheet" href="css/styles.css?v=support-chat-20260908" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="css/tokens.css?v=admin-redesign-phase1" />
+    <link rel="stylesheet" href="css/base.css?v=admin-redesign-phase1" />
+    <link rel="stylesheet" href="css/components.css?v=admin-redesign-phase1" />
+    <link rel="stylesheet" href="css/layout.css?v=admin-redesign-phase1" />
+    <link rel="stylesheet" href="css/utilities.css?v=admin-redesign-phase1" />
+    <link rel="stylesheet" href="css/styles.css?v=admin-redesign-phase1" />
   </head>
   <body class="dashboard-page">
+    <a href="#main-content" class="skip-link">Skip to content</a>
+
     <div id="auth-gate" class="auth-gate" aria-live="polite">
       <div class="auth-gate__inner">
         <div class="auth-gate__spinner" aria-hidden="true"></div>
@@ -34,7 +44,7 @@
         </div>
         <div class="sidebar-scroll">
           <p class="nav-group-label">Overview</p>
-          <button type="button" class="nav-btn active" data-nav="dashboard">
+          <button type="button" class="nav-btn active" data-nav="dashboard" aria-current="page">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
             Dashboard
           </button>
@@ -168,7 +178,7 @@
           </div>
         </header>
 
-        <main class="content">
+        <main class="content" id="main-content" tabindex="-1">
           <section data-view="dashboard" class="view">
             <div class="quick-actions" id="dashboard-quick-actions">
               <button type="button" class="quick-action" data-go-nav="orders">View orders</button>
@@ -1266,7 +1276,7 @@
       </div>
     </div>
 
-    <div id="modal-backdrop" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div id="modal-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal">
         <h3 id="modal-title">Modal</h3>
         <div id="modal-body"></div>
@@ -1282,9 +1292,13 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
-    <script src="js/firebase-config.js?v=support-chat-20260908"></script>
-    <script src="js/firebase-boot.js?v=support-chat-20260908"></script>
-    <script src="js/ui-helpers.js?v=support-chat-20260908"></script>
-    <script src="js/app.js?v=support-chat-20260908"></script>
+    <script src="js/firebase-config.js?v=admin-redesign-phase1"></script>
+    <script src="js/firebase-boot.js?v=admin-redesign-phase1"></script>
+    <script src="js/ui-helpers.js?v=admin-redesign-phase1"></script>
+    <script src="js/core/dom.js?v=admin-redesign-phase1"></script>
+    <script src="js/core/router.js?v=admin-redesign-phase1"></script>
+    <script src="js/core/skeleton.js?v=admin-redesign-phase1"></script>
+    <script src="js/core/focus-trap.js?v=admin-redesign-phase1"></script>
+    <script src="js/app.js?v=admin-redesign-phase1"></script>
   </body>
 </html>

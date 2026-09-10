@@ -82,6 +82,24 @@
         if (window.matchMedia("(max-width: 960px)").matches) close();
       });
     });
+
+    initSidebarKeyboardNav();
+  }
+
+  /** Up/Down arrow keys roam between sidebar nav buttons (roving focus). */
+  function initSidebarKeyboardNav() {
+    const scroll = document.querySelector(".sidebar-scroll");
+    if (!scroll) return;
+    scroll.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const buttons = Array.from(scroll.querySelectorAll(".nav-btn"));
+      const idx = buttons.indexOf(document.activeElement);
+      if (idx === -1) return;
+      e.preventDefault();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      const next = buttons[(idx + step + buttons.length) % buttons.length];
+      next.focus();
+    });
   }
 
   function initModalKeys() {

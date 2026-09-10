@@ -1,0 +1,60 @@
+/* MND Admin — base reset & typography. Relocated verbatim from styles.css. */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.5;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--brand);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  code {
+    font-size: 0.85em;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--brand-dark);
+  }
+
+  .skip-link {
+    position: absolute;
+    top: -48px;
+    left: 12px;
+    z-index: 100;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--brand);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: top var(--transition);
+  }
+
+  .skip-link:focus {
+    top: 12px;
+    text-decoration: none;
+  }
+}
