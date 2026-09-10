@@ -164,6 +164,11 @@
     box-shadow: var(--shadow-sm);
   }
 
+  .data-card[tabindex]:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
   .data-card__header {
     display: flex;
     align-items: center;

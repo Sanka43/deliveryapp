@@ -3684,14 +3684,14 @@
   }
 
   function renderRiderApprovals() {
-    const tbody = document.querySelector("#table-rider-approvals tbody");
-    if (!tbody) {
+    const list = document.getElementById("rider-approvals-list");
+    if (!list) {
       return;
     }
     const pending = cache.riders.filter((r) => riderRegistrationStatus(r) === "pending");
-    tbody.innerHTML =
+    list.innerHTML =
       pending.length === 0
-        ? `<tr><td colspan="8"><div class="empty-state">No riders waiting for approval.</div></td></tr>`
+        ? `<div class="empty-state">No riders waiting for approval.</div>`
         : pending
             .map((r) => {
               const docs = [];
@@ -3706,26 +3706,27 @@
                 );
               }
               const docsHtml = docs.length ? docs.join(" · ") : "—";
-              return `<tr class="rider-row" tabindex="0" data-view-rider="${escapeHtml(r.id)}" aria-label="View rider details">
-        <td>${escapeHtml(riderDisplayName(r))}</td>
-        <td>${escapeHtml(r.phone || r.phoneNumber || "—")}</td>
-        <td>${escapeHtml(r.nicNumber || "—")}</td>
-        <td>${escapeHtml(r.city || r.address || "—")}</td>
-        <td>${escapeHtml(riderVehicleLabel(r))}</td>
-        <td>${docsHtml}</td>
-        <td>${escapeHtml(fmtTs(r.createdAt))}</td>
-        <td class="row-actions">
-          <button type="button" class="btn btn-primary btn-sm" data-approve-rider="${escapeHtml(r.id)}">Approve</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-reject-rider="${escapeHtml(r.id)}">Reject</button>
-        </td>
-      </tr>`;
+              const name = riderDisplayName(r);
+              return `<div class="data-card rider-row" tabindex="0" data-view-rider="${escapeHtml(r.id)}" aria-label="View details for ${escapeHtml(name)}">
+        <div class="data-card__header">
+          <span class="data-card__title">${escapeHtml(name)}</span>
+          <span class="status-chip" style="background: var(--warning-soft); color: var(--warning)">Pending</span>
+        </div>
+        <div class="data-card__meta">${escapeHtml(r.phone || r.phoneNumber || "—")} · NIC ${escapeHtml(r.nicNumber || "—")} · ${escapeHtml(r.city || r.address || "—")}</div>
+        <div class="data-card__meta">${escapeHtml(riderVehicleLabel(r))} · Documents: ${docsHtml}</div>
+        <div class="data-card__meta">Registered ${escapeHtml(fmtTs(r.createdAt))}</div>
+        <div class="data-card__actions">
+          <button type="button" class="btn btn-primary btn-sm u-w-auto" data-approve-rider="${escapeHtml(r.id)}" aria-label="Approve rider ${escapeHtml(name)}">Approve</button>
+          <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-reject-rider="${escapeHtml(r.id)}" aria-label="Reject rider ${escapeHtml(name)}">Reject</button>
+        </div>
+      </div>`;
             })
             .join("");
-    bindRiderRowOpen(tbody);
-    tbody.querySelectorAll("[data-approve-rider]").forEach((btn) => {
+    bindRiderRowOpen(list);
+    list.querySelectorAll("[data-approve-rider]").forEach((btn) => {
       btn.addEventListener("click", () => approveRider(btn.getAttribute("data-approve-rider")));
     });
-    tbody.querySelectorAll("[data-reject-rider]").forEach((btn) => {
+    list.querySelectorAll("[data-reject-rider]").forEach((btn) => {
       btn.addEventListener("click", () => rejectRider(btn.getAttribute("data-reject-rider")));
     });
   }
