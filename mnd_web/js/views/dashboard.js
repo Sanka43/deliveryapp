@@ -153,14 +153,16 @@
   function renderDashboardRecentOrders() {
     const tbody = document.querySelector("#table-dashboard-orders tbody");
     if (!tbody) return;
-    const readyFirst = [...cache.orders].sort((a, b) => {
-      const ar = String(a.status || "").toLowerCase() === "ready" ? 0 : 1;
-      const br = String(b.status || "").toLowerCase() === "ready" ? 0 : 1;
-      if (ar !== br) return ar - br;
-      const ta = a.createdAt?.seconds || 0;
-      const tb = b.createdAt?.seconds || 0;
-      return tb - ta;
-    });
+    const readyFirst = [...cache.orders]
+      .filter((o) => String(o.status || "").toLowerCase() !== "delivered")
+      .sort((a, b) => {
+        const ar = String(a.status || "").toLowerCase() === "ready" ? 0 : 1;
+        const br = String(b.status || "").toLowerCase() === "ready" ? 0 : 1;
+        if (ar !== br) return ar - br;
+        const ta = a.createdAt?.seconds || 0;
+        const tb = b.createdAt?.seconds || 0;
+        return tb - ta;
+      });
     const list = readyFirst.slice(0, 8);
     tbody.innerHTML =
       list.length === 0
