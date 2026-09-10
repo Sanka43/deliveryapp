@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -381,7 +382,16 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
         messaging: _messaging,
       ).clearTokenForCurrentUser();
       await _messaging.deleteToken();
-    } catch (_) {}
+    } catch (e, stackTrace) {
+      unawaited(
+        FirebaseCrashlytics.instance.recordError(
+          e,
+          stackTrace,
+          reason: 'PhoneAuthController.signOut: FCM token cleanup failed',
+          fatal: false,
+        ),
+      );
+    }
 
     try {
       await _auth.signOut();
@@ -417,7 +427,16 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
         auth: _auth,
         messaging: _messaging,
       ).clearTokenForCurrentUser();
-    } catch (_) {}
+    } catch (e, stackTrace) {
+      unawaited(
+        FirebaseCrashlytics.instance.recordError(
+          e,
+          stackTrace,
+          reason: 'PhoneAuthController.deleteAccount: FCM token cleanup failed',
+          fatal: false,
+        ),
+      );
+    }
 
     try {
       await CustomerProfileRepository(

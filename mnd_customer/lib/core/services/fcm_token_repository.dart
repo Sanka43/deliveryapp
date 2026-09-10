@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
@@ -38,7 +41,16 @@ class FcmTokenRepository {
         },
         SetOptions(merge: true),
       );
-    } catch (_) {}
+    } catch (e, stackTrace) {
+      unawaited(
+        FirebaseCrashlytics.instance.recordError(
+          e,
+          stackTrace,
+          reason: 'FcmTokenRepository.syncTokenForCurrentUser failed',
+          fatal: false,
+        ),
+      );
+    }
   }
 
   Future<void> clearTokenForCurrentUser() async {
@@ -54,6 +66,15 @@ class FcmTokenRepository {
         },
         SetOptions(merge: true),
       );
-    } catch (_) {}
+    } catch (e, stackTrace) {
+      unawaited(
+        FirebaseCrashlytics.instance.recordError(
+          e,
+          stackTrace,
+          reason: 'FcmTokenRepository.clearTokenForCurrentUser failed',
+          fatal: false,
+        ),
+      );
+    }
   }
 }

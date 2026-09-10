@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -314,7 +315,16 @@ class _LoginPageState extends ConsumerState<LoginPage>
         ref.invalidate(customerProfileStreamProvider);
         try {
           await ref.read(customerProfileStreamProvider.future);
-        } catch (_) {}
+        } catch (e, stackTrace) {
+          unawaited(
+            FirebaseCrashlytics.instance.recordError(
+              e,
+              stackTrace,
+              reason: 'LoginPage: customer profile prefetch failed after OTP verify',
+              fatal: false,
+            ),
+          );
+        }
         if (!mounted) {
           return;
         }
