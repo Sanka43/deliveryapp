@@ -190,11 +190,12 @@ class VendorStatsRepository {
     ) {
       final String key = _dateKey(day);
       final Map<String, dynamic>? row = dailyByDate[key];
-      final double dayGross = _readShopSales(row);
+      final double dayGross = _readDouble(row?['grossLkr']);
+      final double dayNet = _readShopSales(row);
       final int dayCompleted = _readInt(row?['completedOrders']);
       final int dayCancelled = _readInt(row?['cancelledOrders']);
       gross += dayGross;
-      net += dayGross;
+      net += dayNet;
       discount += _readDouble(row?['discountLkr']);
       delivery += _readDouble(row?['deliveryFeeLkr']);
       completed += dayCompleted;
@@ -298,6 +299,11 @@ class VendorStatsRepository {
     return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  /// The shop's net take for the day — prefers the backend-computed
+  /// `netSalesLkr` (gross minus delivery fee and platform service charge);
+  /// falls back to gross minus delivery fee for older rows written before
+  /// that field existed. Distinct from `grossLkr`, which is the full order
+  /// value the customer paid.
   static double _readShopSales(Map<String, dynamic>? row) {
     if (row == null) {
       return 0;

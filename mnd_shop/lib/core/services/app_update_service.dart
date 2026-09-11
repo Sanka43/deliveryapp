@@ -37,6 +37,13 @@ int compareAppVersions(String a, String b) {
   return 0;
 }
 
+/// Whether a forced (blocking) update dialog is currently on screen. Tracked
+/// so a re-check (e.g. on app resume) can either avoid stacking a second
+/// dialog on top, or dismiss the one showing once the version requirement is
+/// actually satisfied — tapping "Update Now" alone never proves the vendor
+/// installed anything, so the gate must not just take that on faith.
+bool _forcedDialogShowing = false;
+
 /// Reads the `app_config/shop` doc and, if the installed build is behind,
 /// shows a blocking (forced) or dismissible (optional) update dialog.
 ///
@@ -67,33 +74,57 @@ Future<void> checkForAppUpdate() async {
     final bool isForced = minSupported.isNotEmpty &&
         compareAppVersions(current, minSupported) < 0;
     final bool hasUpdate = compareAppVersions(current, latest) < 0;
-    if (!isForced && !hasUpdate) return;
+
+    final BuildContext? context = rootNavigatorKey.currentContext;
+
+    if (!isForced && !hasUpdate) {
+      // A re-check (e.g. on resume from the store) found the version
+      // requirement is now met — close any forced dialog still up.
+      if (_forcedDialogShowing &&
+          context != null &&
+          context.mounted &&
+          Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      return;
+    }
+
+    if (_forcedDialogShowing) {
+      // Already blocking on this; nothing new to do until it resolves.
+      return;
+    }
 
     if (!isForced) {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       if (prefs.getString(_kUpdateDismissedVersionKey) == latest) return;
     }
 
-    final BuildContext? context = rootNavigatorKey.currentContext;
     if (context == null || !context.mounted) return;
 
-    await AppUpdateDialog.show(
-      context,
-      forced: isForced,
-      message: message,
-      onUpdate: () => _openStore(
-        androidUrl: androidUrl,
-        iosUrl: iosUrl,
-        packageName: info.packageName,
-      ),
-      onLater: isForced
-          ? null
-          : () async {
-              final SharedPreferences prefs =
-                  await SharedPreferences.getInstance();
-              await prefs.setString(_kUpdateDismissedVersionKey, latest);
-            },
-    );
+    if (isForced) {
+      _forcedDialogShowing = true;
+    }
+    try {
+      await AppUpdateDialog.show(
+        context,
+        forced: isForced,
+        message: message,
+        onUpdate: () => _openStore(
+          androidUrl: androidUrl,
+          iosUrl: iosUrl,
+          packageName: info.packageName,
+        ),
+        onLater: isForced
+            ? null
+            : () async {
+                final SharedPreferences prefs =
+                    await SharedPreferences.getInstance();
+                await prefs.setString(_kUpdateDismissedVersionKey, latest);
+              },
+      );
+    } finally {
+      _forcedDialogShowing = false;
+    }
   } catch (e, st) {
     if (kDebugMode) {
       debugPrint('checkForAppUpdate: skipped → $e\n$st');

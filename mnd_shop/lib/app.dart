@@ -46,6 +46,10 @@ class MndShopApp extends ConsumerWidget {
       builder: (BuildContext context, Widget? child) {
         final Brightness brightness = Theme.of(context).brightness;
         final bool dark = brightness == Brightness.dark;
+        // Localizations.localeOf is the final resolved locale (post
+        // localeResolutionCallback), unlike the possibly-null value passed
+        // to MaterialApp's own `locale:` above.
+        final Locale resolvedLocale = Localizations.localeOf(context);
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
@@ -58,8 +62,11 @@ class MndShopApp extends ConsumerWidget {
                 dark ? Brightness.light : Brightness.dark,
             systemNavigationBarContrastEnforced: false,
           ),
-          child: VendorResponsiveAppFrame(
-            child: AppUpdateGate(child: child ?? const SizedBox.shrink()),
+          child: Theme(
+            data: AppTheme.applyLocalizedFont(Theme.of(context), resolvedLocale),
+            child: VendorResponsiveAppFrame(
+              child: AppUpdateGate(child: child ?? const SizedBox.shrink()),
+            ),
           ),
         );
       },

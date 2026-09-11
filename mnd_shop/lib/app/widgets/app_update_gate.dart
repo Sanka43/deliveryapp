@@ -12,17 +12,35 @@ class AppUpdateGate extends StatefulWidget {
   State<AppUpdateGate> createState() => _AppUpdateGateState();
 }
 
-class _AppUpdateGateState extends State<AppUpdateGate> {
+class _AppUpdateGateState extends State<AppUpdateGate>
+    with WidgetsBindingObserver {
   bool _checked = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_checked) return;
       _checked = true;
       checkForAppUpdate();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Catches the vendor coming back from the Play Store (or just switching
+    // apps) so a forced-update block can't be dodged by tapping Update Now
+    // and returning without actually installing anything.
+    if (state == AppLifecycleState.resumed) {
+      checkForAppUpdate();
+    }
   }
 
   @override

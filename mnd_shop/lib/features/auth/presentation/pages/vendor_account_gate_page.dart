@@ -1,13 +1,16 @@
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/constants/support_constants.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
 import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/auth/domain/vendor_deletion_status.dart';
 import 'package:mnd_shop/features/auth/presentation/pages/shop_registration_form_page.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Ensures the signed-in Firebase user has a `vendors/{uid}` profile before the shell loads.
 class VendorAccountGate extends ConsumerWidget {
@@ -44,6 +47,21 @@ class VendorAccountGate extends ConsumerWidget {
           }
           if (VendorDeletionStatus.needsReRegistration(doc)) {
             return const _VendorClosedReopenPage();
+          }
+          final String approvalStatus =
+              (doc['approvalStatus'] as String?)?.trim().toLowerCase() ?? '';
+          if (approvalStatus == 'rejected') {
+            return _VendorRejectedPage(
+              reason: (doc['rejectionReason'] as String?)?.trim(),
+            );
+          }
+          final bool requiresEmailVerification =
+              doc['requireEmailVerification'] == true;
+          final User? user = ref.watch(firebaseAuthProvider).currentUser;
+          if (requiresEmailVerification &&
+              user != null &&
+              !user.emailVerified) {
+            return const _VendorEmailVerificationPage();
           }
           return child;
         }
@@ -84,6 +102,208 @@ class _VendorClosedReopenPage extends ConsumerWidget {
           },
           child: Text(
             _vTxt(context, en: 'Register shop', si: 'Shop register කරන්න'),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            await ref.read(firebaseAuthProvider).signOut();
+          },
+          child: Text(
+            _vTxt(
+              context,
+              en: 'Sign out and use another account',
+              si: 'වෙනත් ගිණුමකින් පිවිසෙන්න',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VendorRejectedPage extends ConsumerWidget {
+  const _VendorRejectedPage({this.reason});
+
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final String? trimmedReason =
+        (reason != null && reason!.isNotEmpty) ? reason : null;
+    return _MessageScaffold(
+      title: _vTxt(
+        context,
+        en: 'Shop application rejected',
+        si: 'Shop application එක ප්‍රතික්ෂේප කර ඇත',
+      ),
+      body: trimmedReason != null
+          ? _vTxt(
+              context,
+              en: 'Your shop application was not approved: $trimmedReason',
+              si: 'ඔබේ shop application එක approve වුනේ නෑ: $trimmedReason',
+            )
+          : _vTxt(
+              context,
+              en:
+                  'Your shop application was not approved. Contact support '
+                  'for more details.',
+              si:
+                  'ඔබේ shop application එක approve වුනේ නෑ. වැඩි විස්තර සඳහා '
+                  'support අමතන්න.',
+            ),
+      actions: <Widget>[
+        FilledButton.icon(
+          onPressed: () => launchUrl(SupportConstants.supportEmailUri),
+          icon: const Icon(Icons.mail_outline_rounded, size: 18),
+          label: Text(
+            _vTxt(context, en: 'Contact support', si: 'Support අමතන්න'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextButton(
+          onPressed: () async {
+            await ref.read(firebaseAuthProvider).signOut();
+          },
+          child: Text(_vTxt(context, en: 'Sign out', si: 'Sign out')),
+        ),
+      ],
+    );
+  }
+}
+
+class _VendorEmailVerificationPage extends ConsumerStatefulWidget {
+  const _VendorEmailVerificationPage();
+
+  @override
+  ConsumerState<_VendorEmailVerificationPage> createState() =>
+      _VendorEmailVerificationPageState();
+}
+
+class _VendorEmailVerificationPageState
+    extends ConsumerState<_VendorEmailVerificationPage> {
+  bool _busy = false;
+  String? _info;
+  DateTime? _lastSentAt;
+
+  bool get _canResend =>
+      _lastSentAt == null ||
+      DateTime.now().difference(_lastSentAt!) > const Duration(seconds: 30);
+
+  Future<void> _resend() async {
+    if (_busy || !_canResend) return;
+    setState(() {
+      _busy = true;
+      _info = null;
+    });
+    try {
+      final User? user = ref.read(firebaseAuthProvider).currentUser;
+      await user?.sendEmailVerification();
+      _lastSentAt = DateTime.now();
+      if (mounted) {
+        setState(() {
+          _info = _vTxt(
+            context,
+            en: 'Verification email sent. Check your inbox (and spam folder).',
+            si: 'Verification email එක යවා ඇත. ඔබේ inbox එක (spam folder එකත්) පරීක්ෂා කරන්න.',
+          );
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _info = _vTxt(
+            context,
+            en: 'Could not send the email right now. Try again shortly.',
+            si: 'දැන් email එක යැවිය නොහැක. මදකින් නැවත උත්සාහ කරන්න.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _iVerified() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _info = null;
+    });
+    try {
+      final User? user = ref.read(firebaseAuthProvider).currentUser;
+      await user?.reload();
+      final User? refreshed = ref.read(firebaseAuthProvider).currentUser;
+      if (refreshed != null && refreshed.emailVerified) {
+        ref.invalidate(vendorAccountDocDataProvider);
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _info = _vTxt(
+            context,
+            en: 'Still not verified. Open the link in the email we sent, then try again.',
+            si: 'තවම verify වී නැත. email එකේ ඇති link එක open කර නැවත උත්සාහ කරන්න.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final User? user = ref.watch(firebaseAuthProvider).currentUser;
+    final String email = user?.email ?? '';
+    return _MessageScaffold(
+      title: _vTxt(
+        context,
+        en: 'Verify your email',
+        si: 'ඔබේ email එක verify කරන්න',
+      ),
+      body: _vTxt(
+        context,
+        en:
+            'We sent a verification link to $email. Verify it, then tap '
+            "I've verified to continue.",
+        si:
+            '$email වෙත verification link එකක් යවා ඇත. එය verify කර, ඉන්පසු '
+            'continue කිරීමට "Verified — Continue" ඔබන්න.',
+      ),
+      actions: <Widget>[
+        if (_info != null) ...<Widget>[
+          Text(
+            _info!,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+        ],
+        FilledButton(
+          onPressed: _busy ? null : _iVerified,
+          child: _busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(
+                  _vTxt(
+                    context,
+                    en: "I've verified — Continue",
+                    si: 'Verified — Continue',
+                  ),
+                ),
+        ),
+        const SizedBox(height: 10),
+        TextButton(
+          onPressed: (_busy || !_canResend) ? null : _resend,
+          child: Text(
+            _vTxt(context, en: 'Resend email', si: 'නැවත email එක යවන්න'),
           ),
         ),
         TextButton(

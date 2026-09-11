@@ -66,31 +66,38 @@ class _VendorIncomingOrderSnackbarHostState extends ConsumerState<VendorIncoming
         _hydrated = true;
         return;
       }
+      final List<VendorPendingOrder> freshOrders = <VendorPendingOrder>[];
       for (final VendorPendingOrder o in board.incoming) {
         if (_knownIncomingIds.contains(o.id)) {
           continue;
         }
         _knownIncomingIds.add(o.id);
+        freshOrders.add(o);
+      }
+      if (freshOrders.isEmpty || !context.mounted) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) {
           return;
         }
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!context.mounted) {
-            return;
-          }
-          unawaited(_playNewOrderSound());
-          HapticFeedback.heavyImpact();
-          if (!ref.read(vendorInAppOrderAlertsEnabledProvider)) {
-            return;
-          }
+        // Play the alert once per snapshot batch, not once per order — two
+        // orders landing together previously stopped/restarted the player
+        // mid-clip instead of a single clean alert.
+        unawaited(_playNewOrderSound());
+        HapticFeedback.heavyImpact();
+        if (!ref.read(vendorInAppOrderAlertsEnabledProvider)) {
+          return;
+        }
+        for (final VendorPendingOrder o in freshOrders) {
           showDialog<void>(
             context: context,
             barrierDismissible: false,
             useRootNavigator: true,
             builder: (BuildContext dialogContext) => VendorNewOrderDialog(order: o),
           );
-        });
-      }
+        }
+      });
     });
     return const SizedBox.shrink();
   }

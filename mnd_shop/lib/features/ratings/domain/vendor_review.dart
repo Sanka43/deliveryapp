@@ -9,6 +9,8 @@ class VendorReview {
     required this.stars,
     required this.comment,
     required this.createdAt,
+    this.vendorReply = '',
+    this.vendorReplyAt,
   });
 
   /// Same as the rated order's id.
@@ -17,8 +19,15 @@ class VendorReview {
   final String comment;
   final DateTime? createdAt;
 
+  /// The shop's own public reply to this review, if any.
+  final String vendorReply;
+  final DateTime? vendorReplyAt;
+
+  bool get hasVendorReply => vendorReply.isNotEmpty;
+
   factory VendorReview.fromFirestore(String id, Map<String, dynamic> data) {
     final Timestamp? ts = data['createdAt'] as Timestamp?;
+    final Timestamp? replyTs = data['vendorReplyAt'] as Timestamp?;
     final Object? starsRaw = data['stars'];
     final int parsedStars = starsRaw is num
         ? starsRaw.round()
@@ -29,6 +38,8 @@ class VendorReview {
       stars: stars,
       comment: (data['comment'] as String?)?.trim() ?? '',
       createdAt: ts?.toDate(),
+      vendorReply: (data['vendorReply'] as String?)?.trim() ?? '',
+      vendorReplyAt: replyTs?.toDate(),
     );
   }
 }

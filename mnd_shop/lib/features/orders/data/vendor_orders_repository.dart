@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -71,6 +73,11 @@ class VendorOrdersRepository {
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+
+  // A stalled connection can otherwise leave a vendor's Accept/Reject tap
+  // hanging indefinitely with no feedback — bound it so a flaky connection
+  // fails fast with a clear "try again" message instead.
+  static const Duration _orderStatusTimeout = Duration(seconds: 12);
 
   CollectionReference<Map<String, dynamic>> get _orders =>
       _firestore.collection(FirebaseCollections.orders);
@@ -398,7 +405,7 @@ class VendorOrdersRepository {
         priorStatus = currentStatus;
         vendorId = (data['vendorId'] as String?)?.trim() ?? '';
         return null;
-      });
+      }).timeout(_orderStatusTimeout);
       if (txError == null &&
           priorStatus == 'placed' &&
           normalizedStatus != 'placed') {
@@ -468,7 +475,7 @@ class VendorOrdersRepository {
         priorStatus = currentStatus;
         vendorId = (data['vendorId'] as String?)?.trim() ?? '';
         return null;
-      });
+      }).timeout(_orderStatusTimeout);
       if (txError == null && priorStatus == 'placed') {
         await _clearOrderReminderNotifications(
           vendorId: vendorId,

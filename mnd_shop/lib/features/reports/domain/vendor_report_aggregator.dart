@@ -46,6 +46,9 @@ abstract final class VendorReportAggregator {
     int completedOrders = 0;
     int cancelledOrders = 0;
     double grossLkr = 0;
+    double netSalesLkr = 0;
+    double discountLkr = 0;
+    double deliveryFeeLkr = 0;
 
     for (final VendorPendingOrder order in _terminalOrders(board)) {
       final DateTime? at = order.createdAt;
@@ -54,7 +57,13 @@ abstract final class VendorReportAggregator {
       }
       if (VendorOrderStatus.isCompleted(order.statusKey)) {
         completedOrders++;
-        grossLkr += order.shopTotal;
+        // grossLkr is the full order value the customer paid (matches the
+        // backend's definition); shopTotal already nets out discount and
+        // excludes delivery/commission — see VendorPendingOrder.shopTotal.
+        grossLkr += order.total;
+        netSalesLkr += order.shopTotal;
+        discountLkr += order.discount;
+        deliveryFeeLkr += order.deliveryFee;
         _allocateProductRevenue(
           productRevenue,
           productQty,
@@ -117,7 +126,9 @@ abstract final class VendorReportAggregator {
       categoryValuesLkr: categoryValuesLkr,
       productRows: productRows,
       grossLkr: grossLkr,
-      netSalesLkr: grossLkr,
+      netSalesLkr: netSalesLkr,
+      discountLkr: discountLkr,
+      deliveryFeeLkr: deliveryFeeLkr,
       completedOrders: completedOrders,
       cancelledOrders: cancelledOrders,
       rangeLabel: selectedRange.label,
@@ -151,7 +162,7 @@ abstract final class VendorReportAggregator {
           continue;
         }
         if (VendorOrderStatus.isCompleted(order.statusKey)) {
-          gross += order.shopTotal;
+          gross += order.total;
           completed++;
         } else if (VendorOrderStatus.isCancelled(order.statusKey)) {
           cancelled++;
@@ -189,7 +200,7 @@ abstract final class VendorReportAggregator {
           continue;
         }
         if (VendorOrderStatus.isCompleted(order.statusKey)) {
-          gross += order.shopTotal;
+          gross += order.total;
           completed++;
         } else if (VendorOrderStatus.isCancelled(order.statusKey)) {
           cancelled++;

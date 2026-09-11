@@ -82,9 +82,15 @@ class ShopFirebaseMessagingService {
   }
 
   Future<void> _onForegroundMessage(RemoteMessage message) async {
-    await ShopLocalNotifications.show(
-      ShopPushMessage.fromRemoteMessage(message),
-    );
+    final ShopPushMessage parsed = ShopPushMessage.fromRemoteMessage(message);
+    if (parsed.type == ShopPushType.newOrder) {
+      // VendorIncomingOrderSnackbarHost already watches the order board
+      // directly and plays its own alert sound + in-app dialog for new
+      // orders while foregrounded — showing this too would double-alert
+      // with two overlapping sounds for the same order.
+      return;
+    }
+    await ShopLocalNotifications.show(parsed);
   }
 
   void _onOpenedApp(RemoteMessage message) {

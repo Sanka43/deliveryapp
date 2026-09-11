@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 import 'package:mnd_shop/features/notifications/presentation/pages/vendor_notifications_page.dart';
@@ -108,9 +109,12 @@ class _VendorProfilePageState extends ConsumerState<VendorProfilePage> {
     _hydrateFromDoc(doc);
 
     final bool active = doc?['active'] == true;
-    final String email = (doc?['email'] as String?)?.trim().isNotEmpty == true
-        ? (doc!['email'] as String).trim()
-        : 'No email set';
+    // Login email lives in Firebase Auth, not the publicly-readable vendor
+    // doc — read it straight from the signed-in user.
+    final String? authEmail =
+        ref.watch(firebaseAuthProvider).currentUser?.email?.trim();
+    final String email =
+        (authEmail != null && authEmail.isNotEmpty) ? authEmail : 'No email set';
 
     int profileScore = 0;
     if (_name.text.trim().isNotEmpty) {

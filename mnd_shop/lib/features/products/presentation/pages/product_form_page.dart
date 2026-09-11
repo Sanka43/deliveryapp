@@ -795,7 +795,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
 
       final String name = _nameCtrl.text.trim();
       final String description = _descCtrl.text.trim();
-      final bool manageStock = isGrocery ? _manageStock : false;
+      final bool manageStock = _manageStock;
       final int stock = manageStock
           ? (int.tryParse(_stockCtrl.text.trim()) ?? 0)
           : (widget.product?.stockQty ?? 0);
@@ -1525,6 +1525,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   child: TextFormField(
                     controller: _nameCtrl,
                     textCapitalization: TextCapitalization.words,
+                    maxLength: 120,
                     decoration: InputDecoration(
                       labelText: 'Product Name',
                       hintText: isGrocery
@@ -1532,8 +1533,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                           : 'e.g. Vegetable fried rice',
                     ),
                     validator: (String? v) {
-                      if (v == null || v.trim().isEmpty) {
+                      final String trimmed = v?.trim() ?? '';
+                      if (trimmed.isEmpty) {
                         return 'Enter a name';
+                      }
+                      if (trimmed.length > 120) {
+                        return 'Keep the name under 120 characters';
                       }
                       return null;
                     },
@@ -1585,64 +1590,65 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  _ProductFormSectionCard(
-                    title: 'Stock',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        SwitchListTile.adaptive(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Manage stock'),
-                          subtitle: Text(
-                            _manageStock
-                                ? 'Track units; customers see out of stock at 0.'
-                                : 'Stock not tracked — product stays available.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: muted,
-                            ),
+                ],
+                _ProductFormSectionCard(
+                  title: 'Stock',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Manage stock'),
+                        subtitle: Text(
+                          _manageStock
+                              ? 'Track units; customers see out of stock at 0.'
+                              : 'Stock not tracked — product stays available.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
                           ),
-                          value: _manageStock,
-                          onChanged: (bool v) {
-                            setState(() => _manageStock = v);
+                        ),
+                        value: _manageStock,
+                        onChanged: (bool v) {
+                          setState(() => _manageStock = v);
+                        },
+                      ),
+                      if (_manageStock) ...<Widget>[
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _stockCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Stock on hand',
+                            hintText: 'Units available to sell',
+                            prefixIcon:
+                                Icon(Icons.inventory_2_outlined, size: 20),
+                          ),
+                          validator: (String? v) {
+                            if (!_manageStock) {
+                              return null;
+                            }
+                            if (v == null || v.trim().isEmpty) {
+                              return 'Enter stock quantity';
+                            }
+                            final int? n = int.tryParse(v.trim());
+                            if (n == null || n < 0) {
+                              return 'Whole number ≥ 0';
+                            }
+                            return null;
                           },
                         ),
-                        if (_manageStock) ...<Widget>[
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _stockCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Stock on hand',
-                              hintText: 'Units available to sell',
-                              prefixIcon:
-                                  Icon(Icons.inventory_2_outlined, size: 20),
-                            ),
-                            validator: (String? v) {
-                              if (!_manageStock) {
-                                return null;
-                              }
-                              if (v == null || v.trim().isEmpty) {
-                                return 'Enter stock quantity';
-                              }
-                              final int? n = int.tryParse(v.trim());
-                              if (n == null || n < 0) {
-                                return 'Whole number ≥ 0';
-                              }
-                              return null;
-                            },
-                          ),
-                        ],
                       ],
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 14),
-                ],
+                ),
+                const SizedBox(height: 14),
                 _ProductFormSectionCard(
                   title: 'Description',
                   child: TextFormField(
                     controller: _descCtrl,
                     minLines: 4,
                     maxLines: 6,
+                    maxLength: 500,
                     decoration: InputDecoration(
                       labelText: 'Description',
                       hintText: isGrocery
@@ -1650,6 +1656,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                           : 'Ingredients, portions, spice level…',
                       alignLabelWithHint: true,
                     ),
+                    validator: (String? v) {
+                      if ((v?.trim().length ?? 0) > 500) {
+                        return 'Keep the description under 500 characters';
+                      }
+                      return null;
+                    },
                   ),
                 ),
                 const SizedBox(height: 14),
