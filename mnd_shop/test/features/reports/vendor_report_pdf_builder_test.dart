@@ -29,7 +29,6 @@ void main() {
         grossLkr: 1500,
         netSalesLkr: 1400,
         discountLkr: 100,
-        deliveryFeeLkr: 200,
         completedOrders: 2,
         cancelledOrders: 0,
         rangeLabel: 'This week',

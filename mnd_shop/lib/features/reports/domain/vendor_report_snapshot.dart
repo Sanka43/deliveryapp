@@ -39,7 +39,6 @@ class VendorReportSnapshot {
     this.grossLkr = 0,
     this.netSalesLkr = 0,
     this.discountLkr = 0,
-    this.deliveryFeeLkr = 0,
     this.completedOrders = 0,
     this.cancelledOrders = 0,
     this.rangeLabel = 'Last 7 days',
@@ -52,7 +51,6 @@ class VendorReportSnapshot {
   final double grossLkr;
   final double netSalesLkr;
   final double discountLkr;
-  final double deliveryFeeLkr;
   final int completedOrders;
   final int cancelledOrders;
   final String rangeLabel;

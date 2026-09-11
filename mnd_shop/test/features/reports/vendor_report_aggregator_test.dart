@@ -66,7 +66,6 @@ void main() {
       expect(snapshot.cancelledOrders, 1);
       expect(snapshot.grossLkr, 1200);
       expect(snapshot.netSalesLkr, 1000);
-      expect(snapshot.deliveryFeeLkr, 200);
       expect(snapshot.discountLkr, 0);
       expect(snapshot.productRows, hasLength(1));
       expect(snapshot.productRows.first.productName, 'Rice');

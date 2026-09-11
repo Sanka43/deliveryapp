@@ -48,7 +48,6 @@ abstract final class VendorReportAggregator {
     double grossLkr = 0;
     double netSalesLkr = 0;
     double discountLkr = 0;
-    double deliveryFeeLkr = 0;
 
     for (final VendorPendingOrder order in _terminalOrders(board)) {
       final DateTime? at = order.createdAt;
@@ -63,7 +62,6 @@ abstract final class VendorReportAggregator {
         grossLkr += order.total;
         netSalesLkr += order.shopTotal;
         discountLkr += order.discount;
-        deliveryFeeLkr += order.deliveryFee;
         _allocateProductRevenue(
           productRevenue,
           productQty,
@@ -128,7 +126,6 @@ abstract final class VendorReportAggregator {
       grossLkr: grossLkr,
       netSalesLkr: netSalesLkr,
       discountLkr: discountLkr,
-      deliveryFeeLkr: deliveryFeeLkr,
       completedOrders: completedOrders,
       cancelledOrders: cancelledOrders,
       rangeLabel: selectedRange.label,
