@@ -302,7 +302,9 @@ service cloud.firestore {
           && 'approvalStatus' in d
           && d.approvalStatus is string
           && d.approvalStatus == 'pending'
-          && (!('email' in d) || (d.email is string && d.email.size() <= 200));
+          // Login email must never live on this publicly-readable doc —
+          // Firebase Auth is the source of truth for it.
+          && !('email' in d);
       }
 
       /// Non-admin vendors cannot publish (`active: true`) or change approval until `approvalStatus` is `approved`.
@@ -325,8 +327,11 @@ service cloud.firestore {
         // Identity fields are frozen: userRole() falls back to vendors/{uid}.role,
         // so an unlocked role would let a vendor self-escalate to admin, and an
         // unlocked vendorStoreId would let it claim another vendor's store.
+        // `email` is frozen too — this doc is publicly readable, so a vendor
+        // must never be able to add or change a login email on it (a legacy
+        // value already on the doc is left alone, not force-migrated here).
         let identityFieldsUnchanged = !a.diff(b).affectedKeys()
-          .hasAny(['role', 'uid', 'vendorStoreId']);
+          .hasAny(['role', 'uid', 'vendorStoreId', 'email']);
         return approvalOk && ratingFieldsUnchanged && identityFieldsUnchanged;
       }
 

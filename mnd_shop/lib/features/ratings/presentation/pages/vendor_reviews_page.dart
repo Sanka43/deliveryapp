@@ -113,7 +113,12 @@ class VendorReviewsPage extends ConsumerWidget {
                     ...list.map(
                       (VendorReview r) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: _ReviewTile(review: r),
+                        // Keyed by review id: the reviews stream is live, so
+                        // a new review landing mid-session can reorder this
+                        // list — without a key, Flutter reconciles by
+                        // position and an in-progress reply draft could
+                        // reattach to the wrong review.
+                        child: _ReviewTile(key: ValueKey<String>(r.id), review: r),
                       ),
                     ),
                   ],
@@ -245,7 +250,7 @@ class _StarRow extends StatelessWidget {
 }
 
 class _ReviewTile extends ConsumerStatefulWidget {
-  const _ReviewTile({required this.review});
+  const _ReviewTile({super.key, required this.review});
 
   final VendorReview review;
 
