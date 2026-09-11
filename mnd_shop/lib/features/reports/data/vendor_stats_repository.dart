@@ -179,7 +179,6 @@ class VendorStatsRepository {
     double gross = 0;
     double net = 0;
     double discount = 0;
-    double delivery = 0;
     int completed = 0;
     int cancelled = 0;
 
@@ -197,7 +196,6 @@ class VendorStatsRepository {
       gross += dayGross;
       net += dayNet;
       discount += _readDouble(row?['discountLkr']);
-      delivery += _readDouble(row?['deliveryFeeLkr']);
       completed += dayCompleted;
       cancelled += dayCancelled;
       chart.add(
@@ -264,7 +262,6 @@ class VendorStatsRepository {
       grossLkr: gross,
       netSalesLkr: net,
       discountLkr: discount,
-      deliveryFeeLkr: delivery,
       completedOrders: completed,
       cancelledOrders: cancelled,
       rangeLabel: range.label,
