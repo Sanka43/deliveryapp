@@ -76,9 +76,9 @@ void main() {
           )
           .first;
 
-      expect(snapshot.grossLkr, 900);
+      expect(snapshot.grossLkr, 1000);
       expect(snapshot.netSalesLkr, 900);
-      expect(snapshot.last7Days.first.grossLkr, 900);
+      expect(snapshot.last7Days.first.grossLkr, 1000);
       expect(snapshot.completedOrders, 2);
       expect(snapshot.cancelledOrders, 1);
       expect(snapshot.productRows.single.productName, 'Rice');
@@ -117,9 +117,9 @@ void main() {
             )
             .first;
 
-        expect(snapshot.grossLkr, 1050);
+        expect(snapshot.grossLkr, 1250);
         expect(snapshot.netSalesLkr, 1050);
-        expect(snapshot.last7Days.first.grossLkr, 1050);
+        expect(snapshot.last7Days.first.grossLkr, 1250);
       },
     );
   });

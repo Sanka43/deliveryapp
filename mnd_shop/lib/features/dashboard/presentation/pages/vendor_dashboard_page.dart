@@ -1295,7 +1295,7 @@ class _OrdersLoadingSkeleton extends StatelessWidget {
   }
 }
 
-class _ModernIncomingOrderCard extends StatelessWidget {
+class _ModernIncomingOrderCard extends StatefulWidget {
   const _ModernIncomingOrderCard({
     required this.order,
     required this.moneyLabel,
@@ -1311,7 +1311,33 @@ class _ModernIncomingOrderCard extends StatelessWidget {
   final Future<void> Function() onReject;
 
   @override
+  State<_ModernIncomingOrderCard> createState() =>
+      _ModernIncomingOrderCardState();
+}
+
+class _ModernIncomingOrderCardState extends State<_ModernIncomingOrderCard> {
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() action) async {
+    // Guards against a fast double-tap firing the status-update write (and
+    // its rider-matching notification) twice before the first call lands —
+    // mirrors the same guard on the Orders tab's card.
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final VendorPendingOrder order = widget.order;
+    final String moneyLabel = widget.moneyLabel;
+    final VoidCallback onOpenDetail = widget.onOpenDetail;
     final ThemeData theme = Theme.of(context);
     final ColorScheme cs = theme.colorScheme;
     final String itemsLabel = order.itemCount == 1
@@ -1482,7 +1508,8 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                   children: <Widget>[
                     Expanded(
                       child: FilledButton(
-                        onPressed: () => onAccept(),
+                        onPressed:
+                            _busy ? null : () => _run(widget.onAccept),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.vendorHeroBlue,
                           foregroundColor: Colors.white,
@@ -1494,15 +1521,25 @@ class _ModernIncomingOrderCard extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        child: Text(
-                          _vTxt(context, en: 'Accept', si: 'පිළිගන්න'),
-                        ),
+                        child: _busy
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                _vTxt(context, en: 'Accept', si: 'පිළිගන්න'),
+                              ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => onReject(),
+                        onPressed:
+                            _busy ? null : () => _run(widget.onReject),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.orderRejectRed,
                           backgroundColor: isDark

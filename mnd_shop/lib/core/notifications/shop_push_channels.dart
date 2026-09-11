@@ -20,6 +20,16 @@ abstract final class ShopPushChannels {
   static String ordersChannelIdFor(VendorAlertSound sound) =>
       'mnd_shop_orders_v2_${sound.androidRawName}';
 
+  /// Non-urgent vendor pushes (approval updates, support replies, cancelled
+  /// orders, payouts, job status) — the default Android notification sound,
+  /// not the vendor's chosen loud new-order tone. Keeping these off the
+  /// orders channel means muting/misusing the order alert doesn't also
+  /// silence account-critical updates, and vice versa.
+  static const String generalChannelId = 'mnd_shop_general_v1';
+  static const String generalChannelName = 'Shop updates';
+  static const String generalChannelDescription =
+      'Approval, support, and account updates';
+
   /// Channel ids used by earlier releases. Deleted at startup so devices stuck
   /// with a silent channel recover once the app updates.
   static List<String> get legacyChannelIds => <String>[

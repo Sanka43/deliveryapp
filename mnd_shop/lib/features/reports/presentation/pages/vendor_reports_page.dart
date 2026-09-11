@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/constants/support_constants.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
@@ -56,10 +57,14 @@ class VendorReportsPage extends ConsumerWidget {
     final Map<String, dynamic>? doc =
         ref.read(vendorAccountDocDataProvider).valueOrNull;
     final String name = ref.read(vendorShopDisplayNameProvider);
+    // Login email lives in Firebase Auth, not the publicly-readable vendor
+    // doc — read it straight from the signed-in user.
+    final String email =
+        ref.read(firebaseAuthProvider).currentUser?.email?.trim() ?? '';
     return ShopReportParty(
       name: name,
       phone: (doc?['phone'] as String?)?.trim() ?? '',
-      email: (doc?['email'] as String?)?.trim() ?? '',
+      email: email,
       addressLine: (doc?['addressLine'] as String?)?.trim() ?? '',
       city: (doc?['city'] as String?)?.trim() ?? '',
     );

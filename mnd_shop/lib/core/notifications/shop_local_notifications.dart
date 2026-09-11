@@ -94,7 +94,22 @@ class ShopLocalNotifications {
         ),
       );
     }
+
+    await androidPlugin.createNotificationChannel(
+      const AndroidNotificationChannel(
+        ShopPushChannels.generalChannelId,
+        ShopPushChannels.generalChannelName,
+        description: ShopPushChannels.generalChannelDescription,
+        importance: Importance.high,
+        playSound: true,
+      ),
+    );
   }
+
+  /// Whether [type] is urgent enough to need the vendor's loud order-alert
+  /// tone — everything else uses the calmer general channel.
+  static bool _isUrgent(ShopPushType type) =>
+      type == ShopPushType.newOrder || type == ShopPushType.orderReminder;
 
   /// Creates (or reuses) the Android channel for [sound] and marks it selected.
   static Future<void> ensureOrdersChannel(VendorAlertSound sound) async {
@@ -113,19 +128,32 @@ class ShopLocalNotifications {
       return;
     }
 
-    _alertSound = await _loadAlertSound();
-    await ensureOrdersChannel(_alertSound);
-
-    final AndroidNotificationDetails android = AndroidNotificationDetails(
-      ShopPushChannels.ordersChannelIdFor(_alertSound),
-      ShopPushChannels.ordersChannelName,
-      channelDescription: ShopPushChannels.ordersChannelDescription,
-      importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      playSound: true,
-      sound: RawResourceAndroidNotificationSound(_alertSound.androidRawName),
-    );
+    final bool urgent = _isUrgent(message.type);
+    final AndroidNotificationDetails android;
+    if (urgent) {
+      _alertSound = await _loadAlertSound();
+      await ensureOrdersChannel(_alertSound);
+      android = AndroidNotificationDetails(
+        ShopPushChannels.ordersChannelIdFor(_alertSound),
+        ShopPushChannels.ordersChannelName,
+        channelDescription: ShopPushChannels.ordersChannelDescription,
+        importance: Importance.max,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound(_alertSound.androidRawName),
+      );
+    } else {
+      android = const AndroidNotificationDetails(
+        ShopPushChannels.generalChannelId,
+        ShopPushChannels.generalChannelName,
+        channelDescription: ShopPushChannels.generalChannelDescription,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+      );
+    }
 
     const DarwinNotificationDetails ios = DarwinNotificationDetails(
       presentAlert: true,

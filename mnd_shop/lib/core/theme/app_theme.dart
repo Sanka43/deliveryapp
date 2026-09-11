@@ -209,6 +209,34 @@ class AppTheme {
     );
   }
 
+  /// Poppins has no Sinhala/Tamil glyphs. Flutter's web renderer (Skia/
+  /// CanvasKit) does not reliably substitute a `fontFamilyFallback` font per
+  /// missing glyph for these scripts — registering Noto Sans Sinhala/Tamil as
+  /// a fallback family renders tofu boxes on web; the same font used as the
+  /// *primary* family renders correctly. So instead of a fallback list, the
+  /// whole text theme's font family is swapped for si/ta locales. Call this
+  /// from below `Localizations` (e.g. in `MaterialApp.builder`) so `locale`
+  /// here is the final resolved locale, not the possibly-null app-level
+  /// locale override.
+  static ThemeData applyLocalizedFont(ThemeData base, Locale locale) {
+    switch (locale.languageCode) {
+      case 'si':
+        return base.copyWith(
+          textTheme: GoogleFonts.notoSansSinhalaTextTheme(base.textTheme),
+          primaryTextTheme:
+              GoogleFonts.notoSansSinhalaTextTheme(base.primaryTextTheme),
+        );
+      case 'ta':
+        return base.copyWith(
+          textTheme: GoogleFonts.notoSansTamilTextTheme(base.textTheme),
+          primaryTextTheme:
+              GoogleFonts.notoSansTamilTextTheme(base.primaryTextTheme),
+        );
+      default:
+        return base;
+    }
+  }
+
   static TextTheme _buildTextTheme(TextTheme baseTheme, ColorScheme scheme) {
     final TextTheme base = GoogleFonts.poppinsTextTheme(baseTheme);
     return base.copyWith(

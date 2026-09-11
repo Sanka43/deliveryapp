@@ -49,6 +49,14 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
     setState(() => _busy = true);
     await widget.onUpdate();
     if (!mounted) return;
+    if (widget.forced) {
+      // Opening the store never proves the update was installed — stay open.
+      // The gate re-checks on resume and dismisses this once the installed
+      // version actually satisfies the minimum, so the vendor can't dodge
+      // the requirement by tapping Update Now and backing out of the store.
+      setState(() => _busy = false);
+      return;
+    }
     Navigator.of(context).pop();
   }
 
@@ -123,6 +131,19 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                 height: 1.4,
               ),
             ),
+            if (widget.forced) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                'This closes automatically once the update is installed.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  height: 1.3,
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             Row(
               children: <Widget>[

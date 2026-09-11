@@ -12,6 +12,14 @@ import {isPresenceFresh} from "./riderPresence";
 const SHOP_ORDERS_CHANNEL_ID = "mnd_shop_orders_v2";
 const SHOP_ORDER_SOUND = "new_order";
 
+// Must match ShopPushChannels.generalChannelId in the shop app. Only types
+// that need the vendor's loud, customizable order-alert tone should use the
+// orders channel above — everything else (approvals, cancellations, support
+// replies) goes here so muting/misusing the order alert can't also silence
+// account-critical updates, and vice versa.
+const SHOP_GENERAL_CHANNEL_ID = "mnd_shop_general_v1";
+const URGENT_VENDOR_PUSH_TYPES = new Set(["order_new", "order_reminder"]);
+
 const STATUS_COPY: Record<string, {title: string; body: string}> = {
   placed: {
     title: "Order placed",
@@ -215,12 +223,15 @@ export async function sendPushToVendor(input: {
     return;
   }
 
-  const channelId =
-    String(vendorData.androidNotificationChannelId ?? "").trim() ||
-    SHOP_ORDERS_CHANNEL_ID;
-  const sound =
-    String(vendorData.androidNotificationSound ?? "").trim() ||
-    SHOP_ORDER_SOUND;
+  const isUrgent = URGENT_VENDOR_PUSH_TYPES.has(input.type);
+  const channelId = isUrgent ?
+    (String(vendorData.androidNotificationChannelId ?? "").trim() ||
+      SHOP_ORDERS_CHANNEL_ID) :
+    SHOP_GENERAL_CHANNEL_ID;
+  const sound = isUrgent ?
+    (String(vendorData.androidNotificationSound ?? "").trim() ||
+      SHOP_ORDER_SOUND) :
+    "default";
 
   const payload = {
     notification: {title: input.title, body: input.body},

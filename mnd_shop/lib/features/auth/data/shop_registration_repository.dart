@@ -115,6 +115,15 @@ class ShopRegistrationRepository {
       final String storeId = uid;
       createdStoreId = storeId;
 
+      if (!user.emailVerified) {
+        try {
+          await user.sendEmailVerification();
+        } catch (_) {
+          // Best effort: a failed send must not block registration — the
+          // vendor can still request a new link later from Settings.
+        }
+      }
+
       final List<Future<String>> uploadFutures = <Future<String>>[];
       for (int i = 0; i < imgs.length; i++) {
         uploadFutures.add(
@@ -134,7 +143,10 @@ class ShopRegistrationRepository {
         'vendorStoreId': storeId,
         'name': name,
         'description': p.shopDescription.trim(),
-        'email': em,
+        // vendors/{id} is publicly readable for guest browsing — the login
+        // email must never live here. Firebase Auth is the source of truth
+        // for it; delete any legacy copy a re-registration might carry over.
+        'email': FieldValue.delete(),
         'phone': phone,
         if (wa != null && wa.isNotEmpty) 'whatsapp': wa,
         'addressLine': line,
@@ -173,8 +185,10 @@ class ShopRegistrationRepository {
         'galleryImageUrls': galleryUrls,
         'imageUrl': galleryUrls.isNotEmpty ? galleryUrls.first : '',
         'rating': 0,
+        'ratingCount': 0,
         'approvalStatus': 'pending',
         'active': false,
+        'requireEmailVerification': true,
         'accountDeletionStatus': FieldValue.delete(),
         'accountDeletionRequestedAt': FieldValue.delete(),
         'accountDeletionCompletedAt': FieldValue.delete(),

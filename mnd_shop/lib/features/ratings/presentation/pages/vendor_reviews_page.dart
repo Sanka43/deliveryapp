@@ -4,6 +4,7 @@ import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
 import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
+import 'package:mnd_shop/features/ratings/data/vendor_ratings_repository.dart';
 import 'package:mnd_shop/features/ratings/domain/vendor_review.dart';
 import 'package:mnd_shop/features/ratings/presentation/providers/vendor_ratings_providers.dart';
 
@@ -243,7 +244,7 @@ class _StarRow extends StatelessWidget {
   }
 }
 
-class _ReviewTile extends StatelessWidget {
+class _ReviewTile extends ConsumerStatefulWidget {
   const _ReviewTile({required this.review});
 
   final VendorReview review;
@@ -256,8 +257,43 @@ class _ReviewTile extends StatelessWidget {
   }
 
   @override
+  ConsumerState<_ReviewTile> createState() => _ReviewTileState();
+}
+
+class _ReviewTileState extends ConsumerState<_ReviewTile> {
+  bool _composing = false;
+  bool _sending = false;
+  late final TextEditingController _replyCtrl =
+      TextEditingController(text: widget.review.vendorReply);
+
+  @override
+  void dispose() {
+    _replyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    final String? error = await ref
+        .read(vendorRatingsRepositoryProvider)
+        .replyToReview(reviewId: widget.review.id, reply: _replyCtrl.text);
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (error == null) {
+        _composing = false;
+      }
+    });
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final VendorReview review = widget.review;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -273,7 +309,7 @@ class _ReviewTile extends StatelessWidget {
               _StarRow(filled: review.stars),
               const Spacer(),
               Text(
-                _formatDate(review.createdAt),
+                _ReviewTile._formatDate(review.createdAt),
                 style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ],
@@ -286,6 +322,96 @@ class _ReviewTile extends StatelessWidget {
                 color: AppColors.textCharcoal,
                 height: 1.4,
               ),
+            ),
+          ],
+          if (review.hasVendorReply && !_composing) ...<Widget>[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.canvas,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.borderLight),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    _vTxt(context, en: 'Your reply', si: 'ඔබේ පිළිතුර'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    review.vendorReply,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textCharcoal,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => setState(() => _composing = true),
+                child: Text(_vTxt(context, en: 'Edit reply', si: 'පිළිතුර වෙනස් කරන්න')),
+              ),
+            ),
+          ] else if (!_composing) ...<Widget>[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _composing = true),
+                icon: const Icon(Icons.reply_rounded, size: 16),
+                label: Text(_vTxt(context, en: 'Reply', si: 'පිළිතුරු දෙන්න')),
+              ),
+            ),
+          ],
+          if (_composing) ...<Widget>[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _replyCtrl,
+              maxLines: 3,
+              maxLength: 500,
+              enabled: !_sending,
+              decoration: InputDecoration(
+                hintText: _vTxt(
+                  context,
+                  en: 'Write a public reply to this review…',
+                  si: 'මෙම ඇගයීමට public පිළිතුරක් ලියන්න…',
+                ),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                TextButton(
+                  onPressed: _sending
+                      ? null
+                      : () => setState(() {
+                            _composing = false;
+                            _replyCtrl.text = review.vendorReply;
+                          }),
+                  child: Text(_vTxt(context, en: 'Cancel', si: 'අවලංගු කරන්න')),
+                ),
+                const SizedBox(width: 6),
+                FilledButton(
+                  onPressed: _sending ? null : _send,
+                  child: _sending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(_vTxt(context, en: 'Send', si: 'යවන්න')),
+                ),
+              ],
             ),
           ],
         ],

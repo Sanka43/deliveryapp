@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
@@ -14,6 +15,11 @@ class ProductImageStorage {
   ProductImageStorage(this._storage);
 
   final FirebaseStorage _storage;
+
+  // A stalled connection otherwise leaves the save button spinning with no
+  // feedback and nothing to cancel — bound the upload so it fails fast with
+  // a clear "try again" message instead.
+  static const Duration _uploadTimeout = Duration(seconds: 45);
 
   /// Uploads image bytes to `vendor_products/{storeId}/{productId}.{ext}`.
   Future<String> uploadProductImage({
@@ -34,9 +40,16 @@ class ProductImageStorage {
       'webp' => 'image/webp',
       _ => 'image/jpeg',
     };
-    final TaskSnapshot snapshot = await ref.putData(
+    final UploadTask task = ref.putData(
       bytes,
       SettableMetadata(contentType: contentType),
+    );
+    final TaskSnapshot snapshot = await task.timeout(
+      _uploadTimeout,
+      onTimeout: () {
+        unawaited(task.cancel());
+        throw TimeoutException('Product image upload timed out');
+      },
     );
     return snapshot.ref.getDownloadURL();
   }

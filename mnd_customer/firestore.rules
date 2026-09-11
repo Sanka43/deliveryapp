@@ -1507,11 +1507,27 @@ service cloud.firestore {
 
       allow create: if validStoreRatingCreate();
 
-      allow update: if isAdmin()
+      // The rated vendor may add/edit a public reply to their own review —
+      // nothing else on the doc (stars, comment, status, customerId) is
+      // touchable this way.
+      function validVendorReviewReplyUpdate() {
+        return isSignedIn()
+          && resource.data.vendorId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['vendorReply', 'vendorReplyAt'])
+          && request.resource.data.vendorReply is string
+          && request.resource.data.vendorReply.size() > 0
+          && request.resource.data.vendorReply.size() <= 500
+          && request.resource.data.vendorReplyAt is timestamp;
+      }
+
+      allow update: if (
+        isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['status', 'updatedAt'])
         && request.resource.data.status in ['visible', 'hidden']
-        && request.resource.data.updatedAt is timestamp;
+        && request.resource.data.updatedAt is timestamp
+      ) || validVendorReviewReplyUpdate();
 
       allow delete: if isAdmin();
     }

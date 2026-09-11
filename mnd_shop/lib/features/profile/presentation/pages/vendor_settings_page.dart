@@ -102,7 +102,10 @@ class VendorSettingsPage extends ConsumerWidget {
     final String? approval = doc?['approvalStatus'] as String?;
     final bool canToggleLive =
         approval == null || approval.isEmpty || approval == 'approved';
-    final String email = (doc?['email'] as String?)?.trim() ?? '';
+    // Login email lives in Firebase Auth, not the publicly-readable vendor
+    // doc — read it straight from the signed-in user.
+    final String email =
+        ref.watch(firebaseAuthProvider).currentUser?.email?.trim() ?? '';
     final Locale? locale = ref.watch(appLocaleProvider).valueOrNull;
     final double gutter = vendorResponsiveHorizontalPadding(context);
 

@@ -12,6 +12,10 @@ import 'package:mnd_shop/features/offers/domain/vendor_offer.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 import 'package:mnd_shop/features/products/presentation/widgets/vendor_products_ui.dart';
 
+/// Sanity ceiling so a stray extra digit doesn't sail through to admin
+/// approval unnoticed — not a real product-price limit.
+const int _kMaxOfferPriceLkr = 500000;
+
 class OfferFormPage extends ConsumerStatefulWidget {
   const OfferFormPage({super.key, required this.offer});
 
@@ -368,6 +372,13 @@ class _OfferFormPageState extends ConsumerState<OfferFormPage> {
                       context,
                       en: 'Enter a valid price',
                       si: 'නිවැරදි මිලක් ඇතුල් කරන්න',
+                    );
+                  }
+                  if (n > _kMaxOfferPriceLkr) {
+                    return _vTxt(
+                      context,
+                      en: 'Price looks too high — check for an extra digit.',
+                      si: 'මිල ඉතා වැඩියි — extra digit එකක් තිබේදැයි බලන්න.',
                     );
                   }
                   return null;

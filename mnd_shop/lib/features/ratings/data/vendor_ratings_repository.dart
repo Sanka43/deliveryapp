@@ -44,6 +44,39 @@ class VendorRatingsRepository {
     });
   }
 
+  /// Adds or edits the signed-in shop's public reply to one of its own
+  /// reviews. Firestore rules only allow this vendor to touch the
+  /// `vendorReply`/`vendorReplyAt` fields on a doc it owns — nothing else.
+  Future<String?> replyToReview({
+    required String reviewId,
+    required String reply,
+  }) async {
+    final String id = reviewId.trim();
+    final String text = reply.trim();
+    if (id.isEmpty) {
+      return 'Missing review.';
+    }
+    if (text.isEmpty) {
+      return 'Enter a reply before sending.';
+    }
+    if (text.length > 500) {
+      return 'Reply is too long (max 500 characters).';
+    }
+    try {
+      await _firestore.collection(FirebaseCollections.storeRatings).doc(id).update(
+        <String, dynamic>{
+          'vendorReply': text,
+          'vendorReplyAt': FieldValue.serverTimestamp(),
+        },
+      );
+      return null;
+    } on FirebaseException {
+      return 'Could not send your reply now. Please try again.';
+    } catch (_) {
+      return 'Could not send your reply now. Please try again.';
+    }
+  }
+
   Stream<VendorRatingSummary> watchSummary(String vendorId) {
     final String id = vendorId.trim();
     if (id.isEmpty) {

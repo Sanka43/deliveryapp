@@ -306,6 +306,18 @@ class _CreateCouponSheetState extends ConsumerState<_CreateCouponSheet> {
       setState(() => _error = 'Choose when this coupon expires.');
       return;
     }
+    // Left blank means "unlimited" server-side — but a typed 0 would create
+    // a coupon nobody can ever redeem, with no explanation why it never works.
+    final int? maxUses = int.tryParse(_maxUsesCtrl.text.trim());
+    if (maxUses != null && maxUses < 1) {
+      setState(() => _error = 'Total uses must be at least 1, or left blank for unlimited.');
+      return;
+    }
+    final int? perCustomerLimit = int.tryParse(_perCustomerCtrl.text.trim());
+    if (perCustomerLimit != null && perCustomerLimit < 1) {
+      setState(() => _error = 'Per-customer limit must be at least 1, or left blank for unlimited.');
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -320,8 +332,8 @@ class _CreateCouponSheetState extends ConsumerState<_CreateCouponSheet> {
           maxDiscountLkr: _type == VendorCouponDiscountType.percent
               ? int.tryParse(_maxDiscountCtrl.text.trim())
               : null,
-          maxUses: int.tryParse(_maxUsesCtrl.text.trim()),
-          perCustomerLimit: int.tryParse(_perCustomerCtrl.text.trim()),
+          maxUses: maxUses,
+          perCustomerLimit: perCustomerLimit,
         );
     if (!mounted) {
       return;
