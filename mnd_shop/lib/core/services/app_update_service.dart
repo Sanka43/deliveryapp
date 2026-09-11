@@ -77,15 +77,22 @@ Future<void> checkForAppUpdate() async {
 
     final BuildContext? context = rootNavigatorKey.currentContext;
 
-    if (!isForced && !hasUpdate) {
-      // A re-check (e.g. on resume from the store) found the version
-      // requirement is now met — close any forced dialog still up.
-      if (_forcedDialogShowing &&
-          context != null &&
+    if (!isForced && _forcedDialogShowing) {
+      // A re-check (e.g. on resume from the store) found the forced
+      // requirement is now met — close the blocking dialog even if an
+      // optional update is still pending (that gets its own, dismissible
+      // dialog below, not the blocking one). Gating this on `!hasUpdate`
+      // too would leave a fully-updated vendor stuck forever whenever
+      // minSupportedVersion and latestVersion aren't the same value.
+      if (context != null &&
           context.mounted &&
           Navigator.of(context, rootNavigator: true).canPop()) {
         Navigator.of(context, rootNavigator: true).pop();
       }
+      _forcedDialogShowing = false;
+    }
+
+    if (!isForced && !hasUpdate) {
       return;
     }
 

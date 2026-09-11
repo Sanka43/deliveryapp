@@ -574,7 +574,6 @@ class _CatalogTitleRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bool isGrocery = ref.watch(isGroceryShopProvider);
     final ThemeData theme = Theme.of(context);
     final TextStyle titleStyle = GoogleFonts.bebasNeue(
       textStyle: theme.textTheme.headlineMedium,
@@ -603,24 +602,22 @@ class _CatalogTitleRow extends ConsumerWidget {
             );
           },
         ),
-        // Stock management is a grocery-only concept (the add/edit form's
-        // Stock card is likewise hidden for food products) — without this
-        // gate a food-shop vendor could open Inventory and turn on
-        // manageStock/stockQty for a food product through a side door.
-        if (isGrocery) ...<Widget>[
-          const SizedBox(width: 6),
-          IconButton.filledTonal(
-            tooltip: _vTxt(context, en: 'Inventory', si: 'තොගය'),
-            onPressed: () {
-              Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const VendorInventoryPage(),
-                ),
-              );
-            },
-            icon: const Icon(Icons.warehouse_outlined),
-          ),
-        ],
+        // Stock management is now available to every product category (the
+        // add/edit form's Stock card is no longer grocery-only either) — see
+        // VendorInventoryPage, which reads manageStock/stockQty generically
+        // and was already category-agnostic.
+        const SizedBox(width: 6),
+        IconButton.filledTonal(
+          tooltip: _vTxt(context, en: 'Inventory', si: 'තොගය'),
+          onPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const VendorInventoryPage(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.warehouse_outlined),
+        ),
       ],
     );
   }
