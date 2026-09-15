@@ -63,7 +63,7 @@ class GroceryPopularSection extends ConsumerWidget {
                     if (item.storeId.isEmpty) {
                       return ProductCard(
                         premium: true,
-                        productKey: item.lookupKey,
+                        productKey: item.documentId,
                         name: item.name,
                         storeName: item.storeName,
                         priceLabel: item.price,
@@ -75,7 +75,7 @@ class GroceryPopularSection extends ConsumerWidget {
 
                     return ProductCard(
                       premium: true,
-                      productKey: item.lookupKey,
+                      productKey: item.documentId,
                       name: item.name,
                       storeName: item.storeName,
                       etaLabel: store?.eta,

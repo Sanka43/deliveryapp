@@ -167,7 +167,7 @@ class ProductCard extends ConsumerWidget {
                         Positioned(
                           top: 8,
                           right: 8,
-                          child: _FavoriteButton(
+                          child: FavoriteButton(
                             isFavorite: isFavorite,
                             onTap: () => ref
                                 .read(productFavoritesProvider.notifier)
@@ -366,10 +366,13 @@ class _PriceLabel extends StatelessWidget {
   }
 }
 
-class _FavoriteButton extends StatelessWidget {
-  const _FavoriteButton({
+/// Reusable heart toggle for a product's favorite state — used on the
+/// catalog grid cards and the product details sheet alike.
+class FavoriteButton extends StatelessWidget {
+  const FavoriteButton({
     required this.isFavorite,
     required this.onTap,
+    super.key,
   });
 
   final bool isFavorite;

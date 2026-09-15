@@ -111,7 +111,7 @@ class HomeRecommendedSection extends ConsumerWidget {
                     return ProductCard(
                       premium: true,
                       showAddToCartButton: false,
-                      productKey: item.lookupKey,
+                      productKey: item.documentId,
                       name: item.name,
                       storeName: item.storeName,
                       etaLabel: store?.eta,

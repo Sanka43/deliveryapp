@@ -9,6 +9,7 @@ import 'package:mnd_delivery_app/features/customer/presentation/providers/home_r
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/floating_glass_nav_bar.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/product_card.dart';
+import 'package:mnd_delivery_app/features/store/presentation/widgets/product_details_bottom_sheet.dart';
 
 class CustomerFavoritesPage extends ConsumerWidget {
   const CustomerFavoritesPage({super.key});
@@ -49,38 +50,48 @@ class CustomerFavoritesPage extends ConsumerWidget {
                   );
                 }
 
-                return GridView.builder(
+                return SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(
                     AppSpacing.md,
                     AppSpacing.sm,
                     AppSpacing.md,
                     floatingNavTotalHeight(context),
                   ),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: AppSpacing.md,
-                    crossAxisSpacing: AppSpacing.md,
-                    childAspectRatio: ProductCard.gridChildAspectRatio,
+                  child: Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.md,
+                    children: <Widget>[
+                      for (final SearchProduct item in favorites)
+                        ProductCard(
+                          premium: true,
+                          showAddToCartButton: false,
+                          productKey: item.documentId,
+                          name: item.name,
+                          imageUrl: item.imageUrl,
+                          priceLabel: item.price,
+                          storeName: item.storeName,
+                          isAvailable: item.isInStock,
+                          onTap: item.storeId.isEmpty
+                              ? null
+                              : () {
+                                  if (!isStoreOpenInCatalog(ref, item.storeId)) {
+                                    showShopClosedSnackBar(context);
+                                    return;
+                                  }
+                                  showProductDetailsBottomSheet(
+                                    context: context,
+                                    ref: ref,
+                                    item: StoreMenuProduct.fromSearchProduct(item),
+                                    storeId: item.storeId,
+                                    storeName: item.storeName,
+                                  );
+                                },
+                          onAddToCart: item.storeId.isEmpty
+                              ? () {}
+                              : () => addProductToCart(context, ref, item),
+                        ),
+                    ],
                   ),
-                  itemCount: favorites.length,
-                  itemBuilder: (BuildContext context, int index) {
-                    final SearchProduct item = favorites[index];
-                    return ProductCard(
-                      productKey: item.lookupKey,
-                      name: item.name,
-                      imageUrl: item.imageUrl,
-                      priceLabel: item.price,
-                      storeName: item.storeName,
-                      isAvailable: item.isInStock,
-                      onTap: () => openStoreMenuForProductChoice(
-                        context,
-                        ref,
-                        item,
-                      ),
-                      onAddToCart: () => addProductToCart(context, ref, item),
-                    );
-                  },
                 );
               },
             ),

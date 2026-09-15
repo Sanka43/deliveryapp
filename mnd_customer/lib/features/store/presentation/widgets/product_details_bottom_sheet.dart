@@ -8,6 +8,9 @@ import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/home_recent_searches_provider.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/widgets/product_card.dart'
+    show FavoriteButton;
 import 'package:mnd_delivery_app/features/store/presentation/pages/store_details_page.dart'
     show ProductAvailabilityInfo, storeProductAvailabilityProvider;
 
@@ -24,6 +27,7 @@ class ProductVariationOption {
 class StoreMenuProduct {
   const StoreMenuProduct({
     required this.name,
+    required this.documentId,
     required this.lookupKey,
     required this.basePrice,
     required this.imageUrl,
@@ -34,6 +38,11 @@ class StoreMenuProduct {
   });
 
   final String name;
+
+  /// Exact-case Firestore document id — the stable identity used for
+  /// favoriting (unlike [lookupKey], which is lowercased and can drift
+  /// from what's actually stored, see customer_favorites_page.dart).
+  final String documentId;
   final String lookupKey;
   final int basePrice;
   final String imageUrl;
@@ -59,6 +68,7 @@ class StoreMenuProduct {
             .toList(growable: false);
     return StoreMenuProduct(
       name: p.name,
+      documentId: p.documentId,
       lookupKey: p.lookupKey,
       basePrice: p.basePriceLkr,
       imageUrl: p.imageUrl,
@@ -152,6 +162,9 @@ class _ProductDetailsSheetState extends State<_ProductDetailsSheet> {
       _availabilitySub;
   ProductAvailabilityInfo? _liveInfo;
 
+  ProviderSubscription<Set<String>>? _favoritesSub;
+  bool _isFavorite = false;
+
   bool get _manageStockLive => _liveInfo?.manageStock ?? _item.manageStock;
   int get _stockQtyLive => _liveInfo?.stockQty ?? _item.stockQty;
   bool get _isAvailableLive => _liveInfo?.isAvailable ?? true;
@@ -184,12 +197,26 @@ class _ProductDetailsSheetState extends State<_ProductDetailsSheet> {
       },
       fireImmediately: true,
     );
+    _favoritesSub = widget.ref.listenManual(
+      productFavoritesProvider,
+      (Set<String>? previous, Set<String> next) {
+        if (mounted) {
+          setState(() => _isFavorite = next.contains(_item.documentId));
+        }
+      },
+      fireImmediately: true,
+    );
   }
 
   @override
   void dispose() {
     _availabilitySub?.close();
+    _favoritesSub?.close();
     super.dispose();
+  }
+
+  void _toggleFavorite() {
+    widget.ref.read(productFavoritesProvider.notifier).toggle(_item.documentId);
   }
 
   ProductVariationOption _optionFor(ProductTypeGroup group, int sizeIndex) =>
@@ -376,6 +403,8 @@ class _ProductDetailsSheetState extends State<_ProductDetailsSheet> {
                     SliverToBoxAdapter(
                       child: _ProductDetailHero(
                         imageUrl: _item.imageUrl,
+                        isFavorite: _isFavorite,
+                        onToggleFavorite: _toggleFavorite,
                       ),
                     ),
                     SliverPadding(
@@ -511,9 +540,13 @@ class _ProductDetailsSheetState extends State<_ProductDetailsSheet> {
 class _ProductDetailHero extends StatefulWidget {
   const _ProductDetailHero({
     required this.imageUrl,
+    required this.isFavorite,
+    required this.onToggleFavorite,
   });
 
   final String imageUrl;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
 
   @override
   State<_ProductDetailHero> createState() => _ProductDetailHeroState();
@@ -585,6 +618,14 @@ class _ProductDetailHeroState extends State<_ProductDetailHero>
                 ),
               ),
             ],
+          ),
+        ),
+        Positioned(
+          top: 16,
+          right: 12,
+          child: FavoriteButton(
+            isFavorite: widget.isFavorite,
+            onTap: widget.onToggleFavorite,
           ),
         ),
         Positioned(
