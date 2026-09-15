@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/navigation/root_navigator_key.dart';
 import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/app/providers/vendor_shell_tab_provider.dart';
 import 'package:mnd_shop/core/notifications/shop_push_message.dart';
+import 'package:mnd_shop/core/services/battery_optimization_prompt.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 import 'package:mnd_shop/features/support/presentation/pages/vendor_support_chat_page.dart';
 
@@ -24,14 +27,19 @@ class _ShopPushNotificationBootstrapState
     final String storeId = ref.watch(vendorEffectiveStoreIdProvider).trim();
     if (storeId.isNotEmpty && storeId != _initializedStoreId) {
       _initializedStoreId = storeId;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) {
           return;
         }
-        ref.read(shopFirebaseMessagingServiceProvider).initialize(
+        await ref.read(shopFirebaseMessagingServiceProvider).initialize(
               vendorId: storeId,
               onNotificationTap: _handleNotificationTap,
             );
+        // Give any forced app-update dialog a moment to claim the root
+        // navigator first, then nudge the vendor to whitelist the app so
+        // order alerts still arrive once it's closed/backgrounded.
+        await Future<void>.delayed(const Duration(seconds: 3));
+        unawaited(maybeShowBatteryOptimizationPrompt());
       });
     }
     return const SizedBox.shrink();
