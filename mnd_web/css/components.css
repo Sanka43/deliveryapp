@@ -23,6 +23,16 @@
     }
   }
 
+  .dashboard-grid--even {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: 900px) {
+    .dashboard-grid--even {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* —— Screen-reader-only text —— */
   .sr-only {
     position: absolute;
@@ -235,5 +245,283 @@
     border-radius: 999px;
     font-size: 0.75rem;
     font-weight: 600;
+  }
+
+  /* —— Dashboard redesign (wireframe pass) —— */
+  /* display:contents so its .needs-action-tile children become direct
+     grid items of the parent .stats grid it now sits inside — needs
+     action and today's snapshot render as one continuous tile row/wrap
+     instead of two stacked grids. */
+  .needs-action-grid {
+    display: contents;
+  }
+
+  .needs-action-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .needs-action-tile .label {
+    font-size: 0.66rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .needs-action-tile .value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+    line-height: 1.2;
+    color: var(--danger);
+  }
+
+  .needs-action-empty {
+    color: var(--muted);
+    font-size: 0.9rem;
+    padding: 4px 0;
+  }
+
+  .stat-card__delta {
+    margin-top: 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .stat-card__delta.is-warn {
+    color: var(--danger);
+  }
+
+  .stat-card__delta.is-ok {
+    color: var(--success);
+  }
+
+  .chart-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .chart-toggle button {
+    border: none;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .chart-toggle button.active {
+    background: var(--brand);
+    color: #fff;
+  }
+
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  .chart-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .chart-legend__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  .live-now-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .live-now-column:first-child {
+    border-right: 1px solid var(--border);
+    padding-right: 20px;
+  }
+
+  .live-now-column .kv-section-title:first-child {
+    margin-top: 0;
+  }
+
+  @media (max-width: 640px) {
+    .live-now-columns {
+      grid-template-columns: 1fr;
+    }
+
+    .live-now-column:first-child {
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      padding-right: 0;
+      padding-bottom: 16px;
+      margin-bottom: 4px;
+    }
+  }
+
+  .live-riders-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .live-rider-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: #047857;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .live-rider-chip__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+  }
+
+  .kv-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 0.875rem;
+  }
+
+  .kv-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  button.kv-row,
+  a.kv-row,
+  .kv-row[data-go-nav] {
+    width: 100%;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    padding-left: 4px;
+    padding-right: 4px;
+    margin: 0 -4px;
+    border-radius: var(--radius-sm);
+  }
+
+  .kv-row[data-go-nav]:hover {
+    background: var(--bg-elevated);
+  }
+
+  .kv-row__label {
+    color: var(--text);
+  }
+
+  .kv-row__value {
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .kv-section-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin: 16px 0 4px;
+  }
+
+  .kv-section-title:first-child {
+    margin-top: 0;
+  }
+
+  .dashboard-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    align-items: start;
+    margin-bottom: 16px;
+  }
+
+  .dashboard-grid-3 > .panel {
+    margin: 0;
+  }
+
+  @media (max-width: 1100px) {
+    .dashboard-grid-3 {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* —— Approvals tab bar (shop / job / rider approval queues, one page) —— */
+  .approvals-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 16px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .approvals-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+  }
+
+  .approvals-tab:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+
+  .approvals-tab:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  .approvals-tab.active {
+    color: var(--brand);
+    background: var(--brand-light);
+    font-weight: 600;
+  }
+
+  .approvals-tab .nav-badge {
+    margin-left: 0;
   }
 }

@@ -178,6 +178,13 @@
     vendorPayouts: [],
     supportThreads: [],
     vendorSupportThreads: [],
+    couponsExpiringSoon: [],
+    productCash: {
+      owed: [],
+      remittance_requested: [],
+      remitted_to_admin: [],
+      settled_to_shop: [],
+    },
   };
 
   let ongoingUnsubs = [];
@@ -193,6 +200,8 @@
   let riderTrackPickupMarker = null;
   let riderTrackDropoffMarker = null;
   let googleMapsLoadPromise = null;
+  let dashboardUnsubs = [];
+  let dashboardRerenderTimer = null;
 
   const elAuthGate = document.getElementById("auth-gate");
   const elLogout = document.getElementById("btn-logout");
@@ -298,6 +307,10 @@
       accepted: "Accepted",
       arrived: "Arrived",
       in_progress: "In progress",
+      paid: "Paid",
+      pending: "Pending",
+      refunded: "Refunded",
+      failed: "Failed",
     };
     return map[k] || s || "—";
   }
@@ -668,10 +681,24 @@
     if (stat) stat.textContent = String(n);
   }
 
+  function updatePendingApprovalsNavBadge() {
+    const n = countPendingVendors() + countPendingJobs() + countPendingRiders();
+    const navBadge = document.getElementById("nav-pending-approvals");
+    if (navBadge) {
+      if (n > 0) {
+        navBadge.textContent = String(n);
+        navBadge.hidden = false;
+      } else {
+        navBadge.hidden = true;
+      }
+    }
+  }
+
   function updateAllApprovalBadges() {
     updatePendingRiderNavBadge();
     updatePendingShopNavBadge();
     updatePendingJobNavBadge();
+    updatePendingApprovalsNavBadge();
   }
 
   function riderIsOnline(r) {
@@ -944,7 +971,7 @@
         await updateJobApplicationStatus(appId, status);
         await loadJobApplications();
         await refreshJobApplicationsModal(modalEditId);
-        if (currentView === "job-approvals") renderPublishedJobs();
+        if (currentView === "jobs") renderPublishedJobs();
       } catch (err) {
         alert(err.message || String(err));
       } finally {
@@ -1023,9 +1050,8 @@
     coupons: "Coupons",
     offers: "Offers",
     "shop-types": "Shop types",
-    "shop-approvals": "Shop approvals",
-    "job-approvals": "Job approvals",
-    "rider-approvals": "Rider approvals",
+    jobs: "Jobs",
+    approvals: "Approvals",
     riders: "Riders",
     "ongoing-riders": "Ongoing riders",
     customers: "Customers",
@@ -1033,6 +1059,7 @@
     "rider-cash": "Rider cash",
     withdrawals: "Withdrawals",
     "vendor-payouts": "Vendor payouts",
+    "shop-cash": "Shop cash",
     "vendor-support": "Vendor support",
     "ride-fares": "Ride fares",
     ratings: "Rating Management",
@@ -1063,6 +1090,9 @@
     }
     if (currentView === "vendor-support" && name !== "vendor-support") {
       stopVendorSupportListeners();
+    }
+    if (currentView === "dashboard" && name !== "dashboard") {
+      stopDashboardListeners();
     }
     currentView = name;
     elPageTitle.textContent = titles[name] || name;
@@ -1168,6 +1198,290 @@
   window.tripPickupDropoff = tripPickupDropoff;
   window.riderVehicleTypeLabel = riderVehicleTypeLabel;
   window.loadTrips = loadTrips;
+  window.riderIsApproved = riderIsApproved;
+  window.riderCashInHand = riderCashInHand;
+  window.countUnreadSupportThreads = countUnreadSupportThreads;
+  window.countUnreadVendorSupportThreads = countUnreadVendorSupportThreads;
+  window.openRiderDetailView = openRiderDetailView;
+
+  /**
+   * Dashboard real-time — every widget-backing collection is a live
+   * onSnapshot listener instead of a one-shot get(), so the whole
+   * dashboard updates the instant Firestore changes (a new order, a rider
+   * going online, a withdrawal request) with no polling and no manual
+   * Refresh. Listeners are started here on nav-in and torn down in
+   * __legacyShowView the moment the admin navigates to another view —
+   * they never run in the background once you've left the dashboard, and
+   * the other views that read these same cache fields (Vendors, Riders,
+   * Job approvals, ...) still do their own one-shot load when you land on
+   * them, same as before.
+   *
+   * vendors/jobs/riders each merge two listeners (a capped general query
+   * + a dedicated pending-status query), mirroring the one-shot
+   * loadVendors()/loadJobs()/loadRiders() above — a plain capped query can
+   * silently drop a pending row once the collection grows past the cap,
+   * so approvals get their own always-included query.
+   */
+  function scheduleDashboardRerender() {
+    if (currentView !== "dashboard") return;
+    if (dashboardRerenderTimer) return;
+    // Coalesce the burst of near-simultaneous callbacks each listener
+    // fires on initial attach (and any tight cluster of live updates)
+    // into a single re-render instead of one per collection.
+    dashboardRerenderTimer = setTimeout(() => {
+      dashboardRerenderTimer = null;
+      if (currentView === "dashboard" && window.renderDashboard) window.renderDashboard();
+    }, 150);
+  }
+
+  function attachDashboardListener(ref, onData) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const unsub = ref.onSnapshot(
+        (snap) => {
+          onData(snap);
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+          scheduleDashboardRerender();
+        },
+        (err) => {
+          console.error(err);
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        }
+      );
+      dashboardUnsubs.push(unsub);
+    });
+  }
+
+  function stopDashboardListeners() {
+    dashboardUnsubs.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (_) {}
+    });
+    dashboardUnsubs = [];
+    if (dashboardRerenderTimer) {
+      clearTimeout(dashboardRerenderTimer);
+      dashboardRerenderTimer = null;
+    }
+  }
+
+  async function startDashboardListeners() {
+    stopDashboardListeners();
+    const docsOf = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const withParentId = (snap) =>
+      snap.docs.map((d) => ({
+        id: d.id,
+        parentDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
+        ...d.data(),
+      }));
+
+    const waits = [];
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.orders).orderBy("createdAt", "desc").limit(200), (snap) => {
+        cache.orders = docsOf(snap);
+      })
+    );
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.trips).orderBy("createdAt", "desc").limit(200), (snap) => {
+        cache.trips = docsOf(snap);
+      })
+    );
+
+    // Vendors: merge capped-general + pending-status listeners.
+    {
+      let general = new Map();
+      let pending = new Map();
+      const recompute = () => {
+        const byId = new Map(general);
+        pending.forEach((v, id) => byId.set(id, v));
+        cache.vendors = Array.from(byId.values());
+        updatePendingShopNavBadge();
+      };
+      waits.push(
+        attachDashboardListener(db.collection(COL.vendors).orderBy("name").limit(300), (snap) => {
+          general = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+          recompute();
+        })
+      );
+      waits.push(
+        attachDashboardListener(db.collection(COL.vendors).where("approvalStatus", "==", "pending"), (snap) => {
+          pending = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+          recompute();
+        })
+      );
+    }
+
+    // Jobs: merge capped-general + pending-status listeners.
+    {
+      let general = new Map();
+      let pending = new Map();
+      const recompute = () => {
+        const byId = new Map(general);
+        pending.forEach((v, id) => byId.set(id, v));
+        cache.jobs = Array.from(byId.values());
+        updatePendingJobNavBadge();
+      };
+      waits.push(
+        attachDashboardListener(db.collection(COL.jobs).orderBy("createdAt", "desc").limit(200), (snap) => {
+          general = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+          recompute();
+        })
+      );
+      waits.push(
+        attachDashboardListener(db.collection(COL.jobs).where("status", "==", "pending"), (snap) => {
+          pending = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+          recompute();
+        })
+      );
+    }
+
+    // Riders: merge capped-all + pending-status listeners. cache.cashRiders
+    // is derived purely from cache.riders (see loadRiderCash()), so it's
+    // recomputed here too rather than needing its own query.
+    {
+      let all = new Map();
+      let pending = new Map();
+      const recompute = () => {
+        const byId = new Map(all);
+        pending.forEach((v, id) => byId.set(id, v));
+        cache.riders = Array.from(byId.values());
+        cache.cashRiders = cache.riders
+          .filter((r) => riderCashInHand(r) > 0 || r.cashHoldActive === true)
+          .sort((a, b) => riderCashInHand(b) - riderCashInHand(a));
+        updateAllApprovalBadges();
+      };
+      waits.push(
+        attachDashboardListener(db.collection(COL.riders).limit(200), (snap) => {
+          all = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+          recompute();
+        })
+      );
+      waits.push(
+        attachDashboardListener(db.collection(COL.riders).where("status", "==", "pending"), (snap) => {
+          pending = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+          recompute();
+        })
+      );
+    }
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.customers).limit(300), (snap) => {
+        cache.customers = docsOf(snap);
+      })
+    );
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.offers).orderBy("createdAt", "desc").limit(300), (snap) => {
+        cache.offers = docsOf(snap);
+        updatePendingOffersBadge();
+      })
+    );
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.jobReports).orderBy("createdAt", "desc").limit(200), (snap) => {
+        cache.jobReports = docsOf(snap);
+      })
+    );
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.storeRatings).orderBy("createdAt", "desc").limit(300), (snap) => {
+        cache.ratings = docsOf(snap);
+      })
+    );
+
+    waits.push(
+      attachDashboardListener(
+        db
+          .collectionGroup(COL.riderWithdrawals)
+          .where("status", "in", ["pending", "approved"])
+          .orderBy("createdAt", "desc")
+          .limit(100),
+        (snap) => {
+          cache.withdrawals = withParentId(snap).map((w) => ({ ...w, riderDocId: w.parentDocId }));
+        }
+      )
+    );
+
+    waits.push(
+      attachDashboardListener(
+        db.collectionGroup(COL.vendorPayouts).where("status", "==", "pending").orderBy("createdAt", "desc").limit(100),
+        (snap) => {
+          cache.vendorPayouts = withParentId(snap).map((p) => ({ ...p, vendorDocId: p.parentDocId }));
+        }
+      )
+    );
+
+    waits.push(
+      attachDashboardListener(
+        db
+          .collectionGroup(COL.riderCashSettlements)
+          .where("status", "==", "requested")
+          .orderBy("requestedAt", "desc")
+          .limit(100),
+        (snap) => {
+          cache.cashSettlements = withParentId(snap).map((s) => ({ ...s, riderDocId: s.parentDocId }));
+        }
+      )
+    );
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.supportThreads).orderBy("lastMessageAt", "desc").limit(200), (snap) => {
+        cache.supportThreads = docsOf(snap);
+        updatePendingSupportNavBadge();
+      })
+    );
+
+    waits.push(
+      attachDashboardListener(
+        db.collection(COL.vendorSupportThreads).orderBy("lastMessageAt", "desc").limit(200),
+        (snap) => {
+          cache.vendorSupportThreads = docsOf(snap);
+          updatePendingVendorSupportNavBadge();
+        }
+      )
+    );
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.platformConfig).doc(COL.platformFeesDoc), (snap) => {
+        if (!snap.exists) {
+          cache.platformFees = { ...PLATFORM_FEES_DEFAULTS };
+          return;
+        }
+        const d = snap.data() || {};
+        cache.platformFees = {
+          serviceChargePercent:
+            d.serviceChargePercent == null ? PLATFORM_FEES_DEFAULTS.serviceChargePercent : Number(d.serviceChargePercent),
+          rideCommissionLkr: Number(d.rideCommissionLkr) || 0,
+          orderRiderCommissionLkr: Number(d.orderRiderCommissionLkr) || 0,
+          maxRiderCashInHandLkr:
+            Number(d.maxRiderCashInHandLkr) > 0 ? Number(d.maxRiderCashInHandLkr) : PLATFORM_FEES_DEFAULTS.maxRiderCashInHandLkr,
+          minDeliveryFeeLkr: Number(d.minDeliveryFeeLkr) || PLATFORM_FEES_DEFAULTS.minDeliveryFeeLkr,
+          pricePerKmLkr: Number(d.pricePerKmLkr) || PLATFORM_FEES_DEFAULTS.pricePerKmLkr,
+          shopMonthlyCommissionPercent:
+            d.shopMonthlyCommissionPercent == null
+              ? PLATFORM_FEES_DEFAULTS.shopMonthlyCommissionPercent
+              : Number(d.shopMonthlyCommissionPercent),
+          ipgFeePercent: d.ipgFeePercent == null ? PLATFORM_FEES_DEFAULTS.ipgFeePercent : Number(d.ipgFeePercent),
+        };
+      })
+    );
+
+    waits.push(
+      attachDashboardListener(db.collection(COL.coupons).limit(200), (snap) => {
+        cache.couponsExpiringSoon = docsOf(snap);
+      })
+    );
+
+    await Promise.all(waits);
+  }
 
   async function loadViewData(name) {
     if (!db || !auth.currentUser) return;
@@ -1180,23 +1494,20 @@
 
   async function loadViewDataInner(name) {
     if (name === "dashboard") {
-      await Promise.all([
-        loadOrders(),
-        loadVendors(),
-        loadCustomers(),
-        loadJobs(),
-        loadRiders(),
-        loadOffers(),
-        loadSupportThreads(),
-        loadTrips(),
-      ]);
+      // Real-time: every dashboard-visible collection is a live onSnapshot
+      // listener (started here, stopped in __legacyShowView the moment the
+      // admin navigates away) instead of a one-shot fetch, so the widgets
+      // update the instant Firestore changes — no polling, no manual
+      // Refresh needed. See startDashboardListeners().
+      await startDashboardListeners();
     }
     if (name === "orders") await Promise.all([loadOrdersPage("first"), loadCustomers(), loadVendors()]);
     if (name === "rides") await Promise.all([loadTrips(), loadCustomers(), loadRiders()]);
-    if (name === "vendors" || name === "shop-approvals") {
+    if (name === "vendors" || name === "approvals") {
       await loadVendors();
     }
-    if (name === "job-approvals") {
+    if (name === "approvals") await loadJobs();
+    if (name === "jobs") {
       await loadJobs();
       await loadJobApplications();
       await loadJobReports();
@@ -1208,7 +1519,7 @@
     if (name === "coupons") await loadCoupons();
     if (name === "offers") await loadOffers();
     if (name === "shop-types") await loadShopTypes();
-    if (name === "riders" || name === "rider-approvals" || name === "dashboard") {
+    if (name === "riders" || name === "approvals") {
       await loadRiders();
     }
     if (name === "ongoing-riders") {
@@ -1220,6 +1531,7 @@
     if (name === "vendor-support") await startVendorSupportThreadsListener();
     if (name === "withdrawals") await loadWithdrawals();
     if (name === "vendor-payouts") await loadVendorPayouts();
+    if (name === "shop-cash") await loadProductCash();
     if (name === "rider-cash") await loadRiderCash();
     if (name === "ride-fares") await loadRideFares();
     if (name === "ratings") await loadRatings();
@@ -1232,9 +1544,8 @@
     if (name === "orders") renderOrders();
     if (name === "rides") renderTrips();
     if (name === "vendors") renderVendors();
-    if (name === "shop-approvals") renderShopApprovals();
-    if (name === "job-approvals") {
-      renderJobApprovals();
+    if (name === "approvals") renderApprovals();
+    if (name === "jobs") {
       renderPublishedJobs();
       renderJobReports();
     }
@@ -1250,12 +1561,12 @@
       renderShopTypes();
       renderGroceryAisles();
     }
-    if (name === "rider-approvals") renderRiderApprovals();
     if (name === "riders") renderRiders();
     if (name === "ongoing-riders") renderOngoingRiders();
     if (name === "customers") renderCustomers();
     if (name === "withdrawals") renderWithdrawals();
     if (name === "vendor-payouts") renderVendorPayouts();
+    if (name === "shop-cash") renderProductCash();
     if (name === "rider-cash") renderRiderCash();
     if (name === "ride-fares") renderRideFares();
     if (name === "ratings") renderRatings();
@@ -5072,7 +5383,7 @@
 
   async function refreshAfterVendorChange() {
     await loadVendors();
-    if (currentView === "shop-approvals") renderShopApprovals();
+    if (currentView === "approvals") renderShopApprovals();
     if (currentView === "vendors") renderVendors();
     if (currentView === "dashboard") renderDashboard();
     updateAllApprovalBadges();
@@ -5081,9 +5392,9 @@
 
   async function refreshAfterJobChange() {
     await loadJobs();
-    if (currentView === "job-approvals") {
+    if (currentView === "approvals") renderJobApprovals();
+    if (currentView === "jobs") {
       await loadJobApplications();
-      renderJobApprovals();
       renderPublishedJobs();
     }
     if (currentView === "dashboard") renderDashboard();
@@ -5153,10 +5464,6 @@
     if (!id || !confirm(`Delete job ${id}?`)) return;
     await db.collection(COL.jobs).doc(id).delete();
     await refreshAfterJobChange();
-    if (currentView === "job-approvals") {
-      renderJobApprovals();
-      renderPublishedJobs();
-    }
   }
 
   async function approveRider(id) {
@@ -5171,7 +5478,7 @@
       { merge: true }
     );
     await loadRiders();
-    if (currentView === "rider-approvals") renderRiderApprovals();
+    if (currentView === "approvals") renderRiderApprovals();
     if (currentView === "riders") renderRiders();
     if (currentView === "dashboard") renderDashboard();
     updatePendingRiderNavBadge();
@@ -5191,7 +5498,7 @@
       { merge: true }
     );
     await loadRiders();
-    if (currentView === "rider-approvals") renderRiderApprovals();
+    if (currentView === "approvals") renderRiderApprovals();
     if (currentView === "riders") renderRiders();
     updatePendingRiderNavBadge();
   }
@@ -5893,8 +6200,14 @@
         ...d.data(),
       }));
     } catch (e) {
+      // No toast here — this collectionGroup query needs a composite
+      // Firestore index (see mnd_customer/firestore.indexes.json), and
+      // this loader now also runs on every Dashboard visit; a missing or
+      // still-building index would otherwise show a red error banner on
+      // the default landing page every time. The panel just renders empty
+      // instead — check the console for the real error.
       cache.vendorPayouts = [];
-      toast(e.message || String(e), "error");
+      console.error(e);
     }
     setVendorPayoutsNavBadge(cache.vendorPayouts.length);
   }
@@ -6459,8 +6772,10 @@
         ...d.data(),
       }));
     } catch (e) {
+      // See the matching comment in loadVendorPayouts() — no toast, this
+      // now also runs on every Dashboard visit.
       cache.withdrawals = [];
-      toast(e.message || String(e), "error");
+      console.error(e);
     }
     setWithdrawalsNavBadge(cache.withdrawals.length);
   }
@@ -6538,8 +6853,10 @@
         ...d.data(),
       }));
     } catch (e) {
+      // See the matching comment in loadVendorPayouts() — no toast, this
+      // now also runs on every Dashboard visit.
       cache.cashSettlements = [];
-      toast(e.message || String(e), "error");
+      console.error(e);
     }
     cache.cashRiders = cache.riders
       .filter((r) => riderCashInHand(r) > 0 || r.cashHoldActive === true)
@@ -6722,6 +7039,212 @@
       toast(confirming ? "Cash settled. Rider can accept jobs again." : "Handover rejected.", "success");
     } catch (e) {
       toast(e.message || String(e), "error");
+    }
+  }
+
+  /**
+   * Shop cash — the shop's counterpart to Rider cash above, for cash-on-
+   * delivery sales. An order paid COD tracks `productCashStatus` end to
+   * end: owed (rider holds the cash) -> remittance_requested (rider asked
+   * for a handover, or the Rider cash page's bulk cash_settlements flow
+   * requested one) -> remitted_to_admin (admin confirmed receiving it,
+   * either per-order here or via adminConfirmCashSettlement on the Rider
+   * cash page) -> settled_to_shop (admin paid the shop). This view is the
+   * only place that surfaces the last step — before it, orders sat at
+   * remitted_to_admin with no visibility into what the platform still owed
+   * each shop. Same collection/fields the mnd_customer admin's "Product
+   * cash" page already uses; backed by adminMarkProductCashRemitted /
+   * adminMarkProductCashSettledToShop (functions/src/productCash.ts).
+   */
+  const PRODUCT_CASH_STATUSES = ["owed", "remittance_requested", "remitted_to_admin", "settled_to_shop"];
+  let shopCashActiveTab = "remitted_to_admin";
+
+  async function loadProductCash() {
+    if (cache.vendors.length === 0) await loadVendors();
+    if (cache.riders.length === 0) await loadRiders();
+    try {
+      // No orderBy/limit — renderProductCash() groups by day and sorts
+      // client-side, and the old admin-wide (not per-shop) 100-doc cap
+      // could silently drop a shop's older rows once total pending COD
+      // orders across the platform passed 100. Matches the shop app's own
+      // equivalent query (vendor_product_cash_repository.dart), which was
+      // never capped.
+      const snaps = await Promise.all(
+        PRODUCT_CASH_STATUSES.map((status) =>
+          db.collection(COL.orders).where("productCashStatus", "==", status).get(FS_GET_SERVER)
+        )
+      );
+      PRODUCT_CASH_STATUSES.forEach((status, i) => {
+        cache.productCash[status] = snaps[i].docs.map((d) => ({ id: d.id, ...d.data() }));
+      });
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+    setShopCashNavBadge();
+  }
+
+  function setShopCashNavBadge() {
+    const n =
+      (cache.productCash.remittance_requested || []).length +
+      (cache.productCash.remitted_to_admin || []).length;
+    const navBadge = document.getElementById("nav-shop-cash");
+    if (navBadge) {
+      if (n > 0) {
+        navBadge.textContent = String(n);
+        navBadge.hidden = false;
+      } else {
+        navBadge.hidden = true;
+      }
+    }
+  }
+
+  function productCashActionFor(status) {
+    if (status === "remittance_requested") {
+      return { label: "Mark remitted", fn: "adminMarkProductCashRemitted", doneLabel: "remitted" };
+    }
+    if (status === "remitted_to_admin") {
+      return { label: "Mark settled", fn: "adminMarkProductCashSettledToShop", doneLabel: "settled" };
+    }
+    return null;
+  }
+
+  function shopCashVendorKey(o) {
+    return compactText(o.vendorId, o.vendorStoreId);
+  }
+
+  /** Shop options are derived from whatever's loaded across all 4 tabs, not
+   * the full vendor list, so the dropdown only ever offers shops that
+   * actually have a cash entry. */
+  function populateShopCashFilter() {
+    const sel = document.getElementById("filter-shop-cash-shop");
+    if (!sel) return;
+    const byId = new Map();
+    PRODUCT_CASH_STATUSES.forEach((status) => {
+      (cache.productCash[status] || []).forEach((o) => {
+        const key = shopCashVendorKey(o);
+        if (key && !byId.has(key)) byId.set(key, o.storeName || shopDisplayName(o));
+      });
+    });
+    const options = [...byId.entries()].sort((a, b) =>
+      String(a[1]).localeCompare(String(b[1]), undefined, { sensitivity: "base" })
+    );
+    const optionsKey = options.map(([id]) => id).join("|");
+    if (sel.dataset.optionsKey === optionsKey) return;
+    sel.dataset.optionsKey = optionsKey;
+    const prev = sel.value;
+    sel.innerHTML =
+      `<option value="">All shops</option>` +
+      options.map(([id, label]) => `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join("");
+    if (options.some(([id]) => id === prev)) sel.value = prev;
+  }
+
+  function productCashDayKey(o) {
+    const ts = o.deliveredAt;
+    let d = null;
+    if (ts && typeof ts.toDate === "function") d = ts.toDate();
+    else if (ts && ts.seconds != null) d = new Date(ts.seconds * 1000);
+    return d ? d.toISOString().slice(0, 10) : "—";
+  }
+
+  function productCashDayLabel(dayKey) {
+    if (dayKey === "—") return "—";
+    return new Date(`${dayKey}T00:00:00`).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  /**
+   * Rows are grouped by day (+ shop, so an "All shops" view never blends
+   * two different shops' cash under one date) rather than listed per
+   * order — an ops admin needs "how much do we owe/hold today", not a
+   * per-order ledger (that detail is still in Firestore if ever needed).
+   * The action button settles every order in that day+shop group in one
+   * click instead of one-by-one.
+   */
+  function renderProductCash() {
+    const tbody = document.querySelector("#table-shop-cash tbody");
+    if (!tbody) return;
+    document.querySelectorAll("#shop-cash-tabs button").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-shop-cash-tab") === shopCashActiveTab);
+    });
+    populateShopCashFilter();
+    const shopFilter = document.getElementById("filter-shop-cash-shop")?.value || "";
+    const fullList = cache.productCash[shopCashActiveTab] || [];
+    const list = shopFilter ? fullList.filter((o) => shopCashVendorKey(o) === shopFilter) : fullList;
+    const action = productCashActionFor(shopCashActiveTab);
+    const totalEl = document.getElementById("shop-cash-total");
+    if (totalEl) {
+      const total = list.reduce((s, o) => s + (Number(o.productCashLkr) || 0), 0);
+      totalEl.textContent = `${list.length} order${list.length === 1 ? "" : "s"} · ${fmtMoney(total)}`;
+    }
+
+    const groups = new Map();
+    list.forEach((o) => {
+      const dayKey = productCashDayKey(o);
+      const shopKey = shopCashVendorKey(o) || "—";
+      const key = `${dayKey}|${shopKey}`;
+      const g = groups.get(key) || {
+        dayKey,
+        shopLabel: o.storeName || shopDisplayName(o),
+        total: 0,
+        orderIds: [],
+      };
+      g.total += Number(o.productCashLkr) || 0;
+      g.orderIds.push(o.id);
+      groups.set(key, g);
+    });
+    const rows = Array.from(groups.values()).sort((a, b) => (a.dayKey < b.dayKey ? 1 : a.dayKey > b.dayKey ? -1 : 0));
+
+    tbody.innerHTML =
+      rows.length === 0
+        ? `<tr><td colspan="5"><div class="empty-state">Nothing in this status.</div></td></tr>`
+        : rows
+            .map((g) => {
+              const actionCell = action
+                ? `<button type="button" class="btn btn-primary btn-sm" data-product-cash-day-action="${escapeHtml(g.orderIds.join(","))}">${escapeHtml(action.label)} (${g.orderIds.length})</button>`
+                : "—";
+              return `<tr>
+          <td data-label="Date"><strong>${escapeHtml(productCashDayLabel(g.dayKey))}</strong></td>
+          <td data-label="Shop">${escapeHtml(g.shopLabel)}</td>
+          <td data-label="Orders">${g.orderIds.length}</td>
+          <td data-label="Total">${fmtMoney(g.total)}</td>
+          <td class="row-actions" data-label="Action">${actionCell}</td>
+        </tr>`;
+            })
+            .join("");
+  }
+
+  async function settleProductCash(orderIdsCsv) {
+    const action = productCashActionFor(shopCashActiveTab);
+    const orderIds = String(orderIdsCsv || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!action || orderIds.length === 0) return;
+    const n = orderIds.length;
+    const orderWord = n === 1 ? "order" : "orders";
+    const confirmMsg =
+      shopCashActiveTab === "remittance_requested"
+        ? `Confirm you have physically received this cash from the rider for ${n} ${orderWord}?`
+        : `Confirm you have paid this amount to the shop for ${n} ${orderWord}?`;
+    if (!confirm(confirmMsg)) return;
+    let failed = 0;
+    for (const orderId of orderIds) {
+      try {
+        await functionsClient.httpsCallable(action.fn)({ orderId });
+      } catch (e) {
+        failed++;
+        console.error(e);
+      }
+    }
+    await loadProductCash();
+    renderProductCash();
+    if (failed > 0) {
+      toast(`${n - failed} of ${n} ${orderWord} marked ${action.doneLabel}; ${failed} failed.`, "error");
+    } else {
+      toast(`${n} ${orderWord} marked ${action.doneLabel}.`, "success");
     }
   }
 
@@ -7047,6 +7570,22 @@
       settleVendorPayout(rejectBtn.getAttribute("data-vendor"), rejectBtn.getAttribute("data-reject-vendor-payout"), "rejected");
     }
   });
+  document.getElementById("btn-reload-shop-cash")?.addEventListener("click", () => {
+    loadProductCash()
+      .then(() => renderProductCash())
+      .catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.getElementById("shop-cash-tabs")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-shop-cash-tab]");
+    if (!btn) return;
+    shopCashActiveTab = btn.getAttribute("data-shop-cash-tab");
+    renderProductCash();
+  });
+  document.querySelector("#table-shop-cash")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-product-cash-day-action]");
+    if (btn) settleProductCash(btn.getAttribute("data-product-cash-day-action"));
+  });
+  document.getElementById("filter-shop-cash-shop")?.addEventListener("change", () => renderProductCash());
   document.getElementById("btn-reload-rider-cash")?.addEventListener("click", () => {
     loadRiderCash()
       .then(() => renderRiderCash())
@@ -7200,7 +7739,6 @@
       .catch((e) => toast(e.message || String(e), "error"));
   });
   document.getElementById("btn-new-job")?.addEventListener("click", () => openJobModal(null));
-  document.getElementById("btn-dashboard-add-job")?.addEventListener("click", () => openJobModal(null));
   document.getElementById("btn-add-shop-category")?.addEventListener("click", () => addShopCategoryFromWebForm());
   document.getElementById("shop-category-new-label")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -7228,11 +7766,6 @@
     loadViewData(currentView)
       .then(() => toast("Data refreshed.", "success"))
       .catch((e) => toast(e.message || String(e), "error"));
-  });
-
-  document.getElementById("dashboard-quick-actions")?.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-go-nav]");
-    if (btn) window.MndRouter.navigate(btn.getAttribute("data-go-nav"));
   });
 
   try {

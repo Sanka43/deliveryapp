@@ -2,7 +2,7 @@
  * MND Admin — hash router.
  *
  * Every view gets a real, deep-linkable, shareable URL (#/orders,
- * #/rider-approvals, ...) with working browser back/forward, without any
+ * #/approvals, ...) with working browser back/forward, without any
  * view's data/render logic changing. Views register a handler (during
  * Phase 1-3 migration, the handler is a thin bridge into the legacy
  * app.js showView function; a migrated view registers its own module).
