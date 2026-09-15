@@ -138,6 +138,41 @@ export const onOrderCompletedCreditVendor = onDocumentUpdated(
 );
 
 /**
+ * Resolves which vendor doc a payout request applies to, and authorizes it.
+ * `request.auth.uid` is trusted outright for a shop's own account. A
+ * different `requestedVendorId` (a linked/staff login managing another
+ * store — see `vendorEffectiveStoreIdProvider` in
+ * mnd_shop/lib/features/products/presentation/providers/
+ * vendor_session_store_providers.dart, which the Payouts page already uses
+ * to decide whose balance/history to show) is only honored when the link is
+ * mutual: the caller's own vendor doc points at that store, and that
+ * store's doc points back at the caller. Without this check, a client-sent
+ * vendorId could be used to act on any shop; without honoring it at all,
+ * a linked account's payout silently hits its own doc instead of the store
+ * whose balance the app just showed it (the bug this replaced).
+ */
+async function resolveAuthorizedVendorId(
+  db: FirebaseFirestore.Firestore,
+  authUid: string,
+  requestedVendorId: string,
+): Promise<string> {
+  const vendorId = requestedVendorId || authUid;
+  if (vendorId === authUid) {
+    return vendorId;
+  }
+  const [selfSnap, targetSnap] = await Promise.all([
+    db.collection("vendors").doc(authUid).get(),
+    db.collection("vendors").doc(vendorId).get(),
+  ]);
+  const linkedId = String(selfSnap.data()?.vendorStoreId ?? "").trim();
+  const targetOwnerUid = String(targetSnap.data()?.uid ?? "").trim();
+  if (linkedId !== vendorId || targetOwnerUid !== authUid) {
+    throw new HttpsError("permission-denied", "You do not have access to this shop.");
+  }
+  return vendorId;
+}
+
+/**
  * Server-validated vendor payout request. Verifies the shop is approved and
  * has sufficient balance, then atomically deducts the wallet and creates the
  * pending payout + ledger entry — mirrors `requestRiderWithdrawal`. Payout
@@ -148,7 +183,12 @@ export const requestVendorPayout = onCall({region: REGION}, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in to request a payout.");
   }
-  const vendorId = request.auth.uid;
+  const db = getFirestore();
+  const vendorId = await resolveAuthorizedVendorId(
+    db,
+    request.auth.uid,
+    String(request.data?.vendorId ?? "").trim(),
+  );
   const amount = Math.round(Number(request.data?.amountLkr ?? 0));
   const method = String(request.data?.payoutMethod ?? "").trim().toLowerCase();
   const account = String(request.data?.payoutAccount ?? "").trim();
@@ -170,7 +210,6 @@ export const requestVendorPayout = onCall({region: REGION}, async (request) => {
     throw new HttpsError("invalid-argument", "Enter valid payout details.");
   }
 
-  const db = getFirestore();
   const vendorRef = db.collection("vendors").doc(vendorId);
   const vendorSnap = await vendorRef.get();
   if (!vendorSnap.exists) {

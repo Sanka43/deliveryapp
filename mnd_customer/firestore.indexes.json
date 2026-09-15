@@ -683,6 +683,20 @@
       ]
     },
     {
+      "collectionGroup": "payouts",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "cash_ledger",
       "queryScope": "COLLECTION",
       "fields": [
