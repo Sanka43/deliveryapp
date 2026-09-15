@@ -29,6 +29,7 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
     int owedLkr,
     int yourEarningLkr,
     List<RiderCashBreakdownLine> breakdown,
+    int? minimumLkr,
   ) async {
     final RiderCashHandoverResult? result =
         await showRiderCashHandoverConfirmDialog(
@@ -36,6 +37,7 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
       owedLkr: owedLkr,
       yourEarningLkr: yourEarningLkr,
       breakdown: breakdown,
+      minimumLkr: minimumLkr,
     );
     if (result == null) {
       return;
@@ -102,8 +104,17 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
 
     final List<RiderCashEntry> entries =
         entriesAsync.valueOrNull ?? const <RiderCashEntry>[];
+    // Entries stream newest-first, so among the ones still open (eligible for
+    // a new settlement) the last is the oldest — the smallest amount a
+    // partial handover must cover, matching the backend's oldest-first whole
+    // -job selection in riderRequestCashSettlement.
+    final List<RiderCashEntry> openEntries =
+        entries.where((RiderCashEntry e) => e.status == 'open').toList();
+    final int? oldestOpenOwedLkr =
+        openEntries.isEmpty ? null : openEntries.last.owedLkr;
     final int cashInHand = profile?.cashInHandLkr ?? 0;
     final int owed = profile?.cashOwedToAdminLkr ?? 0;
+    final int advanceCredit = profile?.cashAdvanceCreditLkr ?? 0;
     final bool held = profile?.isCashHeld ?? false;
     final int yourEarning = (cashInHand - owed).clamp(0, cashInHand);
 
@@ -132,8 +143,9 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
         RiderCashBreakdownLine(label: 'Rider commission', amountLkr: commission),
     ];
 
-    // Nothing collected and nothing pending — don't take up space.
-    if (cashInHand <= 0 && entries.isEmpty && pending == null) {
+    // Nothing collected, nothing pending, and no credit to show — don't take
+    // up space.
+    if (cashInHand <= 0 && entries.isEmpty && pending == null && advanceCredit <= 0) {
       return const SizedBox.shrink();
     }
 
@@ -207,6 +219,10 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
               owed: owed,
               yourEarningLkr: yourEarning,
             ),
+            if (advanceCredit > 0) ...<Widget>[
+              const SizedBox(height: 12),
+              _AdvanceCreditBanner(creditLkr: advanceCredit),
+            ],
             const SizedBox(height: 12),
             if (pending != null)
               _PendingBanner(settlement: pending)
@@ -216,7 +232,8 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
                 child: FilledButton.icon(
                   onPressed: (_busy || entries.isEmpty)
                       ? null
-                      : () => _requestSettlement(owed, yourEarning, owedBreakdown),
+                      : () => _requestSettlement(
+                          owed, yourEarning, owedBreakdown, oldestOpenOwedLkr),
                   icon: _busy
                       ? const SizedBox(
                           width: 16,
@@ -370,6 +387,42 @@ class _OwedBreakdown extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Rupees the rider previously deposited beyond what they owed at the time
+/// (e.g. rounding up for a bank deposit machine that only takes round
+/// hundreds) — held as credit and automatically netted off future owed
+/// amounts, so it's shown here purely for the rider's own peace of mind.
+class _AdvanceCreditBanner extends StatelessWidget {
+  const _AdvanceCreditBanner({required this.creditLkr});
+
+  final int creditLkr;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.onlineGreen.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.savings_outlined, size: 18, color: AppColors.onlineGreen),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'You have ${LkrFormat.money(creditLkr)} credit from an earlier '
+              'over-deposit — it\'ll count against what you owe next.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

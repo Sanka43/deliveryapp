@@ -15,6 +15,7 @@ const counters = {
   cashInHandLkr: 6800,
   cashOwedToAdminLkr: 900,
   cashPendingSettlementLkr: 0,
+  cashAdvanceCreditLkr: 0,
 };
 
 describe("evaluateCashHold", () => {
@@ -285,6 +286,7 @@ describe("applyCashEntry", () => {
         cashInHandLkr: 0,
         cashOwedToAdminLkr: 0,
         cashPendingSettlementLkr: 0,
+        cashAdvanceCreditLkr: 0,
       },
       entry: {
         cashLkr: 300,
@@ -295,6 +297,54 @@ describe("applyCashEntry", () => {
     });
     assert.equal(result.counters.cashInHandLkr, 300);
     assert.equal(result.holdActive, false);
+  });
+
+  it("nets advance credit off the new entry's owed slice, commission first", () => {
+    const result = applyCashEntry({
+      counters: {
+        cashInHandLkr: 0,
+        cashOwedToAdminLkr: 0,
+        cashPendingSettlementLkr: 0,
+        cashAdvanceCreditLkr: 98,
+      },
+      entry: {
+        cashLkr: 1450,
+        owedLkr: 1070,
+        breakdown: {productCashLkr: 1000, serviceChargeLkr: 50, rideCommissionLkr: 20},
+      },
+      maxCashInHandLkr: 7000,
+    });
+    // Full cash still lands in cashInHand; owed nets down by the credit,
+    // taken from commission (20) then service charge (50) then product cost
+    // (28 of the remaining 98-20-50=28).
+    assert.equal(result.counters.cashInHandLkr, 1450);
+    assert.equal(result.counters.cashOwedToAdminLkr, 972);
+    assert.equal(result.counters.cashAdvanceCreditLkr, 0);
+    assert.deepEqual(result.entry, {
+      cashLkr: 1450,
+      owedLkr: 972,
+      breakdown: {productCashLkr: 972, serviceChargeLkr: 0, rideCommissionLkr: 0},
+    });
+  });
+
+  it("never consumes more credit than the entry actually owes", () => {
+    const result = applyCashEntry({
+      counters: {
+        cashInHandLkr: 0,
+        cashOwedToAdminLkr: 0,
+        cashPendingSettlementLkr: 0,
+        cashAdvanceCreditLkr: 500,
+      },
+      entry: {
+        cashLkr: 450,
+        owedLkr: 50,
+        breakdown: {productCashLkr: 0, serviceChargeLkr: 0, rideCommissionLkr: 50},
+      },
+      maxCashInHandLkr: 7000,
+    });
+    assert.equal(result.counters.cashOwedToAdminLkr, 0);
+    assert.equal(result.counters.cashAdvanceCreditLkr, 450);
+    assert.equal(result.entry.owedLkr, 0);
   });
 });
 
@@ -354,6 +404,7 @@ describe("applyCashSettlement", () => {
     cashInHandLkr: 7250,
     cashOwedToAdminLkr: 950,
     cashPendingSettlementLkr: 950,
+    cashAdvanceCreditLkr: 0,
   };
 
   it("clears the covered cash and lifts the hold on confirm", () => {
@@ -384,12 +435,49 @@ describe("applyCashSettlement", () => {
         cashInHandLkr: 7650,
         cashOwedToAdminLkr: 1000,
         cashPendingSettlementLkr: 950,
+        cashAdvanceCreditLkr: 0,
       },
       maxCashInHandLkr: 7000,
     });
     assert.equal(result.counters.cashInHandLkr, 400);
     assert.equal(result.counters.cashOwedToAdminLkr, 50);
     assert.equal(result.holdActive, false);
+  });
+
+  it("credits a CDM-rounded overpayment beyond what the covered jobs owed", () => {
+    const result = applyCashSettlement({
+      action: "confirmed",
+      status: "requested",
+      amountLkr: 702,
+      cashCoveredLkr: 702,
+      // Rider declared Rs. 800 (their CDM only takes round-hundred notes)
+      // though the one covered job only owed 702.
+      declaredAmountLkr: 800,
+      counters: {
+        cashInHandLkr: 702,
+        cashOwedToAdminLkr: 702,
+        cashPendingSettlementLkr: 702,
+        cashAdvanceCreditLkr: 0,
+      },
+      maxCashInHandLkr: 7000,
+    });
+    assert.equal(result.counters.cashOwedToAdminLkr, 0);
+    assert.equal(result.counters.cashAdvanceCreditLkr, 98);
+    assert.equal(result.creditAddedLkr, 98);
+  });
+
+  it("adds no credit when the declared amount matches what was covered", () => {
+    const result = applyCashSettlement({
+      action: "confirmed",
+      status: "requested",
+      amountLkr: 950,
+      cashCoveredLkr: 7250,
+      declaredAmountLkr: 950,
+      counters: held,
+      maxCashInHandLkr: 7000,
+    });
+    assert.equal(result.counters.cashAdvanceCreditLkr, 0);
+    assert.equal(result.creditAddedLkr, 0);
   });
 
   it("only releases the pending lock on reject", () => {
@@ -412,6 +500,7 @@ describe("applyCashSettlement", () => {
       cashInHandLkr: 0,
       cashOwedToAdminLkr: 0,
       cashPendingSettlementLkr: 0,
+      cashAdvanceCreditLkr: 0,
     };
     const result = applyCashSettlement({
       action: "confirmed",

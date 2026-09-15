@@ -45,10 +45,18 @@ class RiderCashHandoverConfirmDialog extends StatefulWidget {
     required this.owedLkr,
     required this.yourEarningLkr,
     this.breakdown = const <RiderCashBreakdownLine>[],
+    this.minimumLkr,
   });
 
   final int owedLkr;
   final int yourEarningLkr;
+
+  /// The smallest amount a partial handover can cover — the oldest open
+  /// job's owed amount, since the backend only ever settles whole jobs
+  /// oldest-first and rejects a budget that can't cover even that one. Null
+  /// when unknown (e.g. still loading), in which case only the server-side
+  /// check applies.
+  final int? minimumLkr;
 
   /// Only rendered when the lines actually sum to [owedLkr] — same defensive
   /// reconciliation convention as the trip feature's collect-breakdown, so a
@@ -138,8 +146,13 @@ class _RiderCashHandoverConfirmDialogState
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Lower this if you can\'t hand over the full amount right '
-                  'now — the rest stays outstanding for next time.',
+                  widget.minimumLkr != null && widget.minimumLkr! < widget.owedLkr
+                      ? 'Lower this if you can\'t hand over the full amount '
+                          'right now — the rest stays outstanding for next '
+                          'time. Must be at least Rs. ${widget.minimumLkr} to '
+                          'cover your oldest job.'
+                      : 'Lower this if you can\'t hand over the full amount right '
+                          'now — the rest stays outstanding for next time.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: cs.onSurfaceVariant,
                   ),
@@ -160,12 +173,27 @@ class _RiderCashHandoverConfirmDialogState
                     if (n == null || n <= 0) {
                       return 'Enter an amount';
                     }
-                    if (n > widget.owedLkr) {
-                      return 'Can\'t exceed the amount owed';
+                    final int? min = widget.minimumLkr;
+                    if (min != null && n < min) {
+                      return 'Enter at least Rs. $min to cover your oldest job';
                     }
                     return null;
                   },
+                  onChanged: (_) => setState(() {}),
                 ),
+                if ((int.tryParse(_amount.text.trim()) ?? 0) > widget.owedLkr) ...<Widget>[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Bringing more than you owe (e.g. rounding up for a bank '
+                    'deposit machine that only takes round hundreds)? The '
+                    'extra Rs. '
+                    '${int.parse(_amount.text.trim()) - widget.owedLkr} is '
+                    'credited toward what you owe next time.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.md),
                 RiderPhotoPickerTile(
                   label: 'Reference photo (optional)',
@@ -388,6 +416,7 @@ Future<RiderCashHandoverResult?> showRiderCashHandoverConfirmDialog(
   required int owedLkr,
   required int yourEarningLkr,
   List<RiderCashBreakdownLine> breakdown = const <RiderCashBreakdownLine>[],
+  int? minimumLkr,
 }) {
   return showDialog<RiderCashHandoverResult>(
     context: context,
@@ -395,6 +424,7 @@ Future<RiderCashHandoverResult?> showRiderCashHandoverConfirmDialog(
       owedLkr: owedLkr,
       yourEarningLkr: yourEarningLkr,
       breakdown: breakdown,
+      minimumLkr: minimumLkr,
     ),
   );
 }

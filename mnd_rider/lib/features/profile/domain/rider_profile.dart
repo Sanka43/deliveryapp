@@ -29,6 +29,7 @@ class RiderProfile {
     this.cashInHandLkr = 0,
     this.cashOwedToAdminLkr = 0,
     this.cashPendingSettlementLkr = 0,
+    this.cashAdvanceCreditLkr = 0,
     this.cashHoldActive = false,
   });
 
@@ -58,6 +59,7 @@ class RiderProfile {
         cashInHandLkr = 0,
         cashOwedToAdminLkr = 0,
         cashPendingSettlementLkr = 0,
+        cashAdvanceCreditLkr = 0,
         cashHoldActive = false;
 
   final String uid;
@@ -100,6 +102,11 @@ class RiderProfile {
 
   /// Locked in a handover that is waiting for admin confirmation.
   final int cashPendingSettlementLkr;
+
+  /// Rupees the rider has already handed over beyond what they owed at the
+  /// time (e.g. a bank deposit machine only takes round-hundred notes), held
+  /// as a credit and automatically netted off what a future job owes.
+  final int cashAdvanceCreditLkr;
 
   /// Set once cash in hand goes above the admin-configured limit. While true,
   /// Firestore rules reject any attempt to claim a new ride or delivery.
@@ -181,6 +188,7 @@ class RiderProfile {
       cashInHandLkr: _asInt(data['cashInHandLkr']),
       cashOwedToAdminLkr: _asInt(data['cashOwedToAdminLkr']),
       cashPendingSettlementLkr: _asInt(data['cashPendingSettlementLkr']),
+      cashAdvanceCreditLkr: _asInt(data['cashAdvanceCreditLkr']),
       cashHoldActive: data['cashHoldActive'] == true,
     );
   }

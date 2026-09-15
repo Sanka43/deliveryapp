@@ -37,6 +37,13 @@ export type RiderCashCounters = {
   cashInHandLkr: number;
   cashOwedToAdminLkr: number;
   cashPendingSettlementLkr: number;
+  /**
+   * Rupees the rider has already handed over beyond what they owed at the
+   * time (e.g. a CDM deposit only accepts round-hundred notes, so Rs. 702
+   * owed gets rounded up to an Rs. 800 deposit) — netted against the next
+   * job's owed slice in `applyCashEntry` instead of sitting unaccounted for.
+   */
+  cashAdvanceCreditLkr: number;
 };
 
 /** Component split of a CashEntryAmounts' owedLkr, for display + settlement bucketing. */
@@ -192,22 +199,70 @@ export function cashEntryForOrder(args: {
   };
 }
 
-/** Counters after a cash job is recorded, plus the resulting hold state. */
+/**
+ * Nets `creditLkr` off an entry's owed amount, taking it from the rider
+ * commission first, then the service charge, then the product cost —
+ * commission is the platform's own share, so it's the cleanest thing to
+ * offset against cash the rider already advanced to the platform, leaving
+ * the shop's product-cost figure untouched as long as any credit remains
+ * after commission and service charge are exhausted.
+ */
+function applyCreditToEntry(
+  entry: CashEntryAmounts,
+  creditLkr: number,
+): CashEntryAmounts {
+  let remaining = creditLkr;
+  const breakdown: CashOwedBreakdown = {...entry.breakdown};
+  for (const key of (
+    ["rideCommissionLkr", "serviceChargeLkr", "productCashLkr"] as const
+  )) {
+    if (remaining <= 0) {
+      break;
+    }
+    const take = Math.min(breakdown[key], remaining);
+    breakdown[key] -= take;
+    remaining -= take;
+  }
+  return {
+    cashLkr: entry.cashLkr,
+    owedLkr: entry.owedLkr - creditLkr,
+    breakdown,
+  };
+}
+
+/**
+ * Counters after a cash job is recorded, plus the resulting hold state.
+ *
+ * Any advance credit on the rider's account (from a prior over-deposit) is
+ * applied to this entry's owed slice first — the rider already handed that
+ * money over, so it shouldn't be asked for again. `cashInHandLkr` still
+ * grows by the entry's full cash, since the rider is still physically
+ * holding what the customer paid; only the debt side nets down.
+ */
 export function applyCashEntry(args: {
   counters: RiderCashCounters;
   entry: CashEntryAmounts;
   maxCashInHandLkr: number;
-}): {counters: RiderCashCounters; holdActive: boolean} {
+}): {counters: RiderCashCounters; holdActive: boolean; entry: CashEntryAmounts} {
+  const availableCreditLkr = clampNonNegative(
+    toWholeLkr(args.counters.cashAdvanceCreditLkr),
+  );
+  const creditAppliedLkr = Math.min(availableCreditLkr, args.entry.owedLkr);
+  const netEntry = creditAppliedLkr > 0 ?
+    applyCreditToEntry(args.entry, creditAppliedLkr) :
+    args.entry;
+
   const counters: RiderCashCounters = {
     cashInHandLkr: clampNonNegative(
       toWholeLkr(args.counters.cashInHandLkr) + args.entry.cashLkr,
     ),
     cashOwedToAdminLkr: clampNonNegative(
-      toWholeLkr(args.counters.cashOwedToAdminLkr) + args.entry.owedLkr,
+      toWholeLkr(args.counters.cashOwedToAdminLkr) + netEntry.owedLkr,
     ),
     cashPendingSettlementLkr: clampNonNegative(
       toWholeLkr(args.counters.cashPendingSettlementLkr),
     ),
+    cashAdvanceCreditLkr: clampNonNegative(availableCreditLkr - creditAppliedLkr),
   };
   return {
     counters,
@@ -215,6 +270,7 @@ export function applyCashEntry(args: {
       cashInHandLkr: counters.cashInHandLkr,
       maxCashInHandLkr: args.maxCashInHandLkr,
     }),
+    entry: netEntry,
   };
 }
 
@@ -264,6 +320,14 @@ export function applyCashSettlement(args: {
   status: string;
   amountLkr: number;
   cashCoveredLkr: number;
+  /**
+   * What the rider declared they were bringing when they requested this
+   * settlement — may exceed `amountLkr` (the sum of whole jobs it actually
+   * covered) when they rounded up to match note denominations. The excess
+   * becomes advance credit once confirmed. Omit/null when they didn't
+   * declare a budget (handed over everything owed, so there's no excess).
+   */
+  declaredAmountLkr?: number | null;
   counters: RiderCashCounters;
   maxCashInHandLkr: number;
 }): {
@@ -271,6 +335,7 @@ export function applyCashSettlement(args: {
   nextStatus: CashSettlementAction;
   counters: RiderCashCounters;
   holdActive: boolean;
+  creditAddedLkr: number;
 } {
   const status = String(args.status ?? "").trim().toLowerCase();
   const amount = toWholeLkr(args.amountLkr);
@@ -285,6 +350,9 @@ export function applyCashSettlement(args: {
     cashInHandLkr: toWholeLkr(args.counters.cashInHandLkr),
     cashOwedToAdminLkr: toWholeLkr(args.counters.cashOwedToAdminLkr),
     cashPendingSettlementLkr: toWholeLkr(args.counters.cashPendingSettlementLkr),
+    cashAdvanceCreditLkr: clampNonNegative(
+      toWholeLkr(args.counters.cashAdvanceCreditLkr),
+    ),
   };
   const holdFor = (counters: RiderCashCounters): boolean =>
     evaluateCashHold({
@@ -298,6 +366,7 @@ export function applyCashSettlement(args: {
       nextStatus: args.action,
       counters: current,
       holdActive: holdFor(current),
+      creditAddedLkr: 0,
     };
   }
   if (status !== "requested") {
@@ -317,18 +386,24 @@ export function applyCashSettlement(args: {
       nextStatus: "rejected",
       counters,
       holdActive: holdFor(counters),
+      creditAddedLkr: 0,
     };
   }
 
+  const creditAddedLkr = clampNonNegative(
+    toWholeLkr(args.declaredAmountLkr ?? 0) - amount,
+  );
   const counters: RiderCashCounters = {
     cashInHandLkr: clampNonNegative(current.cashInHandLkr - cashCovered),
     cashOwedToAdminLkr: clampNonNegative(current.cashOwedToAdminLkr - amount),
     cashPendingSettlementLkr: 0,
+    cashAdvanceCreditLkr: current.cashAdvanceCreditLkr + creditAddedLkr,
   };
   return {
     alreadyDone: false,
     nextStatus: "confirmed",
     counters,
     holdActive: holdFor(counters),
+    creditAddedLkr,
   };
 }

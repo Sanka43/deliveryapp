@@ -51,7 +51,7 @@ function validateReferenceImageUrl(raw: unknown, riderId: string): string | null
 const REGION = "asia-south1";
 
 /** Product-cash states a settlement may advance to `remitted_to_admin`. */
-const REMITTABLE_PRODUCT_CASH = new Set(["owed", "remittance_requested"]);
+export const REMITTABLE_PRODUCT_CASH = new Set(["owed", "remittance_requested"]);
 
 export type CashLedgerType = "ride_cash" | "order_cash";
 
@@ -67,6 +67,7 @@ export function readCashCounters(
     cashInHandLkr: toWholeLkr(data?.cashInHandLkr),
     cashOwedToAdminLkr: toWholeLkr(data?.cashOwedToAdminLkr),
     cashPendingSettlementLkr: toWholeLkr(data?.cashPendingSettlementLkr),
+    cashAdvanceCreditLkr: toWholeLkr(data?.cashAdvanceCreditLkr),
   };
 }
 
@@ -85,6 +86,7 @@ function counterPatch(
     cashInHandLkr: counters.cashInHandLkr,
     cashOwedToAdminLkr: counters.cashOwedToAdminLkr,
     cashPendingSettlementLkr: counters.cashPendingSettlementLkr,
+    cashAdvanceCreditLkr: counters.cashAdvanceCreditLkr,
     cashHoldActive: holdActive,
     ...(holdActive && !wasHeld ?
       {cashHoldSince: FieldValue.serverTimestamp()} :
@@ -119,20 +121,25 @@ export function stageCashEntry(
   },
 ): {holdActivated: boolean; counters: RiderCashCounters} {
   const wasHeld = args.riderData?.cashHoldActive === true;
-  const {counters, holdActive} = applyCashEntry({
+  const {counters, holdActive, entry} = applyCashEntry({
     counters: readCashCounters(args.riderData),
     entry: args.entry,
     maxCashInHandLkr: args.maxCashInHandLkr,
   });
+  // Whatever advance credit covered gets folded straight into what's owed
+  // for display — record it only so the entry's own numbers are honest
+  // about why owedLkr came in under the raw job math.
+  const creditAppliedLkr = args.entry.owedLkr - entry.owedLkr;
 
   tx.set(
     args.riderRef.collection("cash_ledger").doc(args.entryId),
     {
       type: args.type,
       status: "open",
-      cashLkr: args.entry.cashLkr,
-      owedLkr: args.entry.owedLkr,
-      breakdown: args.entry.breakdown,
+      cashLkr: entry.cashLkr,
+      owedLkr: entry.owedLkr,
+      breakdown: entry.breakdown,
+      ...(creditAppliedLkr > 0 ? {creditAppliedLkr} : {}),
       title: args.title,
       subtitle: args.subtitle,
       ...(args.tripId ? {tripId: args.tripId} : {}),
@@ -352,7 +359,12 @@ async function settleCashRequest(args: {
   action: CashSettlementAction;
   reason?: string;
   maxCashInHandLkr: number;
-}): Promise<{alreadyDone: boolean; amountLkr: number; holdActive: boolean}> {
+}): Promise<{
+  alreadyDone: boolean;
+  amountLkr: number;
+  holdActive: boolean;
+  creditAddedLkr: number;
+}> {
   const db = getFirestore();
   const riderRef = db.collection("riders").doc(args.riderId);
   const settlementRef = riderRef
@@ -393,6 +405,9 @@ async function settleCashRequest(args: {
         status: String(settlement.status ?? ""),
         amountLkr: toWholeLkr(settlement.amountLkr),
         cashCoveredLkr: toWholeLkr(settlement.cashCoveredLkr),
+        declaredAmountLkr: settlement.declaredAmountLkr == null ?
+          null :
+          toWholeLkr(settlement.declaredAmountLkr),
         counters: readCashCounters(riderSnap.data()),
         maxCashInHandLkr: args.maxCashInHandLkr,
       });
@@ -410,6 +425,7 @@ async function settleCashRequest(args: {
         alreadyDone: true,
         amountLkr: toWholeLkr(settlement.amountLkr),
         holdActive: outcome.holdActive,
+        creditAddedLkr: 0,
       };
     }
 
@@ -481,6 +497,7 @@ async function settleCashRequest(args: {
       alreadyDone: false,
       amountLkr: toWholeLkr(settlement.amountLkr),
       holdActive: outcome.holdActive,
+      creditAddedLkr: outcome.creditAddedLkr,
     };
   });
 }
@@ -520,15 +537,20 @@ export const adminConfirmCashSettlement = onCall(
     });
 
     if (!result.alreadyDone) {
+      const creditNote = result.creditAddedLkr > 0 ?
+        ` The extra Rs. ${result.creditAddedLkr} is credited toward what ` +
+          "you owe next time." :
+        "";
       await notifyRider({
         riderId,
         notificationId: `cash_settlement_${settlementId}_confirmed`,
         type: "cash_settlement_confirmed",
         title: "Cash settled",
-        body: result.holdActive ?
+        body: (result.holdActive ?
           `Admin received Rs. ${result.amountLkr}. You are still over the ` +
             "cash limit — hand over the rest to start receiving jobs again." :
-          `Admin received Rs. ${result.amountLkr}. You can accept rides again.`,
+          `Admin received Rs. ${result.amountLkr}. You can accept rides again.`
+        ) + creditNote,
         amountLkr: result.amountLkr,
       });
     }
