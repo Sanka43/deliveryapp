@@ -409,6 +409,7 @@ All of the below are written only by Cloud Functions (`riderEarnings.ts`) or rea
 | `vendorId` | string — **store id**; same value as `vendors/{id}` document id (see below). |
 | `vendorStoreId` | string (optional duplicate) — app writes **same value as `vendorId`** so order docs align with the `vendorStoreId` field name used on `vendors` / profile docs. Rules accept either field when resolving store access. |
 | `storeName` | string |
+| `trackingNumber` | string — human-readable ref, e.g. `MND2509150142`: `MND` + `YYMMDD` (Colombo wall-clock) + 4-digit sequence. Reserved via a sharded daily counter (`functions/src/trackingNumber.ts`, `reserveTrackingNumber`) so concurrent orders don't serialize on one hot document; each shard owns a slice of the 0000-9999 range for the day. Shared logic also backs `trips.tripNumber`, under separate `order_sequence_*` / `trip_sequence_*` counter docs in `system/`. |
 | `status` | `'placed'` |
 | `paymentMethod` | `'cashOnDelivery'` |
 | `items` | list of maps (see below) |
@@ -749,6 +750,7 @@ Written only by Cloud Function `quoteRideFare` / `quoteRideFares` (Admin SDK). C
 
 | Field | Type |
 |-------|------|
+| `tripNumber` | string — human-readable ref, e.g. `Trip2509150042`: `Trip` + `YYMMDD` (Colombo wall-clock) + 4-digit sequence. Reserved via the same sharded daily counter as orders' `trackingNumber` (`functions/src/trackingNumber.ts`), scoped to its own `trip_sequence_*` counter docs under `system/` so it doesn't share a sequence pool with orders. Absent on trips created before this field existed. |
 | `customerId` | string |
 | `contactPhone` | string |
 | `driverNote` | string? |

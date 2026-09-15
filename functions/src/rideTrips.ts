@@ -11,6 +11,7 @@ import {
   payHereConfig,
   RideVehicleType,
 } from "./rideFare";
+import {reserveTrackingNumber} from "./trackingNumber";
 
 /** How long a ride can sit unclaimed in "searching" before auto-cancelling. */
 export const SEARCH_TIMEOUT_MS = 15 * 60 * 1000;
@@ -140,7 +141,7 @@ export const confirmCashRide = onCall(
     const quote = await loadValidQuote(quoteId, request.auth.uid);
     const tripRef = getFirestore().collection("trips").doc();
     const quoteRef = getFirestore().collection("ride_fare_quotes").doc(quoteId);
-    await getFirestore().runTransaction(async (tx) => {
+    const tripNumber = await getFirestore().runTransaction(async (tx) => {
       const quoteSnap = await tx.get(quoteRef);
       if (!quoteSnap.exists) {
         throw new HttpsError("not-found", "Fare quote not found.");
@@ -156,7 +157,9 @@ export const confirmCashRide = onCall(
       if (!expiresAt?.toMillis || expiresAt.toMillis() < Date.now()) {
         throw new HttpsError("failed-precondition", "Fare quote expired.");
       }
+      const number = await reserveTrackingNumber(tx, "trip", "Trip");
       tx.set(tripRef, {
+        tripNumber: number,
         customerId: request.auth!.uid,
         contactPhone,
         driverNote,
@@ -182,9 +185,10 @@ export const confirmCashRide = onCall(
         usedTripId: tripRef.id,
         usedAt: FieldValue.serverTimestamp(),
       });
+      return number;
     });
 
-    return {tripId: tripRef.id, status: "searching"};
+    return {tripId: tripRef.id, tripNumber, status: "searching"};
   },
 );
 
@@ -219,7 +223,7 @@ export const createPayHereCheckout = onCall(
       cfg.merchantSecret,
     );
 
-    await getFirestore().runTransaction(async (tx) => {
+    const tripNumber = await getFirestore().runTransaction(async (tx) => {
       const quoteSnap = await tx.get(quoteRef);
       if (!quoteSnap.exists) {
         throw new HttpsError("not-found", "Fare quote not found.");
@@ -235,7 +239,9 @@ export const createPayHereCheckout = onCall(
       if (!expiresAt?.toMillis || expiresAt.toMillis() < Date.now()) {
         throw new HttpsError("failed-precondition", "Fare quote expired.");
       }
+      const number = await reserveTrackingNumber(tx, "trip", "Trip");
       tx.set(tripRef, {
+        tripNumber: number,
         customerId: request.auth!.uid,
         contactPhone,
         driverNote,
@@ -265,6 +271,7 @@ export const createPayHereCheckout = onCall(
         usedTripId: tripId,
         usedAt: FieldValue.serverTimestamp(),
       });
+      return number;
     });
 
     const checkoutUrl = cfg.sandbox
@@ -273,6 +280,7 @@ export const createPayHereCheckout = onCall(
 
     return {
       tripId,
+      tripNumber,
       checkoutUrl,
       checkoutPageUrl: `${cfg.checkoutPageUrl}?type=trip&id=${encodeURIComponent(tripId)}`,
       fields: {
@@ -281,7 +289,7 @@ export const createPayHereCheckout = onCall(
         cancel_url: cfg.cancelUrl,
         notify_url: cfg.notifyUrl,
         order_id: tripId,
-        items: `MND Ride (${quote.vehicleType})`,
+        items: `MND Ride ${tripNumber} (${quote.vehicleType})`,
         currency,
         amount,
         first_name: firstName,

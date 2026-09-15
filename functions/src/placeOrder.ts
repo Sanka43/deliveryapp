@@ -23,6 +23,7 @@ import {
 } from "./deliveryFee";
 import {fetchDrivingDistanceKm} from "./drivingDistance";
 import {loadPlatformFeeConfig} from "./platformConfig";
+import {reserveTrackingNumber as reserveSharedTrackingNumber} from "./trackingNumber";
 import {computeServiceChargeLkr} from "./serviceCharge";
 import {computeIpgFeeLkr} from "./ipgFee";
 import {
@@ -119,17 +120,6 @@ function vendorCoords(vendor: Record<string, unknown>): {
     return {lat, lng};
   }
   return null;
-}
-
-function buildTrackingNumber(
-  placedAt: Date,
-  shardId: number,
-  sequence: number,
-): string {
-  const yy = String(placedAt.getFullYear() % 100).padStart(2, "0");
-  const shard = String(shardId).padStart(2, "0");
-  const seq = String(sequence).padStart(5, "0");
-  return `MND${yy}${shard}${seq}`;
 }
 
 function normalizeLineQuantity(raw: unknown, index: number): number {
@@ -580,29 +570,10 @@ async function prepareCustomerOrder(
   };
 }
 
-// Sharded so concurrent order placement doesn't serialize on one hot
-// document: every order used to read+write the single "system/order_sequence"
-// doc, which under concurrent load caused Firestore transaction contention
-// (aborts/retries surfacing as INTERNAL errors, with multi-second latency).
-// Each shard keeps its own independent counter — the shard id is embedded in
-// the tracking number, so uniqueness only depends on that one shard's own
-// transaction and needs no cross-shard read.
-const TRACKING_SEQUENCE_SHARDS = 50;
-
 async function reserveTrackingNumber(
   tx: FirebaseFirestore.Transaction,
 ): Promise<string> {
-  const db = getFirestore();
-  const shardId = Math.floor(Math.random() * TRACKING_SEQUENCE_SHARDS);
-  const seqRef = db.collection("system").doc(`order_sequence_shard_${shardId}`);
-  const seqSnap = await tx.get(seqRef);
-  let currentSeq = 0;
-  if (seqSnap.exists) {
-    currentSeq = Math.floor(Number(seqSnap.data()?.value ?? 0));
-  }
-  const nextSeq = currentSeq + 1;
-  tx.set(seqRef, {value: nextSeq});
-  return buildTrackingNumber(new Date(), shardId, nextSeq);
+  return reserveSharedTrackingNumber(tx, "order", "MND");
 }
 
 async function loadAndPriceCoupon(
