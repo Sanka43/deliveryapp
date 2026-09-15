@@ -3,7 +3,13 @@
 @layer layout {
   .app {
     display: none;
-    min-height: 100vh;
+    /* Must be a hard height (not min-height): .content below relies on
+       flex:1 + overflow:auto to become its OWN scroll box. With min-height
+       here, .app/.main just grow to fit tall views instead, so the whole
+       document scrolls and the sticky .topbar (position:sticky; top:0)
+       ends up overlapping/clipping whatever row happens to scroll under
+       it — e.g. an order row's action buttons losing their top few px. */
+    height: 100vh;
   }
 
   .app.visible {
@@ -37,8 +43,12 @@
   }
 
   .sidebar-brand {
-    padding: 20px 18px 16px;
+    height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
 
   .sidebar-brand__row {
@@ -169,13 +179,14 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    min-height: 100vh;
+    /* See .app above — needs a hard height for .content's overflow:auto
+       to actually clip/scroll instead of the whole page scrolling. */
+    height: 100vh;
   }
 
   .topbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 16px;
     padding: 0 24px;
     height: var(--topbar-h);
@@ -191,6 +202,54 @@
     align-items: center;
     gap: 12px;
     min-width: 0;
+  }
+
+  .topbar-search {
+    flex: 0 1 320px;
+    margin-left: auto;
+    min-width: 120px;
+    max-width: 360px;
+    height: 38px;
+    padding: 0 14px 0 38px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background-color: var(--bg-elevated);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 12px center;
+    background-size: 16px 16px;
+    color: var(--text);
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: border-color var(--transition), box-shadow var(--transition), background-color var(--transition);
+  }
+
+  .topbar-search::placeholder {
+    color: var(--muted-2);
+  }
+
+  .topbar-search:focus {
+    outline: none;
+    border-color: var(--brand);
+    background-color: var(--surface);
+    box-shadow: 0 0 0 3px var(--brand-glow);
+  }
+
+  .topbar-search::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    cursor: pointer;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E")
+      center / 16px 16px no-repeat;
+  }
+
+  @media (max-width: 640px) {
+    .topbar-search {
+      display: none;
+    }
   }
 
   .topbar h2 {
@@ -213,6 +272,7 @@
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
+    margin-left: auto;
   }
 
   .content {
@@ -262,6 +322,73 @@
   @media (max-width: 520px) {
     .topbar {
       padding: 0 14px;
+    }
+  }
+
+  /* Desktop/tablet icon-rail collapse. Separate from the mobile off-canvas
+     block above (different class, different width strategy) — below
+     960px the sidebar-toggle button opens/closes the overlay drawer
+     instead (body.sidebar-open), since an icon rail doesn't help on a
+     phone-width screen. Same button, different behavior per breakpoint —
+     see initSidebar() in ui-helpers.js. */
+  @media (min-width: 961px) {
+    .sidebar {
+      transition: width var(--transition);
+    }
+
+    body.sidebar-collapsed .sidebar {
+      width: 68px;
+    }
+
+    body.sidebar-collapsed .sidebar-brand__row > div,
+    body.sidebar-collapsed .nav-group-label,
+    body.sidebar-collapsed .sidebar-footer small {
+      display: none;
+    }
+
+    body.sidebar-collapsed .sidebar-brand {
+      padding: 0;
+      justify-content: center;
+    }
+
+    body.sidebar-collapsed .nav-btn {
+      justify-content: center;
+      gap: 0;
+      padding-left: 0;
+      padding-right: 0;
+      font-size: 0;
+      position: relative;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Collapsed rail: the active page gets one solid brand-blue pill,
+       icon in white via currentColor. */
+    body.sidebar-collapsed .nav-btn.active,
+    body.sidebar-collapsed .nav-btn[aria-current="page"] {
+      background: var(--brand);
+      color: #fff;
+    }
+
+    body.sidebar-collapsed .nav-btn.active svg,
+    body.sidebar-collapsed .nav-btn[aria-current="page"] svg {
+      opacity: 1;
+    }
+
+    body.sidebar-collapsed .nav-badge {
+      position: absolute;
+      top: 2px;
+      right: 6px;
+      margin-left: 0;
+    }
+
+    body.sidebar-collapsed #btn-logout {
+      font-size: 0;
+      position: relative;
+    }
+
+    body.sidebar-collapsed #btn-logout::before {
+      content: "⏻";
+      font-size: 16px;
     }
   }
 }

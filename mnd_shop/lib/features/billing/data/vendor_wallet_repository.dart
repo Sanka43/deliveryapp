@@ -87,8 +87,14 @@ class VendorWalletRepository {
     });
   }
 
+  /// [vendorId] is the store this payout applies to — pass the resolved
+  /// `vendorEffectiveStoreIdProvider` value, not just the signed-in uid, so
+  /// a linked/staff account's request lands on the store whose balance the
+  /// page just showed rather than the caller's own separate vendor doc (the
+  /// callable re-verifies the link server-side; this is not a trust boundary).
   /// Returns `null` on success, or a user-facing error message.
   Future<String?> requestPayout({
+    required String vendorId,
     required double amountLkr,
     required String payoutMethod,
     required String payoutAccount,
@@ -99,6 +105,7 @@ class VendorWalletRepository {
     }
     try {
       await _functions.httpsCallable('requestVendorPayout').call(<String, dynamic>{
+        'vendorId': vendorId.trim(),
         'amountLkr': amountLkr.round(),
         'payoutMethod': payoutMethod.trim().toLowerCase(),
         'payoutAccount': payoutAccount.trim(),

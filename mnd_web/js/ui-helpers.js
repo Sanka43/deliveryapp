@@ -68,13 +68,53 @@
     el.textContent = `Updated ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   }
 
+  const SIDEBAR_COLLAPSED_KEY = "mnd_sidebar_collapsed";
+  const isDesktopWidth = () => window.matchMedia("(min-width: 961px)").matches;
+
+  function updateSidebarToggleLabel(toggle) {
+    if (!toggle) return;
+    const collapsed = document.body.classList.contains(isDesktopWidth() ? "sidebar-collapsed" : "sidebar-open");
+    const label = isDesktopWidth()
+      ? collapsed
+        ? "Expand sidebar"
+        : "Collapse sidebar"
+      : collapsed
+        ? "Close menu"
+        : "Open menu";
+    toggle.setAttribute("aria-label", label);
+    toggle.setAttribute("aria-expanded", isDesktopWidth() ? String(!collapsed) : String(collapsed));
+  }
+
   function initSidebar() {
     const toggle = document.getElementById("sidebar-toggle");
     const backdrop = document.getElementById("sidebar-backdrop");
-    const close = () => document.body.classList.remove("sidebar-open");
+    const close = () => {
+      document.body.classList.remove("sidebar-open");
+      updateSidebarToggleLabel(toggle);
+    };
+
+    // Desktop/tablet: a persisted icon-rail collapse (body.sidebar-collapsed,
+    // see layout.css) that reclaims width for the dashboard's wide grids.
+    // Below 960px this same button instead opens/closes the off-canvas
+    // overlay drawer (body.sidebar-open) — collapsing to icons doesn't
+    // help on a phone-width screen, so that behavior is untouched.
+    try {
+      if (isDesktopWidth() && localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
+        document.body.classList.add("sidebar-collapsed");
+      }
+    } catch (_) {}
+    updateSidebarToggleLabel(toggle);
 
     toggle?.addEventListener("click", () => {
-      document.body.classList.toggle("sidebar-open");
+      if (isDesktopWidth()) {
+        const collapsed = document.body.classList.toggle("sidebar-collapsed");
+        try {
+          localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+        } catch (_) {}
+      } else {
+        document.body.classList.toggle("sidebar-open");
+      }
+      updateSidebarToggleLabel(toggle);
     });
     backdrop?.addEventListener("click", close);
     document.querySelectorAll(".nav-btn").forEach((btn) => {

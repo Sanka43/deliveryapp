@@ -1,12 +1,19 @@
 import {FieldValue, getFirestore} from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {assertAdmin} from "./adminAuth";
+import {REMITTABLE_PRODUCT_CASH} from "./riderCash";
 
 const REGION = "asia-south1";
 
 /**
  * Admin records that product cash was physically received from the rider.
- * remittance_requested → remitted_to_admin
+ * owed | remittance_requested → remitted_to_admin
+ *
+ * Accepts "owed" directly (not just "remittance_requested") so an admin who
+ * collects cash from a rider in person — without the rider having gone
+ * through the app's request-a-handover flow — can still record it here.
+ * Same allowance the bulk cash-settlement flow already has
+ * (adminConfirmCashSettlement in riderCash.ts).
  */
 export const adminMarkProductCashRemitted = onCall(
   {region: REGION},
@@ -29,10 +36,10 @@ export const adminMarkProductCashRemitted = onCall(
       }
       const data = snap.data() ?? {};
       const status = String(data.productCashStatus ?? "").trim();
-      if (status !== "remittance_requested") {
+      if (!REMITTABLE_PRODUCT_CASH.has(status)) {
         throw new HttpsError(
           "failed-precondition",
-          `Expected productCashStatus "remittance_requested", got "${status || "none"}".`,
+          `Expected productCashStatus "owed" or "remittance_requested", got "${status || "none"}".`,
         );
       }
       tx.update(ref, {

@@ -251,16 +251,16 @@ body.login-page {
 /* —— Stats & quick actions —— */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
   margin-bottom: 20px;
 }
 
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 18px;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--transition), transform var(--transition);
 }
@@ -270,29 +270,20 @@ body.login-page {
 }
 
 .stat-card .label {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 500;
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .stat-card .value {
-  font-size: 1.65rem;
+  font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.1;
 }
 
-.stat-card--brand {
-  border-left: 4px solid var(--brand);
-}
-
-.stat-card--accent {
-  border-left: 4px solid var(--accent);
-}
-
 .stat-card-warn {
-  border-left: 4px solid var(--warning);
   background: linear-gradient(135deg, var(--surface), var(--warning-soft));
 }
 
@@ -513,6 +504,11 @@ tbody tr:hover td {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  /* Sibling cells (order/customer/address) often wrap to two lines; without
+     this the buttons sit pinned to the row's top edge (vertical-align: top
+     above) and read as floating above the row instead of level with it. */
+  align-items: center;
+  vertical-align: middle;
 }
 
 .toolbar {

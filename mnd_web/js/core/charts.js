@@ -90,5 +90,99 @@
     `;
   }
 
-  global.MndCharts = { renderLineChart };
+  /**
+   * series: [{ name, color, dashed?, points: [{label, value}, ...] }, ...]
+   * All series must share the same point count/labels (one per x position).
+   * opts: same as renderLineChart, minus per-series color (set per series).
+   */
+  function renderMultiLineChart(el, series, opts) {
+    if (!el) return;
+    opts = opts || {};
+    const fmt = typeof opts.valueFormatter === "function" ? opts.valueFormatter : (v) => String(v);
+    const width = opts.width || 560;
+    const height = opts.height || 200;
+    const padding = { top: 16, right: 16, bottom: 28, left: 8 };
+    const innerW = width - padding.left - padding.right;
+    const innerH = height - padding.top - padding.bottom;
+
+    const pointCount = (series[0] && series[0].points && series[0].points.length) || 0;
+    if (!series.length || pointCount === 0) {
+      el.innerHTML = '<p class="u-text-muted u-text-sm">No data yet.</p>';
+      return;
+    }
+
+    const allValues = series.reduce((acc, s) => acc.concat(s.points.map((p) => Number(p.value) || 0)), []);
+    const maxV = Math.max(1, ...allValues);
+    const stepX = pointCount > 1 ? innerW / (pointCount - 1) : 0;
+
+    const gridLines = [0, 0.5, 1]
+      .map((f) => {
+        const y = (padding.top + innerH * f).toFixed(1);
+        return `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--border)" stroke-width="1"/>`;
+      })
+      .join("");
+
+    const seriesSvg = series
+      .map((s) => {
+        const color = s.color || "var(--brand)";
+        const coords = s.points.map((p, i) => ({
+          x: padding.left + i * stepX,
+          y: padding.top + innerH - ((Number(p.value) || 0) / maxV) * innerH,
+          label: p.label,
+          value: Number(p.value) || 0,
+        }));
+        const pathD = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(" ");
+        const dashAttr = s.dashed ? ' stroke-dasharray="4 3"' : "";
+        const dots = coords
+          .map(
+            (c) =>
+              `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3" fill="${color}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(s.name)} · ${esc(c.label)}: ${esc(fmt(c.value))}</title></circle>`
+          )
+          .join("");
+        return `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2"${dashAttr}></path>${dots}`;
+      })
+      .join("");
+
+    const showEvery = pointCount > 10 ? Math.ceil(pointCount / 8) : 1;
+    const xLabels = series[0].points
+      .map((p, i) => ({ x: padding.left + i * stepX, label: p.label, i }))
+      .filter((c) => c.i % showEvery === 0 || c.i === pointCount - 1)
+      .map(
+        (c) =>
+          `<text x="${c.x.toFixed(1)}" y="${height - 8}" font-size="10" fill="var(--muted-2)" text-anchor="middle">${esc(c.label)}</text>`
+      )
+      .join("");
+
+    const titleId = (opts.id || "chart") + "-title";
+    const descId = (opts.id || "chart") + "-desc";
+
+    const tableRows = series
+      .map((s) => s.points.map((p) => `<tr><td>${esc(s.name)}</td><td>${esc(p.label)}</td><td>${esc(fmt(p.value))}</td></tr>`).join(""))
+      .join("");
+
+    const legend = series
+      .map(
+        (s) =>
+          `<span class="chart-legend__item"><span class="chart-legend__swatch" style="background:${s.color || "var(--brand)"}"></span>${esc(s.name)}</span>`
+      )
+      .join("");
+
+    el.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${titleId} ${descId}" style="width:100%;height:auto;display:block">
+        <title id="${titleId}">${esc(opts.title || "Trend chart")}</title>
+        <desc id="${descId}">${esc(opts.desc || "")}</desc>
+        ${gridLines}
+        ${seriesSvg}
+        ${xLabels}
+      </svg>
+      <div class="chart-legend">${legend}</div>
+      <table class="sr-only">
+        <caption>${esc(opts.title || "Trend chart")} — data table</caption>
+        <thead><tr><th>Series</th><th>${esc(opts.xLabel || "Label")}</th><th>${esc(opts.yLabel || "Value")}</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    `;
+  }
+
+  global.MndCharts = { renderLineChart, renderMultiLineChart };
 })(window);

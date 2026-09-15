@@ -78,7 +78,7 @@
     const listEl = document.getElementById("orders-list");
     listEl.innerHTML =
       list.length === 0
-        ? `<div class="empty-state">No orders${q || st ? " match this page's filter." : "."}</div>`
+        ? `<tr><td colspan="6"><div class="empty-state">No orders${q || st ? " match this page's filter." : "."}</div></td></tr>`
         : list
             .map((o) => {
               const stRaw = String(o.status || "placed");
@@ -93,20 +93,18 @@
                 stLower === "ready" && !isSelfPickupOrder(o)
                   ? `<button type="button" class="btn btn-ghost btn-sm u-w-auto" data-assign-rider-order="${escapeHtml(o.id)}" aria-label="Assign rider for order ${escapeHtml(orderLabel)}">Assign rider</button>`
                   : "";
-              return `<div class="data-card order-row" tabindex="0" data-view-order="${escapeHtml(o.id)}" aria-label="View details for order ${escapeHtml(orderLabel)}">
-          <div class="data-card__header">
-            <span class="data-card__title">${escapeHtml(orderLabel)}</span>
-            <span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}
-          </div>
-          <div class="data-card__meta">${escapeHtml(customerName)}${customerMeta ? ` · ${escapeHtml(customerMeta)}` : ""}</div>
-          <div class="data-card__meta">${escapeHtml(shopName)} · ${escapeHtml(orderAddrLine(o))}</div>
-          <div class="data-card__meta">${fmtMoney(o.total)} · ${escapeHtml(fmtTs(o.createdAt))}</div>
-          <div class="data-card__actions">
+              return `<tr class="order-row" tabindex="0" data-view-order="${escapeHtml(o.id)}" aria-label="View details for order ${escapeHtml(orderLabel)}">
+          <td data-label="Order"><strong>${escapeHtml(orderLabel)}</strong><br/><small>${escapeHtml(fmtTs(o.createdAt))}</small></td>
+          <td data-label="Customer"><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
+          <td data-label="Shop / Address"><strong>${escapeHtml(shopName)}</strong><br/><small>${escapeHtml(orderAddrLine(o))}</small></td>
+          <td data-label="Total">${fmtMoney(o.total)}</td>
+          <td data-label="Status"><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}</td>
+          <td class="row-actions" data-label="Actions">
             ${assignBtn}
             <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-edit-order="${escapeHtml(o.id)}" aria-label="Edit order ${escapeHtml(orderLabel)}">Edit</button>
             <button type="button" class="btn btn-ghost btn-sm u-w-auto" data-del-order="${escapeHtml(o.id)}" aria-label="Delete order ${escapeHtml(orderLabel)}">Delete</button>
-          </div>
-        </div>`;
+          </td>
+        </tr>`;
             })
             .join("");
     listEl.querySelectorAll("[data-view-order]").forEach((row) => {
@@ -168,6 +166,16 @@
     const items = Array.isArray(o.items) ? o.items : [];
     const itemCount = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
     const address = orderAddrLine(o);
+    const paymentMethodRaw = String(o.paymentMethod || "").trim().toLowerCase();
+    const isCod = paymentMethodRaw === "cashondelivery" || paymentMethodRaw === "cod";
+    const paymentStatusRaw = String(o.paymentStatus || "").trim().toLowerCase();
+    const paymentStatusLabel = paymentStatusRaw
+      ? statusLabel(paymentStatusRaw)
+      : isCod
+        ? "Pending (cash on delivery)"
+        : "—";
+    const paymentTransactionId = compactText(o.paymentTransactionId);
+    const paidAtText = o.paidAt ? fmtTs(o.paidAt) : "";
     const html = `<div class="order-detail">
       <div class="order-detail-receipt">
         <div class="order-detail-head">
@@ -185,7 +193,10 @@
           ${orderDetailLine("Status", statusLabel(o.status || "placed"))}
           ${orderMissedByShop(o) ? orderDetailLine("Cancel reason", "Missed by shop (no confirm)") : ""}
           ${orderDetailLine("Rider", riderLabel)}
-          ${orderDetailLine("Payment", paymentMethodLabel(o.paymentMethod))}
+          ${orderDetailLine("Payment method", paymentMethodLabel(o.paymentMethod))}
+          ${orderDetailLine("Payment status", paymentStatusLabel)}
+          ${paymentTransactionId ? orderDetailLine("Transaction ID", paymentTransactionId) : ""}
+          ${paidAtText ? orderDetailLine("Paid at", paidAtText) : ""}
         </div>
 
         <div class="order-detail-status">

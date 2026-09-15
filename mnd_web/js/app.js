@@ -3753,7 +3753,7 @@
     const list = cache.riders;
     tbody.innerHTML =
       list.length === 0
-        ? `<tr><td colspan="8"><div class="empty-state">No riders.</div></td></tr>`
+        ? `<tr><td colspan="7"><div class="empty-state">No riders.</div></td></tr>`
         : list
             .map((r) => {
               const name = riderDisplayName(r);
@@ -3761,7 +3761,6 @@
               const approval = riderRegistrationStatus(r);
               const isApproved = approval === "approved" || approval === "active";
               return `<tr class="rider-row" tabindex="0" data-view-rider="${escapeHtml(r.id)}" aria-label="View rider details">
-        <td data-label="ID">${escapeHtml(r.id)}</td>
         <td data-label="Name">${escapeHtml(name)}</td>
         <td data-label="Phone">${escapeHtml(phone)}</td>
         <td data-label="Vehicle">${escapeHtml(riderVehicleLabel(r))}</td>
@@ -5029,6 +5028,7 @@
               ${orderDetailLine("Collected, unsettled", fmtMoney(riderCashInHand(r)))}
               ${orderDetailLine("Owed to admin", fmtMoney(Number(r.cashOwedToAdminLkr) || 0))}
               ${orderDetailLine("Awaiting confirm", fmtMoney(Number(r.cashPendingSettlementLkr) || 0))}
+              ${Number(r.cashAdvanceCreditLkr) > 0 ? orderDetailLine("Advance credit", fmtMoney(Number(r.cashAdvanceCreditLkr))) : ""}
               ${orderDetailLine("Accepting jobs", r.cashHoldActive === true ? "No — over the cash limit" : "Yes")}
               ${r.cashHoldActive === true ? orderDetailLine("On hold since", fmtTs(r.cashHoldSince)) : ""}
             </section>
@@ -7000,6 +7000,7 @@
           <div><span>Cash in hand</span><strong>${escapeHtml(fmtMoney(riderCashInHand(r)))}</strong></div>
           <div><span>Owed to admin</span><strong>${escapeHtml(fmtMoney(r.cashOwedToAdminLkr))}</strong></div>
           <div><span>Awaiting confirm</span><strong>${escapeHtml(fmtMoney(r.cashPendingSettlementLkr))}</strong></div>
+          ${Number(r.cashAdvanceCreditLkr) > 0 ? `<div><span>Advance credit</span><strong>${escapeHtml(fmtMoney(r.cashAdvanceCreditLkr))}</strong></div>` : ""}
         </div>
         ${tableHtml}`,
       "rider-cash-ledger",
@@ -7048,9 +7049,11 @@
    * end: owed (rider holds the cash) -> remittance_requested (rider asked
    * for a handover, or the Rider cash page's bulk cash_settlements flow
    * requested one) -> remitted_to_admin (admin confirmed receiving it,
-   * either per-order here or via adminConfirmCashSettlement on the Rider
-   * cash page) -> settled_to_shop (admin paid the shop). This view is the
-   * only place that surfaces the last step — before it, orders sat at
+   * either here — from "Owed" directly when the rider handed it over in
+   * person without going through the app, or from "Requested" once they
+   * did, or via adminConfirmCashSettlement on the Rider cash page) ->
+   * settled_to_shop (admin paid the shop). This view is the only place
+   * that surfaces the last step — before it, orders sat at
    * remitted_to_admin with no visibility into what the platform still owed
    * each shop. Same collection/fields the mnd_customer admin's "Product
    * cash" page already uses; backed by adminMarkProductCashRemitted /
@@ -7099,7 +7102,7 @@
   }
 
   function productCashActionFor(status) {
-    if (status === "remittance_requested") {
+    if (status === "owed" || status === "remittance_requested") {
       return { label: "Mark remitted", fn: "adminMarkProductCashRemitted", doneLabel: "remitted" };
     }
     if (status === "remitted_to_admin") {
@@ -7226,7 +7229,7 @@
     const n = orderIds.length;
     const orderWord = n === 1 ? "order" : "orders";
     const confirmMsg =
-      shopCashActiveTab === "remittance_requested"
+      shopCashActiveTab === "owed" || shopCashActiveTab === "remittance_requested"
         ? `Confirm you have physically received this cash from the rider for ${n} ${orderWord}?`
         : `Confirm you have paid this amount to the shop for ${n} ${orderWord}?`;
     if (!confirm(confirmMsg)) return;

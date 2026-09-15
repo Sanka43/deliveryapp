@@ -10,6 +10,40 @@
     scroll-behavior: smooth;
   }
 
+  /* Slim themed scrollbar everywhere (sidebar nav, main content, tables,
+     modals, chat panes) instead of the default OS/browser bar. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-2);
+    background-clip: padding-box;
+  }
+
   html,
   body {
     margin: 0;

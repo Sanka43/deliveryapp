@@ -276,6 +276,22 @@ class VendorSettingsPage extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             VendorSettingsNavTile(
+              icon: Icons.account_balance_wallet_outlined,
+              label: _vTxt(context, en: 'Payouts', si: 'ගෙවීම්'),
+              subtitle: _vTxt(
+                context,
+                en: 'View balance and request a payout',
+                si: 'ශේෂය බලා ගෙවීමක් ඉල්ලන්න',
+              ),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const VendorPayoutsPage(),
+                  ),
+                );
+              },
+            ),
+            VendorSettingsNavTile(
               icon: Icons.edit_outlined,
               label: _vTxt(context, en: 'Edit profile', si: 'පැතිකඩ සංස්කරණය'),
               onTap: () {
@@ -341,22 +357,6 @@ class VendorSettingsPage extends ConsumerWidget {
                 Navigator.of(context).push<void>(
                   MaterialPageRoute<void>(
                     builder: (_) => const VendorJobsPage(),
-                  ),
-                );
-              },
-            ),
-            VendorSettingsNavTile(
-              icon: Icons.account_balance_wallet_outlined,
-              label: _vTxt(context, en: 'Payouts', si: 'ගෙවීම්'),
-              subtitle: _vTxt(
-                context,
-                en: 'View balance and request a payout',
-                si: 'ශේෂය බලා ගෙවීමක් ඉල්ලන්න',
-              ),
-              onTap: () {
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const VendorPayoutsPage(),
                   ),
                 );
               },

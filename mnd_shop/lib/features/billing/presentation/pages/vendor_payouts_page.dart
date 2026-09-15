@@ -7,6 +7,7 @@ import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/billing/data/vendor_wallet_repository.dart';
 import 'package:mnd_shop/features/billing/domain/vendor_payout.dart';
 import 'package:mnd_shop/features/billing/domain/vendor_wallet.dart';
+import 'package:mnd_shop/features/billing/presentation/providers/vendor_product_cash_providers.dart';
 import 'package:mnd_shop/features/billing/presentation/providers/vendor_wallet_providers.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 
@@ -65,7 +66,7 @@ class VendorPayoutsPage extends ConsumerWidget {
                 children: <Widget>[
                   _WalletSummaryCard(
                     wallet: w,
-                    onRequestPayout: () => _openRequestSheet(context, ref, w),
+                    onRequestPayout: () => _openRequestSheet(context, ref, storeId, w),
                   ),
                   const SizedBox(height: 8),
                   Padding(
@@ -84,6 +85,8 @@ class VendorPayoutsPage extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  const _ProductCashSummaryCard(),
                   const SizedBox(height: 20),
                   Text(
                     _vTxt(context, en: 'History', si: 'ඉතිහාසය'),
@@ -137,7 +140,7 @@ class VendorPayoutsPage extends ConsumerWidget {
     );
   }
 
-  void _openRequestSheet(BuildContext context, WidgetRef ref, VendorWallet wallet) {
+  void _openRequestSheet(BuildContext context, WidgetRef ref, String storeId, VendorWallet wallet) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -145,7 +148,7 @@ class VendorPayoutsPage extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (BuildContext ctx) => _RequestPayoutSheet(availableLkr: wallet.balanceLkr),
+      builder: (BuildContext ctx) => _RequestPayoutSheet(vendorId: storeId, availableLkr: wallet.balanceLkr),
     );
   }
 }
@@ -266,6 +269,102 @@ class _WalletStat extends StatelessWidget {
   }
 }
 
+/// Read-only aggregate of the shop's cash-on-delivery ledger (see
+/// VendorProductCashSummary) — the COD counterpart to the wallet card above,
+/// which only covers online (PayHere) sales. Nothing to action here:
+/// settlement is admin-side, via mnd_web's "Shop cash" page.
+class _ProductCashSummaryCard extends ConsumerWidget {
+  const _ProductCashSummaryCard();
+
+  static String _money(double v) => 'Rs. ${v.toStringAsFixed(2)}';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ThemeData theme = Theme.of(context);
+    final VendorProductCashBucket owed =
+        ref.watch(vendorProductCashOwedProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+    final VendorProductCashBucket requested =
+        ref.watch(vendorProductCashRequestedProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+    final VendorProductCashBucket withAdmin =
+        ref.watch(vendorProductCashWithAdminProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+    final VendorProductCashBucket settled =
+        ref.watch(vendorProductCashSettledProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+
+    String stat(VendorProductCashBucket b) => '${_money(b.totalLkr)} (${b.count})';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            _vTxt(context, en: 'Cash on delivery', si: 'Cash on Delivery'),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppColors.textCharcoal,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _WalletStat(
+                  label: _vTxt(context, en: 'Owed', si: 'ණයයි'),
+                  value: stat(owed),
+                  color: AppColors.pendingAmber,
+                ),
+              ),
+              Expanded(
+                child: _WalletStat(
+                  label: _vTxt(context, en: 'Requested', si: 'ඉල්ලූ'),
+                  value: stat(requested),
+                  color: AppColors.pendingAmber,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _WalletStat(
+                  label: _vTxt(context, en: 'With admin', si: 'Admin ළඟ'),
+                  value: stat(withAdmin),
+                  color: AppColors.pendingAmber,
+                ),
+              ),
+              Expanded(
+                child: _WalletStat(
+                  label: _vTxt(context, en: 'Settled', si: 'ගෙවා ඇත'),
+                  value: stat(settled),
+                  color: AppColors.openGreen,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            _vTxt(
+              context,
+              en: 'Paid out by MND admin once the rider hands the cash over — nothing to do here.',
+              si: 'Rider cash එක admin ට දුන්නාට පස්සේ MND admin විසින් ගෙවනු ලැබේ — මෙතන කරන්න දෙයක් නෑ.',
+            ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textMuted,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PayoutTile extends StatelessWidget {
   const _PayoutTile({required this.payout});
 
@@ -349,8 +448,9 @@ class _PayoutTile extends StatelessWidget {
 }
 
 class _RequestPayoutSheet extends ConsumerStatefulWidget {
-  const _RequestPayoutSheet({required this.availableLkr});
+  const _RequestPayoutSheet({required this.vendorId, required this.availableLkr});
 
+  final String vendorId;
   final double availableLkr;
 
   @override
@@ -393,6 +493,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
       _error = null;
     });
     final String? error = await ref.read(vendorWalletRepositoryProvider).requestPayout(
+          vendorId: widget.vendorId,
           amountLkr: amount,
           payoutMethod: _method,
           payoutAccount: _accountCtrl.text.trim(),
