@@ -5,6 +5,8 @@ import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
+import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
+import 'package:mnd_delivery_app/features/cart/presentation/widgets/floating_cart_summary_bar.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/grocery_catalog_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/grocery/grocery_category_chips.dart';
@@ -17,8 +19,11 @@ class GroceryProductsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final double bottomClearance =
-        MediaQuery.paddingOf(context).bottom + AppSpacing.lg;
+    final CartState cart = ref.watch(cartProvider);
+    final bool showFloatingCart = !cart.isEmpty;
+    const double floatingCartReserve = 88;
+    final double bottomClearance = MediaQuery.paddingOf(context).bottom +
+        (showFloatingCart ? floatingCartReserve : AppSpacing.lg);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
@@ -35,32 +40,46 @@ class GroceryProductsPage extends ConsumerWidget {
           },
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(browseStoresStreamProvider);
-          ref.invalidate(browseProductsStreamProvider);
-          ref.invalidate(groceryCategoryLabelsProvider);
-        },
-        child: ListView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
+      body: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(browseStoresStreamProvider);
+              ref.invalidate(browseProductsStreamProvider);
+              ref.invalidate(groceryCategoryLabelsProvider);
+            },
+            child: ListView(
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.xs,
+                AppSpacing.md,
+                bottomClearance,
+              ),
+              children: const <Widget>[
+                GroceryPageSearchBar(),
+                SizedBox(height: AppSpacing.sm),
+                GroceryCategoryChips(),
+                SizedBox(height: AppSpacing.md),
+                GroceryPopularSection(),
+                SizedBox(height: AppSpacing.md),
+                GroceryNearbyShopsSection(),
+              ],
+            ),
           ),
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.xs,
-            AppSpacing.md,
-            bottomClearance,
-          ),
-          children: const <Widget>[
-            GroceryPageSearchBar(),
-            SizedBox(height: AppSpacing.sm),
-            GroceryCategoryChips(),
-            SizedBox(height: AppSpacing.md),
-            GroceryPopularSection(),
-            SizedBox(height: AppSpacing.md),
-            GroceryNearbyShopsSection(),
-          ],
-        ),
+          if (showFloatingCart)
+            Positioned(
+              left: AppSpacing.md,
+              right: AppSpacing.md,
+              bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.sm,
+              child: FloatingCartSummaryBar(
+                onViewCart: () => context.push(AppRoutes.customerCart),
+              ),
+            ),
+        ],
       ),
     );
   }

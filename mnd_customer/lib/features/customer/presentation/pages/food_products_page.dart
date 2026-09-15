@@ -5,6 +5,8 @@ import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
+import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
+import 'package:mnd_delivery_app/features/cart/presentation/widgets/floating_cart_summary_bar.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/food/food_nearby_shops_section.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/food/food_page_search_bar.dart';
@@ -15,8 +17,11 @@ class FoodProductsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final double bottomClearance =
-        MediaQuery.paddingOf(context).bottom + AppSpacing.lg;
+    final CartState cart = ref.watch(cartProvider);
+    final bool showFloatingCart = !cart.isEmpty;
+    const double floatingCartReserve = 88;
+    final double bottomClearance = MediaQuery.paddingOf(context).bottom +
+        (showFloatingCart ? floatingCartReserve : AppSpacing.lg);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
@@ -34,29 +39,43 @@ class FoodProductsPage extends ConsumerWidget {
           },
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(browseStoresStreamProvider);
-          ref.invalidate(browseProductsStreamProvider);
-        },
-        child: ListView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
+      body: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(browseStoresStreamProvider);
+              ref.invalidate(browseProductsStreamProvider);
+            },
+            child: ListView(
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.xs,
+                AppSpacing.md,
+                bottomClearance,
+              ),
+              children: const <Widget>[
+                FoodPageSearchBar(),
+                SizedBox(height: AppSpacing.md),
+                FoodPopularSection(),
+                SizedBox(height: AppSpacing.md),
+                FoodNearbyShopsSection(),
+              ],
+            ),
           ),
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.xs,
-            AppSpacing.md,
-            bottomClearance,
-          ),
-          children: const <Widget>[
-            FoodPageSearchBar(),
-            SizedBox(height: AppSpacing.md),
-            FoodPopularSection(),
-            SizedBox(height: AppSpacing.md),
-            FoodNearbyShopsSection(),
-          ],
-        ),
+          if (showFloatingCart)
+            Positioned(
+              left: AppSpacing.md,
+              right: AppSpacing.md,
+              bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.sm,
+              child: FloatingCartSummaryBar(
+                onViewCart: () => context.push(AppRoutes.customerCart),
+              ),
+            ),
+        ],
       ),
     );
   }
