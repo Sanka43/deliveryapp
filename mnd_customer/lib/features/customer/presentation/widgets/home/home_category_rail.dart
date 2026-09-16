@@ -99,6 +99,9 @@ class HomeCategoryRail extends ConsumerWidget {
                 SizedBox(
                   width: cardWidth,
                   child: _ServiceTile(
+                    key: _kCategories[i].action == _CategoryAction.food
+                        ? const ValueKey<String>('homeFoodCategoryTile')
+                        : null,
                     item: _kCategories[i],
                     onTap: () => _onCategoryTap(context, ref, _kCategories[i]),
                   ),
@@ -114,6 +117,7 @@ class HomeCategoryRail extends ConsumerWidget {
 
 class _ServiceTile extends StatelessWidget {
   const _ServiceTile({
+    super.key,
     required this.item,
     required this.onTap,
   });

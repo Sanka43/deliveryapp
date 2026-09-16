@@ -531,6 +531,23 @@ Auto-refund on that same timeout, when the order was paid via PayHere (`paymentS
 | `refundedAt` / `refundReason` (`'customer_cancelled'` \| `'customer_requested'`) / `refundReference` / `refundedBy: 'customer'` | set on success, mirroring the vendor-no-response fields above |
 | `refundFailed` / `refundFailedAt` / `refundError` | set instead if the PayHere refund call failed — falls back to `refundRequestStatus: 'pending_review'` so admin can retry |
 
+**Admin review of a queued refund request** (mnd_web "Refund requests" tab; `adminApproveOrderRefund` / `adminMarkOrderRefundedManually` / `adminDismissOrderRefundRequest` callables, `functions/src/orderRefunds.ts`): all three only act on an order currently at `refundRequestStatus: 'pending_review'`.
+
+`adminApproveOrderRefund({orderId})` — same PayHere refund path as the customer flows above, just admin-triggered; fails with `failed-precondition` if the order isn't eligible for an automatic gateway refund (not paid via PayHere, or missing `paymentTransactionId`) — use the manual action below for those.
+
+`adminMarkOrderRefundedManually({orderId, note?})` — admin refunded the customer outside PayHere (COD, or a gateway refund that kept failing). Records the action without calling the gateway.
+
+`adminDismissOrderRefundRequest({orderId, reason})` — admin decided no refund is owed; takes the order off the queue without moving money.
+
+| Field | Type |
+|-------|------|
+| `refundReason` | adds `'admin_approved'` (gateway, via `adminApproveOrderRefund`) / `'admin_manual'` (via `adminMarkOrderRefundedManually`) |
+| `refundedBy` | adds `'admin'` |
+| `refundedByUid` | string — set by `adminMarkOrderRefundedManually` only |
+| `refundManualNote` | string? — admin's note, `adminMarkOrderRefundedManually` only |
+| `refundRequestStatus` | adds `'dismissed'` (via `adminDismissOrderRefundRequest`) |
+| `refundDismissedAt` / `refundDismissedReason` / `refundDismissedBy` | set by `adminDismissOrderRefundRequest` |
+
 **Other fields (read by detail UI, may be set by ops/admin):**
 
 | Field | Type |

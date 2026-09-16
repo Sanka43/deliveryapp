@@ -64,6 +64,10 @@ class FoodPopularSection extends ConsumerWidget {
 
                     if (item.storeId.isEmpty) {
                       return ProductCard(
+                        key: index == 0
+                            ? const ValueKey<String>(
+                                'demoFirstFoodProductCard')
+                            : null,
                         premium: true,
                         showAddToCartButton: false,
                         productKey: item.documentId,
@@ -77,6 +81,9 @@ class FoodPopularSection extends ConsumerWidget {
                     }
 
                     return ProductCard(
+                      key: index == 0
+                          ? const ValueKey<String>('demoFirstFoodProductCard')
+                          : null,
                       premium: true,
                       showAddToCartButton: false,
                       productKey: item.documentId,

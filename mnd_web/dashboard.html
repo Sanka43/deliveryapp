@@ -92,6 +92,11 @@
             Shop cash
             <span id="nav-shop-cash" class="nav-badge" hidden>0</span>
           </button>
+          <button type="button" class="nav-btn" data-nav="refunds">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 109-9M3 12l4-4M3 12l4 4"/></svg>
+            Refund requests
+            <span id="nav-refund-requests" class="nav-badge" hidden>0</span>
+          </button>
           <button type="button" class="nav-btn" data-nav="customers">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
             Customers
@@ -1062,6 +1067,37 @@
                       <th>Orders</th>
                       <th>Total</th>
                       <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section data-view="refunds" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Refund requests</h3>
+                  <p class="panel-sub">
+                    Customer refund requests that need a person to decide &middot;
+                    Firestore <code>orders.refundRequestStatus == 'pending_review'</code>
+                  </p>
+                </div>
+                <button type="button" id="btn-reload-refund-requests" class="btn btn-ghost btn-sm" style="width: auto">Reload</button>
+              </div>
+              <div class="table-wrap table-responsive">
+                <table id="table-refund-requests">
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>Customer</th>
+                      <th>Amount</th>
+                      <th>Reason</th>
+                      <th>Payment</th>
+                      <th>Requested</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody></tbody>

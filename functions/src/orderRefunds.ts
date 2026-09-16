@@ -5,6 +5,7 @@ import {
 } from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
+import {assertAdmin} from "./adminAuth";
 import {writeVendorNotification} from "./orderNotifications";
 import {notifyAdmins} from "./orderVendorAcceptReminders";
 import {refundPayHerePayment} from "./payHereRefund";
@@ -85,7 +86,8 @@ async function finalizeOnlineRefund(input: {
   trackingNumber: string;
   amount: number;
   paymentTransactionId: string;
-  refundReason: "customer_cancelled" | "customer_requested";
+  refundReason: "customer_cancelled" | "customer_requested" | "admin_approved";
+  refundedBy?: "customer" | "admin";
   description: string;
   successBody: string;
 }): Promise<{refunded: boolean}> {
@@ -102,7 +104,7 @@ async function finalizeOnlineRefund(input: {
       refundedAt: FieldValue.serverTimestamp(),
       refundReason: input.refundReason,
       refundReference: result.refundId,
-      refundedBy: "customer",
+      refundedBy: input.refundedBy ?? "customer",
       refundRequestStatus: "completed",
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -390,3 +392,169 @@ export const requestOrderRefund = onCall({region: REGION}, async (request) => {
 
   return {outcome: refunded ? "refunded" : "pending_review"};
 });
+
+/**
+ * Loads a `pending_review` refund order for an admin action, throwing the
+ * same user-facing errors `adminApproveOrderRefund` /
+ * `adminMarkOrderRefundedManually` / `adminDismissOrderRefundRequest` would
+ * otherwise each have to repeat.
+ */
+async function loadPendingReviewOrder(orderId: string): Promise<DocumentData> {
+  const snap = await getFirestore().collection("orders").doc(orderId).get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "Order not found.");
+  }
+  const data = snap.data()!;
+  const status = String(data.refundRequestStatus ?? "").trim().toLowerCase();
+  if (status !== "pending_review") {
+    throw new HttpsError(
+      "failed-precondition",
+      "This order has no refund request waiting for review.",
+    );
+  }
+  return data;
+}
+
+/**
+ * Admin approves a queued (`refundRequestStatus: 'pending_review'`) refund
+ * from the dashboard's Refund requests tab. Only works for orders the
+ * PayHere gateway can actually refund automatically (paid online, has a
+ * transaction id) — anything else needs
+ * `adminMarkOrderRefundedManually` instead, since there is no gateway call
+ * to make for it.
+ */
+export const adminApproveOrderRefund = onCall({region: REGION}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in as admin.");
+  }
+  await assertAdmin(request.auth.uid);
+  const orderId = String(request.data?.orderId ?? "").trim();
+  if (!orderId) {
+    throw new HttpsError("invalid-argument", "orderId is required.");
+  }
+
+  const data = await loadPendingReviewOrder(orderId);
+  if (!eligibleForOnlineRefund(data)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This order can't be refunded automatically — use \"Mark refunded manually\" instead.",
+    );
+  }
+
+  const {refunded} = await finalizeOnlineRefund({
+    orderId,
+    customerId: String(data.customerId ?? ""),
+    vendorId: vendorIdOf(data),
+    trackingNumber: orderTracking(data, orderId),
+    amount: Number(data.total ?? 0),
+    paymentTransactionId: String(data.paymentTransactionId ?? ""),
+    refundReason: "admin_approved",
+    refundedBy: "admin",
+    description: "Refund approved by admin",
+    successBody: "Your refund has been processed to your original payment method.",
+  });
+
+  return {outcome: refunded ? "refunded" : "failed"};
+});
+
+/**
+ * Admin marks a `pending_review` refund as handled outside PayHere — a COD
+ * order refunded by hand, or an order the automatic gateway call kept
+ * failing for. Records who did it and why, but takes no payment action
+ * itself: the money already moved (or never needs to) before this is called.
+ */
+export const adminMarkOrderRefundedManually = onCall(
+  {region: REGION},
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Sign in as admin.");
+    }
+    await assertAdmin(request.auth.uid);
+    const orderId = String(request.data?.orderId ?? "").trim();
+    if (!orderId) {
+      throw new HttpsError("invalid-argument", "orderId is required.");
+    }
+    const note = String(request.data?.note ?? "").trim().slice(0, MAX_DETAIL_LEN);
+
+    const data = await loadPendingReviewOrder(orderId);
+    const ref = getFirestore().collection("orders").doc(orderId);
+    await ref.update({
+      paymentStatus: "refunded",
+      refundedAt: FieldValue.serverTimestamp(),
+      refundReason: "admin_manual",
+      refundedBy: "admin",
+      refundedByUid: request.auth.uid,
+      ...(note ? {refundManualNote: note} : {}),
+      refundRequestStatus: "completed",
+      refundFailed: FieldValue.delete(),
+      refundFailedAt: FieldValue.delete(),
+      refundError: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const trackingNumber = orderTracking(data, orderId);
+    await Promise.all([
+      notifyCustomer({
+        customerId: String(data.customerId ?? ""),
+        orderId,
+        type: "payment",
+        title: "Payment refunded",
+        body: "Your payment was refunded." + (note ? ` ${note}` : ""),
+      }),
+      writeVendorNotification({
+        vendorId: vendorIdOf(data),
+        notificationId: `${orderId}_order_refunded`,
+        orderId,
+        type: "order_refunded",
+        title: "Order refunded",
+        body: `Rs. ${Number(data.total ?? 0).toFixed(2)} refunded to the customer` +
+          (trackingNumber ? ` — order ${trackingNumber}.` : "."),
+      }),
+    ]);
+
+    return {outcome: "refunded"};
+  },
+);
+
+/**
+ * Admin reviews a `pending_review` refund request and decides no refund is
+ * owed (invalid/duplicate request, issue resolved another way) — takes it
+ * off the Refund requests queue without moving any money.
+ */
+export const adminDismissOrderRefundRequest = onCall(
+  {region: REGION},
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Sign in as admin.");
+    }
+    await assertAdmin(request.auth.uid);
+    const orderId = String(request.data?.orderId ?? "").trim();
+    if (!orderId) {
+      throw new HttpsError("invalid-argument", "orderId is required.");
+    }
+    const reason = String(request.data?.reason ?? "").trim().slice(0, MAX_DETAIL_LEN);
+    if (!reason) {
+      throw new HttpsError("invalid-argument", "Explain why the request is dismissed.");
+    }
+
+    const data = await loadPendingReviewOrder(orderId);
+    const ref = getFirestore().collection("orders").doc(orderId);
+    await ref.update({
+      refundRequestStatus: "dismissed",
+      refundDismissedAt: FieldValue.serverTimestamp(),
+      refundDismissedReason: reason,
+      refundDismissedBy: request.auth.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await notifyCustomer({
+      customerId: String(data.customerId ?? ""),
+      orderId,
+      type: "payment",
+      title: "Refund request reviewed",
+      body: `We reviewed your refund request: ${reason}`,
+    });
+
+    return {outcome: "dismissed"};
+  },
+);

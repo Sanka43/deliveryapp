@@ -464,6 +464,10 @@ class _ProductDetailsSheetState extends State<_ProductDetailsSheet> {
                                   bottom: index == _groups.length - 1 ? 0 : 8,
                                 ),
                                 child: _TypeSelectionCard(
+                                  key: index == 0
+                                      ? const ValueKey<String>(
+                                          'productDetailFirstTypeOption')
+                                      : null,
                                   group: group,
                                   selected: selected,
                                   sizeIndex: selection?.sizeIndex ?? 0,
@@ -819,6 +823,7 @@ class _OptionPill extends StatelessWidget {
 
 class _TypeSelectionCard extends StatelessWidget {
   const _TypeSelectionCard({
+    super.key,
     required this.group,
     required this.selected,
     required this.sizeIndex,
@@ -1120,6 +1125,7 @@ class _AddToCartBar extends StatelessWidget {
               width: double.infinity,
               height: 42,
               child: FilledButton.icon(
+                key: const ValueKey<String>('addToCartButton'),
                 onPressed: onAdd,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.brandPrimary,

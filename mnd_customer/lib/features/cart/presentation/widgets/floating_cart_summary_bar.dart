@@ -77,6 +77,7 @@ class FloatingCartSummaryBar extends ConsumerWidget {
               ),
             ),
             FilledButton(
+              key: const ValueKey<String>('viewCartButton'),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.brandPrimary,
                 foregroundColor: Colors.white,

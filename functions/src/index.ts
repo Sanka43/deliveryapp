@@ -71,7 +71,13 @@ export {
 export {sweepStaleRiderPresence} from "./riderPresence";
 export {sweepRiderDocumentExpiry} from "./riderDocumentExpiry";
 export {sweepStalePlacedOrders} from "./orderVendorAcceptReminders";
-export {cancelOrderByCustomer, requestOrderRefund} from "./orderRefunds";
+export {
+  cancelOrderByCustomer,
+  requestOrderRefund,
+  adminApproveOrderRefund,
+  adminMarkOrderRefundedManually,
+  adminDismissOrderRefundRequest,
+} from "./orderRefunds";
 export {
   requestShopPasswordResetOtp,
   verifyShopPasswordResetOtp,

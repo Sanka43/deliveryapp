@@ -555,6 +555,7 @@ class _CartBottomBar extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
+                    key: const ValueKey<String>('proceedToCheckoutButton'),
                     onPressed: onProceedToCheckout,
                     child: Text(
                       needsSignIn

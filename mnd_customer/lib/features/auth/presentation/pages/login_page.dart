@@ -556,6 +556,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: TextFormField(
+                      key: const ValueKey<String>('loginPhoneField'),
                       controller: _phoneController,
                       focusNode: _phoneFocus,
                       keyboardType: TextInputType.phone,
@@ -641,6 +642,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 height: 56,
                 width: double.infinity,
                 child: FilledButton(
+                  key: const ValueKey<String>('loginContinueButton'),
                   onPressed: authState.isLoading ? null : _onContinue,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.brandPrimary,
@@ -842,6 +844,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                     height: 56,
                     width: double.infinity,
                     child: FilledButton(
+                      key: const ValueKey<String>('loginVerifyButton'),
                       onPressed: authState.isLoading ? null : _verifyOtp,
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.brandPrimary,
@@ -995,6 +998,7 @@ class _OtpBoxes extends StatelessWidget {
                 label: 'OTP digit ${index + 1} of ${controllers.length}',
                 textField: true,
                 child: TextField(
+                  key: ValueKey<String>('otpDigit$index'),
                   controller: controllers[index],
                   focusNode: focusNodes[index],
                   enabled: enabled,

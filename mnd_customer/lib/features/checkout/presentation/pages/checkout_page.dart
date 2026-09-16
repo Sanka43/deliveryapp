@@ -488,6 +488,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       borderRadius: AppColors.cardRadiusSm,
                       padding: const EdgeInsets.all(AppSpacing.md),
                       child: TextFormField(
+                        key: const ValueKey<String>('checkoutPhoneField'),
                         controller: _phoneController,
                         decoration: InputDecoration(
                           labelText: l10n.checkoutContactPhoneLabel,
@@ -1381,6 +1382,7 @@ class _SegmentChip extends StatelessWidget {
 
 class _SavedAddressChip extends StatelessWidget {
   const _SavedAddressChip({
+    super.key,
     required this.label,
     required this.isDefault,
     required this.selected,
@@ -1712,15 +1714,21 @@ class _DeliveryFulfillmentSection extends StatelessWidget {
                             Wrap(
                               spacing: AppSpacing.xs,
                               runSpacing: AppSpacing.xs,
-                              children: list.map((SavedAddress a) {
+                              children: List<Widget>.generate(list.length,
+                                  (int index) {
+                                final SavedAddress a = list[index];
                                 final bool selected = selectedSavedId == a.id;
                                 return _SavedAddressChip(
+                                  key: index == 0
+                                      ? const ValueKey<String>(
+                                          'checkoutFirstSavedAddress')
+                                      : null,
                                   label: a.label,
                                   isDefault: a.isDefault,
                                   selected: selected,
                                   onTap: () => onSavedSelected(a),
                                 );
-                              }).toList(),
+                              }),
                             ),
                           ],
                         ),
@@ -2323,6 +2331,7 @@ class _CheckoutBottomBar extends StatelessWidget {
                     ),
                   ),
                 FilledButton(
+                  key: const ValueKey<String>('placeOrderButton'),
                   onPressed: needsSignIn ? onSignIn : onPlaceOrder,
                   child: isPlacingOrder
                       ? const SizedBox(

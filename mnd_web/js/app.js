@@ -177,6 +177,7 @@
     cashRiders: [],
     withdrawals: [],
     vendorPayouts: [],
+    refundRequests: [],
     supportThreads: [],
     vendorSupportThreads: [],
     couponsExpiringSoon: [],
@@ -207,6 +208,7 @@
   let withdrawalsUnsubs = [];
   let vendorPayoutsUnsubs = [];
   let productCashUnsubs = [];
+  let refundRequestsUnsubs = [];
 
   const elAuthGate = document.getElementById("auth-gate");
   const elLogout = document.getElementById("btn-logout");
@@ -1065,6 +1067,7 @@
     withdrawals: "Withdrawals",
     "vendor-payouts": "Vendor payouts",
     "shop-cash": "Shop cash",
+    refunds: "Refund requests",
     "vendor-support": "Vendor support",
     "ride-fares": "Ride fares",
     ratings: "Rating Management",
@@ -1110,6 +1113,9 @@
     }
     if (currentView === "shop-cash" && name !== "shop-cash") {
       stopProductCashListeners();
+    }
+    if (currentView === "refunds" && name !== "refunds") {
+      stopRefundRequestsListeners();
     }
     currentView = name;
     elPageTitle.textContent = titles[name] || name;
@@ -1549,6 +1555,7 @@
     if (name === "withdrawals") await startWithdrawalsListeners();
     if (name === "vendor-payouts") await startVendorPayoutsListeners();
     if (name === "shop-cash") await startProductCashListeners();
+    if (name === "refunds") await startRefundRequestsListeners();
     if (name === "rider-cash") await startRiderCashListeners();
     if (name === "ride-fares") await loadRideFares();
     if (name === "ratings") await loadRatings();
@@ -6907,6 +6914,182 @@
     }
   }
 
+  /**
+   * Refund requests — orders a customer asked to be refunded that couldn't
+   * auto-refund (requestOrderRefund / cancelOrderByCustomer, both in
+   * functions/src/orderRefunds.ts, queue these as
+   * refundRequestStatus: 'pending_review' when the order isn't eligible for
+   * an automatic PayHere refund, or the gateway call itself failed). Real-
+   * time, mirroring startWithdrawalsListeners() — stopped in
+   * __legacyShowView the moment the admin navigates away.
+   */
+  function stopRefundRequestsListeners() {
+    refundRequestsUnsubs.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (_) {}
+    });
+    refundRequestsUnsubs = [];
+  }
+
+  function setRefundRequestsNavBadge(n) {
+    const navBadge = document.getElementById("nav-refund-requests");
+    if (!navBadge) return;
+    if (n > 0) {
+      navBadge.textContent = String(n);
+      navBadge.hidden = false;
+    } else {
+      navBadge.hidden = true;
+    }
+  }
+
+  async function startRefundRequestsListeners() {
+    stopRefundRequestsListeners();
+    if (cache.customers.length === 0) {
+      await loadCustomers();
+    }
+    await new Promise((resolve) => {
+      let settled = false;
+      const unsub = db
+        .collection(COL.orders)
+        .where("refundRequestStatus", "==", "pending_review")
+        .orderBy("refundRequestedAt", "desc")
+        .limit(100)
+        .onSnapshot(
+          (snap) => {
+            cache.refundRequests = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            setRefundRequestsNavBadge(cache.refundRequests.length);
+            renderRefundRequests();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          },
+          (e) => {
+            // No toast — this also runs on every Dashboard visit (nav badge).
+            cache.refundRequests = [];
+            console.error(e);
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          }
+        );
+      refundRequestsUnsubs.push(unsub);
+    });
+  }
+
+  /** Mirrors eligibleForOnlineRefund() in functions/src/orderRefunds.ts. */
+  function refundRequestEligibleForGateway(o) {
+    const paymentStatus = String(o.paymentStatus || "").trim().toLowerCase();
+    const paymentProvider = String(o.paymentProvider || "").trim().toLowerCase();
+    return (
+      paymentStatus === "paid" &&
+      paymentProvider === "payhere" &&
+      String(o.paymentTransactionId || "").trim().length > 0 &&
+      Number(o.total) > 0
+    );
+  }
+
+  function renderRefundRequests() {
+    const tbody = document.querySelector("#table-refund-requests tbody");
+    if (!tbody) return;
+    const list = cache.refundRequests || [];
+    tbody.innerHTML =
+      list.length === 0
+        ? '<tr><td colspan="7"><div class="empty-state">No refund requests waiting for review.</div></td></tr>'
+        : list
+            .map((o) => {
+              const orderLabel = orderDisplayNumber(o);
+              const customerName = customerDisplayName(o);
+              const customer = customerById(o.customerId);
+              const customerMeta = compactText(customer?.phoneNumber, customer?.phone, o.deliveryAddress?.phone);
+              const reason = compactText(o.refundRequestReason) || "—";
+              const gatewayBtn = refundRequestEligibleForGateway(o)
+                ? `<button type="button" class="btn btn-primary btn-sm" data-approve-refund="${escapeHtml(o.id)}">Refund via gateway</button>`
+                : "";
+              const failedNote = o.refundFailed
+                ? `<br/><small style="color:var(--danger, #c0392b)">Auto-refund failed</small>`
+                : "";
+              return `<tr>
+        <td data-label="Order"><strong>${escapeHtml(orderLabel)}</strong><br/><small>${escapeHtml(fmtTs(o.createdAt))}</small></td>
+        <td data-label="Customer"><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
+        <td data-label="Amount"><strong>${escapeHtml(fmtMoney(o.total))}</strong></td>
+        <td data-label="Reason">${escapeHtml(reason)}</td>
+        <td data-label="Payment">${escapeHtml(paymentMethodLabel(o.paymentMethod))}${failedNote}</td>
+        <td data-label="Requested">${escapeHtml(fmtTs(o.refundRequestedAt))}</td>
+        <td class="row-actions" data-label="Actions">
+          ${gatewayBtn}
+          <button type="button" class="btn btn-ghost btn-sm" data-mark-refund-manual="${escapeHtml(o.id)}">Mark refunded</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-dismiss-refund="${escapeHtml(o.id)}">Dismiss</button>
+        </td>
+      </tr>`;
+            })
+            .join("");
+  }
+
+  /**
+   * Admin-triggered PayHere refund for a pending_review request — only
+   * enabled in the UI when refundRequestEligibleForGateway() is true;
+   * adminApproveOrderRefund throws failed-precondition otherwise.
+   */
+  async function approveRefundRequest(orderId) {
+    if (!orderId) return;
+    if (!confirm("Refund this order through PayHere now?")) return;
+    try {
+      const res = await functionsClient.httpsCallable("adminApproveOrderRefund")({ orderId });
+      // Refund requests is real-time (startRefundRequestsListeners) — the
+      // live onSnapshot listener picks up this write on its own.
+      if (res?.data?.outcome === "refunded") {
+        toast("Refund processed.", "success");
+      } else {
+        toast("PayHere declined the refund — see order for details, or use \"Mark refunded\".", "error");
+      }
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+  }
+
+  /**
+   * Admin already refunded the customer outside PayHere (COD, or a gateway
+   * refund that kept failing) — records it without calling the gateway.
+   */
+  async function markRefundRequestManual(orderId) {
+    if (!orderId) return;
+    const note = prompt("Optional note (how/when the refund was sent):", "");
+    if (note === null) return;
+    if (!confirm("Mark this order as refunded outside the app?")) return;
+    try {
+      await functionsClient.httpsCallable("adminMarkOrderRefundedManually")({
+        orderId,
+        ...(note.trim() ? { note: note.trim() } : {}),
+      });
+      toast("Order marked refunded.", "success");
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+  }
+
+  /** Admin decides no refund is owed — takes the order off the queue. */
+  async function dismissRefundRequest(orderId) {
+    if (!orderId) return;
+    const reason = prompt("Why is this refund request being dismissed?", "");
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast("A reason is required.", "error");
+      return;
+    }
+    try {
+      await functionsClient.httpsCallable("adminDismissOrderRefundRequest")({
+        orderId,
+        reason: reason.trim(),
+      });
+      toast("Refund request dismissed.", "success");
+    } catch (e) {
+      toast(e.message || String(e), "error");
+    }
+  }
+
   function stopRiderCashListeners() {
     riderCashUnsubs.forEach((unsub) => {
       try {
@@ -7789,6 +7972,27 @@
     const rejectBtn = e.target.closest("[data-reject-withdrawal]");
     if (rejectBtn) {
       settleWithdrawal(rejectBtn.getAttribute("data-rider"), rejectBtn.getAttribute("data-reject-withdrawal"), "rejected");
+    }
+  });
+  document.getElementById("btn-reload-refund-requests")?.addEventListener("click", () => {
+    // Data is live (startRefundRequestsListeners) — this just restarts the
+    // listener, useful if it dropped after an error.
+    startRefundRequestsListeners().catch((e) => toast(e.message || String(e), "error"));
+  });
+  document.querySelector("#table-refund-requests")?.addEventListener("click", (e) => {
+    const approveBtn = e.target.closest("[data-approve-refund]");
+    if (approveBtn) {
+      approveRefundRequest(approveBtn.getAttribute("data-approve-refund"));
+      return;
+    }
+    const manualBtn = e.target.closest("[data-mark-refund-manual]");
+    if (manualBtn) {
+      markRefundRequestManual(manualBtn.getAttribute("data-mark-refund-manual"));
+      return;
+    }
+    const dismissBtn = e.target.closest("[data-dismiss-refund]");
+    if (dismissBtn) {
+      dismissRefundRequest(dismissBtn.getAttribute("data-dismiss-refund"));
     }
   });
   document.getElementById("btn-reload-vendor-payouts")?.addEventListener("click", () => {
