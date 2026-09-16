@@ -13,6 +13,13 @@ import 'package:mnd_shop/features/orders/presentation/widgets/vendor_new_order_d
 /// ownership guard passes.
 Future<FakeFirebaseFirestore> _seedOrder(String orderId) async {
   final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
+  // vendors/{authUid} must point at the store via vendorStoreId, and
+  // vendors/{storeId}.uid must point back — VendorCatalogStoreIdNotifier
+  // only resolves the link when both sides agree.
+  await firestore
+      .collection(FirebaseCollections.vendors)
+      .doc('ownerA')
+      .set(<String, dynamic>{'vendorStoreId': 'linked-store'});
   await firestore
       .collection(FirebaseCollections.vendors)
       .doc('linked-store')

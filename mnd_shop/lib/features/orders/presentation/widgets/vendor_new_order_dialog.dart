@@ -7,6 +7,7 @@ import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
 import 'package:mnd_shop/features/orders/presentation/widgets/vendor_item_variant_chip.dart';
+import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 
 /// Polished "New order" popup shown when an order lands on the vendor board.
 ///
@@ -144,6 +145,14 @@ class _VendorNewOrderDialogState extends ConsumerState<VendorNewOrderDialog> {
   /// there showing a live Accept/Reject on an order that's already gone.
   void _dismissIfOrderLeftIncoming(VendorOrderBoard board) {
     if (_busy) {
+      return;
+    }
+    // While the vendor's effective store id is still resolving (e.g. right
+    // after sign-in, for a linked-vendor account whose orders live under a
+    // different id than the auth uid) the board can briefly reflect the
+    // wrong store and look empty. Don't let that transient state close a
+    // popup for an order that's still genuinely incoming.
+    if (ref.read(vendorCatalogStoreIdProvider).isLoading) {
       return;
     }
     final bool stillIncoming =

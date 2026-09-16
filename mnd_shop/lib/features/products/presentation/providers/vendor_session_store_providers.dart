@@ -37,20 +37,20 @@ final AsyncNotifierProvider<VendorCatalogStoreIdNotifier, String> vendorCatalogS
 class VendorCatalogStoreIdNotifier extends AsyncNotifier<String> {
   @override
   Future<String> build() async {
+    ref.listen<AsyncValue<User?>>(shopAuthStateProvider, (AsyncValue<User?>? prev, AsyncValue<User?> next) => ref.invalidateSelf());
+    ref.listen<AsyncValue<Map<String, dynamic>?>>(vendorAccountDocDataProvider,
+        (AsyncValue<Map<String, dynamic>?>? prev, AsyncValue<Map<String, dynamic>?> next) => ref.invalidateSelf());
+    ref.listen<AsyncValue<String>>(vendorStoreIdProvider, (AsyncValue<String>? prev, AsyncValue<String> next) => ref.invalidateSelf());
+
+    final User? user = ref.watch(shopAuthStateProvider).valueOrNull;
+    if (user == null) {
+      return '';
+    }
+    final String uid = user.uid.trim();
+
+    String base = uid;
     try {
-      ref.listen<AsyncValue<User?>>(shopAuthStateProvider, (AsyncValue<User?>? prev, AsyncValue<User?> next) => ref.invalidateSelf());
-      ref.listen<AsyncValue<Map<String, dynamic>?>>(vendorAccountDocDataProvider,
-          (AsyncValue<Map<String, dynamic>?>? prev, AsyncValue<Map<String, dynamic>?> next) => ref.invalidateSelf());
-      ref.listen<AsyncValue<String>>(vendorStoreIdProvider, (AsyncValue<String>? prev, AsyncValue<String> next) => ref.invalidateSelf());
-
-      final User? user = ref.watch(shopAuthStateProvider).valueOrNull;
-      if (user == null) {
-        return '';
-      }
-      final String uid = user.uid.trim();
       final Map<String, dynamic>? map = await ref.watch(vendorAccountDocDataProvider.future);
-
-      String base = uid;
       final String? profileVs = (map?['vendorStoreId'] as String?)?.trim();
       if (profileVs != null && profileVs.isNotEmpty && profileVs != uid) {
         final DocumentSnapshot<Map<String, dynamic>> link = await ref
@@ -63,20 +63,33 @@ class VendorCatalogStoreIdNotifier extends AsyncNotifier<String> {
           base = profileVs;
         }
       }
-
-      final String prefs =
-          (await SharedPreferences.getInstance()).getString(kVendorStoreIdPreferenceKey)?.trim() ?? '';
-      if (prefs.isEmpty) {
-        return base;
-      }
-      if (prefs == uid || prefs == base) {
-        return prefs;
-      }
-      return base;
     } catch (_) {
-      final User? user = ref.read(shopAuthStateProvider).valueOrNull;
-      return user?.uid.trim() ?? '';
+      // Could not resolve/verify a linked store id — base already defaults
+      // to the auth uid above.
     }
+
+    // A device-prefs failure must not discard a `base` already resolved
+    // from Firestore — this used to sit inside one try/catch around the
+    // whole method, so a transient SharedPreferences error (e.g. storage
+    // briefly unavailable) silently threw away a correctly linked store id
+    // and fell back to the raw uid, making the vendor's entire order board
+    // query the wrong store and look empty.
+    String prefs = '';
+    try {
+      prefs = (await SharedPreferences.getInstance())
+              .getString(kVendorStoreIdPreferenceKey)
+              ?.trim() ??
+          '';
+    } catch (_) {
+      // Ignore — base is already resolved.
+    }
+    if (prefs.isEmpty) {
+      return base;
+    }
+    if (prefs == uid || prefs == base) {
+      return prefs;
+    }
+    return base;
   }
 }
 
