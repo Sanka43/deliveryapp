@@ -9,6 +9,7 @@ import 'package:mnd_shop/app/providers/firebase_providers.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/constants/support_constants.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/core/widgets/shop_app_logo.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_catalog_metrics_snapshot.dart';
@@ -426,6 +427,52 @@ class VendorReportsPage extends ConsumerWidget {
               if (asyncData.isLoading)
                 const SliverToBoxAdapter(
                   child: LinearProgressIndicator(minHeight: 2),
+                ),
+              // The numbers below fall back to zero/empty while this errors
+              // (see vendorReportsProvider) so a shop owner doesn't
+              // reasonably mistake "the report failed to load" for "no
+              // sales today" — surface the failure explicitly.
+              if (asyncData.hasError)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 12),
+                  sliver: SliverToBoxAdapter(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: cs.errorContainer,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(Icons.error_outline_rounded,
+                              color: cs.onErrorContainer),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              userFacingError(
+                                asyncData.error!,
+                                fallback:
+                                    'Could not load this report. Numbers below may be incomplete.',
+                              ),
+                              style: theme.textTheme.bodyMedium
+                                  ?.copyWith(color: cs.onErrorContainer),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                ref.invalidate(vendorStatsReportsProvider),
+                            child: Text(
+                              _vTxt(
+                                context,
+                                en: 'Retry',
+                                si: 'නැවත උත්සාහ කරන්න',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 16),

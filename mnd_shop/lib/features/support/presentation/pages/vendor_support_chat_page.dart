@@ -58,14 +58,17 @@ class _VendorSupportChatPageState extends ConsumerState<VendorSupportChatPage> {
       return;
     }
     setState(() => _sending = true);
-    _controller.clear();
     final String? error = await ref.read(vendorSupportRepositoryProvider).sendMessage(text);
     if (!mounted) {
       return;
     }
     setState(() => _sending = false);
     if (error != null) {
+      // Keep the typed text on failure — clearing it upfront meant a send
+      // error made the vendor retype the whole message from scratch.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    } else {
+      _controller.clear();
     }
   }
 

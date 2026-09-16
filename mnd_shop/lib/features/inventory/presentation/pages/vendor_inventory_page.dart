@@ -91,6 +91,27 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
     }
   }
 
+  /// Used by the +/- tap targets. Unlike [_setStock] (an absolute value from
+  /// the text field), this re-reads current stock inside a transaction, so a
+  /// concurrent sale decrementing stock between this screen's last refresh
+  /// and the tap can't be clobbered by a stale client-side +1/-1.
+  Future<void> _adjustStock(VendorProduct product, int delta) async {
+    setState(() => _busyIds.add(product.id));
+    try {
+      await ref
+          .read(vendorProductRepositoryProvider)
+          .adjustProductStock(
+            productId: product.id,
+            delta: delta,
+            reason: 'inventory_page_adjust',
+          );
+    } finally {
+      if (mounted) {
+        setState(() => _busyIds.remove(product.id));
+      }
+    }
+  }
+
   Future<void> _saveVisible(List<VendorProduct> products) async {
     final Map<String, int> updates = <String, int>{};
     for (final VendorProduct product in products) {
@@ -297,12 +318,8 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
                               product: product,
                               controller: _controllerFor(product),
                               busy: _busyIds.contains(product.id),
-                              onMinus: () => _setStock(
-                                product,
-                                (product.stockQty - 1).clamp(0, 9999999),
-                              ),
-                              onPlus: () =>
-                                  _setStock(product, product.stockQty + 1),
+                              onMinus: () => _adjustStock(product, -1),
+                              onPlus: () => _adjustStock(product, 1),
                               onSubmit: () {
                                 final int? qty = int.tryParse(
                                   _controllerFor(product).text.trim(),
