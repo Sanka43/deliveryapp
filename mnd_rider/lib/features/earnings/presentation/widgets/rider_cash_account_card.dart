@@ -155,38 +155,64 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
     final double ratio =
         maxLkr <= 0 ? 0 : (cashInHand / maxLkr).clamp(0.0, 1.0).toDouble();
 
+    final bool hasCollected = entries.isNotEmpty || cashInHand > 0;
+
     return Padding(
       padding: const EdgeInsets.only(top: 16),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: cs.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: accent.withValues(alpha: 0.4)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Icon(Icons.account_balance_wallet_outlined,
-                    size: 20, color: accent),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Cash in hand',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: accent,
+                    size: 20,
                   ),
                 ),
-                Text(
-                  LkrFormat.money(cashInHand),
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700, color: accent),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Cash in hand',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        LkrFormat.money(cashInHand),
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                if (advanceCredit > 0) _CreditPill(creditLkr: advanceCredit),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
@@ -208,25 +234,30 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
               ),
             ),
             if (entries.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _SourceSplit(foodCashLkr: foodCash, rideCashLkr: rideCash),
             ],
-            const SizedBox(height: 12),
-            _OwedBreakdown(
-              productCashLkr: productCash,
-              serviceChargeLkr: serviceCharge,
-              rideCommissionLkr: commission,
-              owed: owed,
-              yourEarningLkr: yourEarning,
-            ),
+            if (hasCollected) ...<Widget>[
+              const SizedBox(height: 14),
+              Divider(height: 1, color: cs.outlineVariant),
+              const SizedBox(height: 14),
+              _OwedBreakdown(
+                productCashLkr: productCash,
+                serviceChargeLkr: serviceCharge,
+                rideCommissionLkr: commission,
+                owed: owed,
+                yourEarningLkr: yourEarning,
+              ),
+            ],
             if (advanceCredit > 0) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _AdvanceCreditBanner(creditLkr: advanceCredit),
             ],
-            const SizedBox(height: 12),
-            if (pending != null)
-              _PendingBanner(settlement: pending)
-            else
+            if (pending != null) ...<Widget>[
+              const SizedBox(height: 14),
+              _PendingBanner(settlement: pending),
+            ] else if (hasCollected) ...<Widget>[
+              const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -248,6 +279,7 @@ class _RiderCashAccountCardState extends ConsumerState<RiderCashAccountCard> {
                   ),
                 ),
               ),
+            ],
           ],
         ),
       ),
@@ -327,8 +359,9 @@ class _OwedBreakdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
 
-    Widget row(String label, String value, {bool strong = false}) {
+    Widget itemLine(String label, String value) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(
@@ -336,18 +369,50 @@ class _OwedBreakdown extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
             ),
             Text(
               value,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
             ),
           ],
+        ),
+      );
+    }
+
+    Widget tile({
+      required String label,
+      required int amountLkr,
+      required Color color,
+    }) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                LkrFormat.money(amountLkr),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -356,37 +421,55 @@ class _OwedBreakdown extends StatelessWidget {
     // money that ends up with the shop/platform, not a separate rider concern.
     final int shopAmount = productCashLkr + serviceChargeLkr;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        if (shopAmount > 0) row('Shop product cost', LkrFormat.money(shopAmount)),
-        if (rideCommissionLkr > 0) row('Rider commission', LkrFormat.money(rideCommissionLkr)),
-        const Divider(height: 12),
-        row('Owed to admin', LkrFormat.money(owed), strong: true),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.onlineGreen.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  'Your earning',
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              Text(
-                LkrFormat.money(yourEarningLkr),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: AppColors.onlineGreen,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
+        if (shopAmount > 0 || rideCommissionLkr > 0) ...<Widget>[
+          if (shopAmount > 0) itemLine('Shop product cost', LkrFormat.money(shopAmount)),
+          if (rideCommissionLkr > 0) itemLine('Rider commission', LkrFormat.money(rideCommissionLkr)),
+          const SizedBox(height: 6),
+        ],
+        Row(
+          children: <Widget>[
+            tile(label: 'OWED TO ADMIN', amountLkr: owed, color: AppColors.warningAmber),
+            const SizedBox(width: 10),
+            tile(label: 'YOUR EARNING', amountLkr: yourEarningLkr, color: AppColors.onlineGreen),
+          ],
         ),
       ],
+    );
+  }
+}
+
+/// Compact top-of-card indicator so a standing advance credit is visible at
+/// a glance without reading down to [_AdvanceCreditBanner]'s explanation.
+class _CreditPill extends StatelessWidget {
+  const _CreditPill({required this.creditLkr});
+
+  final int creditLkr;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.onlineGreen.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(Icons.savings_outlined, size: 14, color: AppColors.onlineGreen),
+          const SizedBox(width: 4),
+          Text(
+            '+${LkrFormat.money(creditLkr)} credit',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: AppColors.onlineGreen,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

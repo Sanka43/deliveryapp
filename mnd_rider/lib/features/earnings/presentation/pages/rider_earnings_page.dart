@@ -526,29 +526,27 @@ class _InlineAlert extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final Color color = AppColors.warningAmber;
-    return DecoratedBox(
+    // Same flat, borderless banner style as the cash-in-hand card's pending/
+    // credit banners (RiderCashAccountCard) — one visual language for every
+    // "heads up, nothing to do yet" notice on the earnings page.
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(Icons.info_outline_rounded, size: 18, color: color),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(
-                message,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.info_outline_rounded, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
