@@ -50,6 +50,22 @@
     ordersPageDocs = direction === "prev" ? await ordersPager.prev() : await ordersPager.next();
   }
 
+  // Same fields openOrderDetails() already reads (paymentMethod/paymentStatus)
+  // — COD orders never get a paymentStatus written (see DATABASE.md §3.7),
+  // so "no paymentStatus" + cashOnDelivery reads as still-uncollected COD
+  // rather than an online payment stuck at some unlabeled state.
+  function orderPaymentInfo(o) {
+    const method = String(o.paymentMethod || "").trim().toLowerCase();
+    const isCod = method === "cashondelivery" || method === "cod" || method === "cash";
+    const status = String(o.paymentStatus || "").trim().toLowerCase();
+    if (status === "paid") return { label: "Paid", cls: "badge-delivered" };
+    if (status === "refunded") return { label: "Refunded", cls: "badge-cancelled" };
+    if (status === "failed") return { label: "Failed", cls: "badge-cancelled" };
+    if (status === "pending") return { label: "Pending", cls: "badge-preparing" };
+    if (isCod) return { label: "COD", cls: "badge-pending" };
+    return { label: "—", cls: "badge-pending" };
+  }
+
   // Filters/searches only within the currently loaded page of orders
   // (ordersPageDocs, ~50 rows) rather than the whole collection — Firestore
   // has no full-text search, so browsing further back means paging with
@@ -78,7 +94,7 @@
     const listEl = document.getElementById("orders-list");
     listEl.innerHTML =
       list.length === 0
-        ? `<tr><td colspan="6"><div class="empty-state">No orders${q || st ? " match this page's filter." : "."}</div></td></tr>`
+        ? `<tr><td colspan="7"><div class="empty-state">No orders${q || st ? " match this page's filter." : "."}</div></td></tr>`
         : list
             .map((o) => {
               const stRaw = String(o.status || "placed");
@@ -89,6 +105,7 @@
               const customer = customerById(o.customerId);
               const customerMeta = compactText(customer?.phoneNumber, customer?.phone, o.deliveryAddress?.phone);
               const shopName = shopDisplayName(o);
+              const payment = orderPaymentInfo(o);
               const assignBtn =
                 stLower === "ready" && !isSelfPickupOrder(o)
                   ? `<button type="button" class="btn btn-ghost btn-sm u-w-auto" data-assign-rider-order="${escapeHtml(o.id)}" aria-label="Assign rider for order ${escapeHtml(orderLabel)}">Assign rider</button>`
@@ -98,6 +115,7 @@
           <td data-label="Customer"><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
           <td data-label="Shop / Address"><strong>${escapeHtml(shopName)}</strong><br/><small>${escapeHtml(orderAddrLine(o))}</small></td>
           <td data-label="Total">${fmtMoney(o.total)}</td>
+          <td data-label="Payment"><span class="badge ${payment.cls}">${escapeHtml(payment.label)}</span></td>
           <td data-label="Status"><span class="badge ${badgeClass(stRaw)}${readyAttention}">${escapeHtml(statusLabel(stRaw))}</span>${missedByShopBadge(o)}</td>
           <td class="row-actions" data-label="Actions">
             ${assignBtn}
