@@ -178,13 +178,17 @@ class _OfferFormPageState extends ConsumerState<OfferFormPage> {
         final VendorOffer existing = widget.offer!;
         String imageUrl = existing.imageUrl;
         if (_pickedBytes != null && _pickedBytes!.isNotEmpty) {
-          await storage.deleteOfferImage(existing.imageUrl);
+          final String oldImageUrl = existing.imageUrl;
           imageUrl = await storage.uploadOfferImage(
             storeId: storeId,
             offerId: existing.id,
             bytes: _pickedBytes!,
             fileName: 'offer.jpg',
           );
+          // Only remove the old image once the new one has uploaded
+          // successfully — deleting it first left the offer pointing at a
+          // missing file whenever the upload then failed.
+          await storage.deleteOfferImage(oldImageUrl);
         }
         await repo.updateOffer(
           existing: existing,

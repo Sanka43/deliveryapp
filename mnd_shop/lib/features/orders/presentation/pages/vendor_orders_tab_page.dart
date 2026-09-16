@@ -87,6 +87,22 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
     }
   }
 
+  /// Opens the order detail view-only — for stages where the order is no
+  /// longer actionable by the vendor (e.g. already with a rider). Unlike
+  /// [_openIncomingDetail], this never offers Accept/Reject.
+  static Future<void> _openReadOnlyDetail(
+    BuildContext context,
+    VendorPendingOrder order,
+  ) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (BuildContext ctx) =>
+            IncomingVendorOrderPage(order: order, readOnly: true),
+      ),
+    );
+  }
+
   void _selectFilter(VendorOrderPipelineFilter next) {
     if (_filter == next) {
       return;
@@ -470,7 +486,7 @@ class _VendorOrdersTabPageState extends ConsumerState<VendorOrdersTabPage> {
                                 stage: VendorOrderCardStage.progress,
                                 amountLabel: _money(o.shopTotal),
                                 onOpen: () =>
-                                    _openIncomingDetail(context, ref, o),
+                                    _openReadOnlyDetail(context, o),
                                 onPrimary: null,
                                 primaryLabel: '',
                                 onSecondary: null,

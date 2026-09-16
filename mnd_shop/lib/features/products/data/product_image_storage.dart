@@ -21,7 +21,13 @@ class ProductImageStorage {
   // a clear "try again" message instead.
   static const Duration _uploadTimeout = Duration(seconds: 45);
 
-  /// Uploads image bytes to `vendor_products/{storeId}/{productId}.{ext}`.
+  /// Uploads image bytes to
+  /// `vendor_products/{storeId}/{productId}_{uploadedAtMs}.{ext}` — a fresh
+  /// object per upload rather than a fixed `{productId}.{ext}` path, so a
+  /// re-upload never overwrites the still-referenced old image in place.
+  /// That lets the caller delete the old object only after this upload has
+  /// actually succeeded, instead of deleting it upfront and risking a
+  /// product left pointing at nothing if the upload then fails.
   Future<String> uploadProductImage({
     required String storeId,
     required String productId,
@@ -29,11 +35,12 @@ class ProductImageStorage {
     required String fileName,
   }) async {
     final String ext = _storageExtension(fileName);
+    final int uploadedAtMs = DateTime.now().millisecondsSinceEpoch;
     final Reference ref = _storage
         .ref()
         .child('vendor_products')
         .child(storeId)
-        .child('$productId.$ext');
+        .child('${productId}_$uploadedAtMs.$ext');
 
     final String contentType = switch (ext) {
       'png' => 'image/png',

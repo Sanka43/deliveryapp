@@ -115,5 +115,39 @@ void main() {
       expect(VendorOrderStatus.isWithRider('on_the_way'), isTrue);
       expect(VendorOrderStatus.isWithRider('ready'), isFalse);
     });
+
+    test('blocks vendor transitions from rider-in-progress statuses', () {
+      // Regression: these statuses aren't in the VendorOrderStatus enum, so
+      // parse() returns null for them — the "new order" shortcut used to
+      // treat that null the same as a brand-new order and wrongly allow
+      // confirming/cancelling an order a rider already has.
+      for (final String from in <String>[
+        'out_for_delivery',
+        'picked_up',
+        'on_the_way',
+      ]) {
+        expect(
+          VendorOrderStatus.canVendorTransition(from: from, to: 'confirmed'),
+          isFalse,
+          reason: 'from=$from',
+        );
+        expect(
+          VendorOrderStatus.canVendorTransition(from: from, to: 'cancelled'),
+          isFalse,
+          reason: 'from=$from',
+        );
+      }
+    });
+
+    test('still allows confirm/cancel on a truly brand-new order', () {
+      expect(
+        VendorOrderStatus.canVendorTransition(from: null, to: 'confirmed'),
+        isTrue,
+      );
+      expect(
+        VendorOrderStatus.canVendorTransition(from: '', to: 'cancelled'),
+        isTrue,
+      );
+    });
   });
 }

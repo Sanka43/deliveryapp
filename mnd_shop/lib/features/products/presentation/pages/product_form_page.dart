@@ -808,13 +808,17 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         final VendorProduct existing = widget.product!;
         String imageUrl = existing.imageUrl;
         if (_pickedBytes != null && _pickedBytes!.isNotEmpty) {
-          await repo.deleteStoredProductImage(existing.imageUrl);
+          final String oldImageUrl = existing.imageUrl;
           imageUrl = await storage.uploadProductImage(
             storeId: storeId,
             productId: existing.id,
             bytes: _pickedBytes!,
             fileName: _pickedName ?? 'photo.jpg',
           );
+          // Only remove the old image once the new one has uploaded
+          // successfully — deleting it first left the product pointing at a
+          // missing file whenever the upload then failed.
+          await repo.deleteStoredProductImage(oldImageUrl);
         }
         await repo.updateProduct(
           existing: existing,

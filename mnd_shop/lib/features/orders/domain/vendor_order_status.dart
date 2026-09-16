@@ -80,6 +80,17 @@ enum VendorOrderStatus {
       return false;
     }
     if (current == null) {
+      // Only a genuinely brand-new order (no status written yet) can jump
+      // straight to confirmed/cancelled from "unknown". A non-empty but
+      // unrecognized status — e.g. a rider-lifecycle state like
+      // out_for_delivery/picked_up/on_the_way, which this enum doesn't
+      // model — must never fall through to this "new order" shortcut, or
+      // the vendor could force an order that's already with a rider back
+      // to confirmed.
+      final String normalizedFrom = (from ?? '').trim().toLowerCase();
+      if (normalizedFrom.isNotEmpty) {
+        return false;
+      }
       return next == VendorOrderStatus.confirmed ||
           next == VendorOrderStatus.cancelled;
     }

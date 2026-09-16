@@ -15,7 +15,10 @@ class OfferImageStorage {
 
   final FirebaseStorage _storage;
 
-  /// Uploads to `vendor_offers/{storeId}/{offerId}.{ext}`.
+  /// Uploads to `vendor_offers/{storeId}/{offerId}_{uploadedAtMs}.{ext}` —
+  /// a fresh object per upload rather than a fixed `{offerId}.{ext}` path,
+  /// so a re-upload never overwrites the still-referenced old image in
+  /// place and the old one can be deleted only after this upload succeeds.
   Future<String> uploadOfferImage({
     required String storeId,
     required String offerId,
@@ -23,11 +26,12 @@ class OfferImageStorage {
     required String fileName,
   }) async {
     final String ext = _storageExtension(fileName);
+    final int uploadedAtMs = DateTime.now().millisecondsSinceEpoch;
     final Reference ref = _storage
         .ref()
         .child('vendor_offers')
         .child(storeId)
-        .child('$offerId.$ext');
+        .child('${offerId}_$uploadedAtMs.$ext');
 
     final String contentType = switch (ext) {
       'png' => 'image/png',
