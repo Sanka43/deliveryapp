@@ -173,6 +173,7 @@
     rideFares: null,
     ongoingJobs: [],
     cashSettlements: [],
+    cashSettlementsHistory: [],
     cashRiders: [],
     withdrawals: [],
     vendorPayouts: [],
@@ -202,6 +203,10 @@
   let googleMapsLoadPromise = null;
   let dashboardUnsubs = [];
   let dashboardRerenderTimer = null;
+  let riderCashUnsubs = [];
+  let withdrawalsUnsubs = [];
+  let vendorPayoutsUnsubs = [];
+  let productCashUnsubs = [];
 
   const elAuthGate = document.getElementById("auth-gate");
   const elLogout = document.getElementById("btn-logout");
@@ -1094,6 +1099,18 @@
     if (currentView === "dashboard" && name !== "dashboard") {
       stopDashboardListeners();
     }
+    if (currentView === "rider-cash" && name !== "rider-cash") {
+      stopRiderCashListeners();
+    }
+    if (currentView === "withdrawals" && name !== "withdrawals") {
+      stopWithdrawalsListeners();
+    }
+    if (currentView === "vendor-payouts" && name !== "vendor-payouts") {
+      stopVendorPayoutsListeners();
+    }
+    if (currentView === "shop-cash" && name !== "shop-cash") {
+      stopProductCashListeners();
+    }
     currentView = name;
     elPageTitle.textContent = titles[name] || name;
     let targetSection = null;
@@ -1344,7 +1361,7 @@
     }
 
     // Riders: merge capped-all + pending-status listeners. cache.cashRiders
-    // is derived purely from cache.riders (see loadRiderCash()), so it's
+    // is derived purely from cache.riders (see startRiderCashListeners()), so it's
     // recomputed here too rather than needing its own query.
     {
       let all = new Map();
@@ -1529,10 +1546,10 @@
     if (name === "customers") await Promise.all([loadCustomers(), loadOrders()]);
     if (name === "support") await startSupportThreadsListener();
     if (name === "vendor-support") await startVendorSupportThreadsListener();
-    if (name === "withdrawals") await loadWithdrawals();
-    if (name === "vendor-payouts") await loadVendorPayouts();
-    if (name === "shop-cash") await loadProductCash();
-    if (name === "rider-cash") await loadRiderCash();
+    if (name === "withdrawals") await startWithdrawalsListeners();
+    if (name === "vendor-payouts") await startVendorPayoutsListeners();
+    if (name === "shop-cash") await startProductCashListeners();
+    if (name === "rider-cash") await startRiderCashListeners();
     if (name === "ride-fares") await loadRideFares();
     if (name === "ratings") await loadRatings();
     if (name === "platform-fees") {
@@ -1564,10 +1581,6 @@
     if (name === "riders") renderRiders();
     if (name === "ongoing-riders") renderOngoingRiders();
     if (name === "customers") renderCustomers();
-    if (name === "withdrawals") renderWithdrawals();
-    if (name === "vendor-payouts") renderVendorPayouts();
-    if (name === "shop-cash") renderProductCash();
-    if (name === "rider-cash") renderRiderCash();
     if (name === "ride-fares") renderRideFares();
     if (name === "ratings") renderRatings();
     if (name === "platform-fees") {
@@ -6183,33 +6196,63 @@
    * (functions/src/vendorEarnings.ts). Named `payouts` (not `withdrawals`)
    * so the collectionGroup query here never mixes with rider withdrawals.
    */
-  async function loadVendorPayouts() {
+  function stopVendorPayoutsListeners() {
+    vendorPayoutsUnsubs.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (_) {}
+    });
+    vendorPayoutsUnsubs = [];
+  }
+
+  /**
+   * Real-time, mirroring startRiderCashListeners() — live onSnapshot
+   * listeners instead of one-shot get()s, stopped in __legacyShowView the
+   * moment the admin navigates away.
+   */
+  async function startVendorPayoutsListeners() {
+    stopVendorPayoutsListeners();
     if (cache.vendors.length === 0) {
       await loadVendors();
     }
-    try {
-      const snap = await db
+    await new Promise((resolve) => {
+      let settled = false;
+      const unsub = db
         .collectionGroup(COL.vendorPayouts)
         .where("status", "==", "pending")
         .orderBy("createdAt", "desc")
         .limit(100)
-        .get(FS_GET_SERVER);
-      cache.vendorPayouts = snap.docs.map((d) => ({
-        id: d.id,
-        vendorDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
-        ...d.data(),
-      }));
-    } catch (e) {
-      // No toast here — this collectionGroup query needs a composite
-      // Firestore index (see mnd_customer/firestore.indexes.json), and
-      // this loader now also runs on every Dashboard visit; a missing or
-      // still-building index would otherwise show a red error banner on
-      // the default landing page every time. The panel just renders empty
-      // instead — check the console for the real error.
-      cache.vendorPayouts = [];
-      console.error(e);
-    }
-    setVendorPayoutsNavBadge(cache.vendorPayouts.length);
+        .onSnapshot(
+          (snap) => {
+            cache.vendorPayouts = snap.docs.map((d) => ({
+              id: d.id,
+              vendorDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
+              ...d.data(),
+            }));
+            setVendorPayoutsNavBadge(cache.vendorPayouts.length);
+            renderVendorPayouts();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          },
+          (e) => {
+            // No toast here — this collectionGroup query needs a composite
+            // Firestore index (see mnd_customer/firestore.indexes.json), and
+            // this loader now also runs on every Dashboard visit; a missing
+            // or still-building index would otherwise show a red error
+            // banner on the default landing page every time. The panel just
+            // renders empty instead — check the console for the real error.
+            cache.vendorPayouts = [];
+            console.error(e);
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          }
+        );
+      vendorPayoutsUnsubs.push(unsub);
+    });
   }
 
   function renderVendorPayouts() {
@@ -6260,8 +6303,8 @@
         payoutId,
         action,
       });
-      await loadVendorPayouts();
-      renderVendorPayouts();
+      // Vendor payouts is real-time (startVendorPayoutsListeners) — the
+      // live onSnapshot listener picks up this write on its own.
       toast(paying ? "Payout marked paid." : "Payout rejected.", "success");
     } catch (e) {
       toast(e.message || String(e), "error");
@@ -6755,29 +6798,59 @@
    * same collectionGroup pattern as the AdminWithdrawalsPage in the Flutter
    * admin — this is the same data, just surfaced in the web dashboard too.
    */
-  async function loadWithdrawals() {
+  function stopWithdrawalsListeners() {
+    withdrawalsUnsubs.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (_) {}
+    });
+    withdrawalsUnsubs = [];
+  }
+
+  /**
+   * Real-time, mirroring startRiderCashListeners() — live onSnapshot
+   * listeners instead of one-shot get()s, stopped in __legacyShowView the
+   * moment the admin navigates away.
+   */
+  async function startWithdrawalsListeners() {
+    stopWithdrawalsListeners();
     if (cache.riders.length === 0) {
       await loadRiders();
     }
-    try {
-      const snap = await db
+    await new Promise((resolve) => {
+      let settled = false;
+      const unsub = db
         .collectionGroup(COL.riderWithdrawals)
         .where("status", "in", ["pending", "approved"])
         .orderBy("createdAt", "desc")
         .limit(100)
-        .get(FS_GET_SERVER);
-      cache.withdrawals = snap.docs.map((d) => ({
-        id: d.id,
-        riderDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
-        ...d.data(),
-      }));
-    } catch (e) {
-      // See the matching comment in loadVendorPayouts() — no toast, this
-      // now also runs on every Dashboard visit.
-      cache.withdrawals = [];
-      console.error(e);
-    }
-    setWithdrawalsNavBadge(cache.withdrawals.length);
+        .onSnapshot(
+          (snap) => {
+            cache.withdrawals = snap.docs.map((d) => ({
+              id: d.id,
+              riderDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
+              ...d.data(),
+            }));
+            setWithdrawalsNavBadge(cache.withdrawals.length);
+            renderWithdrawals();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          },
+          (e) => {
+            // See the matching comment in startVendorPayoutsListeners() —
+            // no toast, this also runs on every Dashboard visit.
+            cache.withdrawals = [];
+            console.error(e);
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          }
+        );
+      withdrawalsUnsubs.push(unsub);
+    });
   }
 
   function renderWithdrawals() {
@@ -6826,42 +6899,142 @@
         withdrawalId,
         action,
       });
-      await loadWithdrawals();
-      renderWithdrawals();
+      // Withdrawals is real-time (startWithdrawalsListeners) — the live
+      // onSnapshot listener picks up this write on its own.
       toast(paying ? "Withdrawal marked paid." : "Withdrawal rejected.", "success");
     } catch (e) {
       toast(e.message || String(e), "error");
     }
   }
 
-  async function loadRiderCash() {
-    if (cache.riders.length === 0) {
-      await loadRiders();
-    }
+  function stopRiderCashListeners() {
+    riderCashUnsubs.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (_) {}
+    });
+    riderCashUnsubs = [];
+  }
+
+  /**
+   * Rider cash real-time — mirrors startDashboardListeners() /
+   * startOngoingJobsListeners(): live onSnapshot listeners instead of
+   * one-shot get()s, so handovers, settlement history, and riders' cash-in-
+   * hand all update the instant Firestore changes — no manual Reload.
+   * Stopped in __legacyShowView the moment the admin navigates away.
+   */
+  async function startRiderCashListeners() {
+    stopRiderCashListeners();
     await loadPlatformFees();
-    try {
-      const snap = await db
-        .collectionGroup(COL.riderCashSettlements)
-        .where("status", "==", "requested")
-        .orderBy("requestedAt", "desc")
-        .limit(100)
-        .get(FS_GET_SERVER);
-      cache.cashSettlements = snap.docs.map((d) => ({
-        id: d.id,
-        // riders/{riderId}/cash_settlements/{id} — parent of the parent.
-        riderDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
-        ...d.data(),
-      }));
-    } catch (e) {
-      // See the matching comment in loadVendorPayouts() — no toast, this
-      // now also runs on every Dashboard visit.
-      cache.cashSettlements = [];
-      console.error(e);
-    }
-    cache.cashRiders = cache.riders
-      .filter((r) => riderCashInHand(r) > 0 || r.cashHoldActive === true)
-      .sort((a, b) => riderCashInHand(b) - riderCashInHand(a));
-    setRiderCashNavBadge(cache.cashSettlements.length);
+
+    let ridersById = new Map();
+    const recomputeCashRiders = () => {
+      cache.riders = Array.from(ridersById.values());
+      cache.cashRiders = cache.riders
+        .filter((r) => riderCashInHand(r) > 0 || r.cashHoldActive === true)
+        .sort((a, b) => riderCashInHand(b) - riderCashInHand(a));
+      renderRiderCash();
+    };
+
+    const waits = [];
+
+    waits.push(
+      new Promise((resolve) => {
+        let settled = false;
+        const unsub = db.collection(COL.riders).limit(200).onSnapshot(
+          (snap) => {
+            ridersById = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+            recomputeCashRiders();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          },
+          (e) => {
+            console.error(e);
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          }
+        );
+        riderCashUnsubs.push(unsub);
+      })
+    );
+
+    waits.push(
+      new Promise((resolve) => {
+        let settled = false;
+        const unsub = db
+          .collectionGroup(COL.riderCashSettlements)
+          .where("status", "==", "requested")
+          .orderBy("requestedAt", "desc")
+          .limit(100)
+          .onSnapshot(
+            (snap) => {
+              cache.cashSettlements = snap.docs.map((d) => ({
+                id: d.id,
+                // riders/{riderId}/cash_settlements/{id} — parent of the parent.
+                riderDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
+                ...d.data(),
+              }));
+              setRiderCashNavBadge(cache.cashSettlements.length);
+              renderRiderCash();
+              if (!settled) {
+                settled = true;
+                resolve();
+              }
+            },
+            (e) => {
+              // See the matching comment in startVendorPayoutsListeners() —
+              // no toast, this also runs on every Dashboard visit.
+              cache.cashSettlements = [];
+              console.error(e);
+              if (!settled) {
+                settled = true;
+                resolve();
+              }
+            }
+          );
+        riderCashUnsubs.push(unsub);
+      })
+    );
+
+    waits.push(
+      new Promise((resolve) => {
+        let settled = false;
+        const unsub = db
+          .collectionGroup(COL.riderCashSettlements)
+          .where("status", "in", ["confirmed", "rejected"])
+          .orderBy("requestedAt", "desc")
+          .limit(100)
+          .onSnapshot(
+            (snap) => {
+              cache.cashSettlementsHistory = snap.docs.map((d) => ({
+                id: d.id,
+                riderDocId: d.ref.parent.parent ? d.ref.parent.parent.id : "",
+                ...d.data(),
+              }));
+              renderRiderCash();
+              if (!settled) {
+                settled = true;
+                resolve();
+              }
+            },
+            (e) => {
+              cache.cashSettlementsHistory = [];
+              console.error(e);
+              if (!settled) {
+                settled = true;
+                resolve();
+              }
+            }
+          );
+        riderCashUnsubs.push(unsub);
+      })
+    );
+
+    await Promise.all(waits);
   }
 
   function renderRiderCash() {
@@ -6940,6 +7113,38 @@
           openRiderCashLedgerModal(btn.getAttribute("data-view-cash-ledger"))
         );
       });
+    }
+
+    const historyBody = document.querySelector("#table-cash-settlements-history tbody");
+    if (historyBody) {
+      const list = cache.cashSettlementsHistory || [];
+      historyBody.innerHTML = list.length === 0
+        ? '<tr><td colspan="7"><div class="empty-state">No past handovers yet.</div></td></tr>'
+        : list
+            .map((s) => {
+              const rider = cache.riders.find((r) => r.id === s.riderDocId);
+              const name = rider ? riderDisplayName(rider) : s.riderDocId || "Unknown rider";
+              const confirmed = s.status === "confirmed";
+              const decidedAt = confirmed ? s.confirmedAt : s.rejectedAt;
+              const depositedLkr = s.declaredAmountLkr != null ? s.declaredAmountLkr : s.amountLkr;
+              return `<tr>
+        <td data-label="Rider">${escapeHtml(name)}</td>
+        <td data-label="Amount"><strong>${escapeHtml(fmtMoney(s.amountLkr))}</strong></td>
+        <td data-label="Deposited">${escapeHtml(fmtMoney(depositedLkr))}</td>
+        <td data-label="Jobs">${escapeHtml(String(s.entryCount ?? (s.entryIds || []).length))}</td>
+        <td data-label="Method / Reference">
+          ${escapeHtml(s.method || "bank")}${s.reference ? ` · ${escapeHtml(s.reference)}` : ""}
+          ${s.referenceImageUrl ? `<div><a href="${escapeHtml(s.referenceImageUrl)}" target="_blank" rel="noopener noreferrer">View photo</a></div>` : ""}
+        </td>
+        <td data-label="Requested">${escapeHtml(fmtTs(s.requestedAt))}</td>
+        <td data-label="Outcome">
+          ${confirmed ? '<span class="badge">Settled</span>' : '<span class="badge badge-out">Rejected</span>'}
+          ${!confirmed && s.rejectReason ? `<div style="color:var(--muted);font-size:12px">${escapeHtml(s.rejectReason)}</div>` : ""}
+        </td>
+        <td data-label="Decided">${escapeHtml(fmtTs(decidedAt))}</td>
+      </tr>`;
+            })
+            .join("");
     }
   }
 
@@ -7034,9 +7239,8 @@
         settlementId,
         ...(confirming ? {} : { reason }),
       });
-      await loadRiders();
-      await loadRiderCash();
-      renderRiderCash();
+      // Rider cash is real-time (startRiderCashListeners) — the live
+      // onSnapshot listeners pick up this write on their own.
       toast(confirming ? "Cash settled. Rider can accept jobs again." : "Handover rejected.", "success");
     } catch (e) {
       toast(e.message || String(e), "error");
@@ -7062,28 +7266,58 @@
   const PRODUCT_CASH_STATUSES = ["owed", "remittance_requested", "remitted_to_admin", "settled_to_shop"];
   let shopCashActiveTab = "remitted_to_admin";
 
-  async function loadProductCash() {
+  function stopProductCashListeners() {
+    productCashUnsubs.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (_) {}
+    });
+    productCashUnsubs = [];
+  }
+
+  /**
+   * Real-time, mirroring startRiderCashListeners() — one live onSnapshot
+   * listener per status instead of one-shot get()s, stopped in
+   * __legacyShowView the moment the admin navigates away. Still no
+   * orderBy/limit per status — renderProductCash() groups by day and sorts
+   * client-side, and the old admin-wide (not per-shop) 100-doc cap could
+   * silently drop a shop's older rows once total pending COD orders across
+   * the platform passed 100. Matches the shop app's own equivalent query
+   * (vendor_product_cash_repository.dart), which was never capped.
+   */
+  async function startProductCashListeners() {
+    stopProductCashListeners();
     if (cache.vendors.length === 0) await loadVendors();
     if (cache.riders.length === 0) await loadRiders();
-    try {
-      // No orderBy/limit — renderProductCash() groups by day and sorts
-      // client-side, and the old admin-wide (not per-shop) 100-doc cap
-      // could silently drop a shop's older rows once total pending COD
-      // orders across the platform passed 100. Matches the shop app's own
-      // equivalent query (vendor_product_cash_repository.dart), which was
-      // never capped.
-      const snaps = await Promise.all(
-        PRODUCT_CASH_STATUSES.map((status) =>
-          db.collection(COL.orders).where("productCashStatus", "==", status).get(FS_GET_SERVER)
-        )
-      );
-      PRODUCT_CASH_STATUSES.forEach((status, i) => {
-        cache.productCash[status] = snaps[i].docs.map((d) => ({ id: d.id, ...d.data() }));
-      });
-    } catch (e) {
-      toast(e.message || String(e), "error");
-    }
-    setShopCashNavBadge();
+    const waits = PRODUCT_CASH_STATUSES.map(
+      (status) =>
+        new Promise((resolve) => {
+          let settled = false;
+          const unsub = db
+            .collection(COL.orders)
+            .where("productCashStatus", "==", status)
+            .onSnapshot(
+              (snap) => {
+                cache.productCash[status] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+                setShopCashNavBadge();
+                renderProductCash();
+                if (!settled) {
+                  settled = true;
+                  resolve();
+                }
+              },
+              (e) => {
+                toast(e.message || String(e), "error");
+                if (!settled) {
+                  settled = true;
+                  resolve();
+                }
+              }
+            );
+          productCashUnsubs.push(unsub);
+        })
+    );
+    await Promise.all(waits);
   }
 
   function setShopCashNavBadge() {
@@ -7242,8 +7476,8 @@
         console.error(e);
       }
     }
-    await loadProductCash();
-    renderProductCash();
+    // Shop cash is real-time (startProductCashListeners) — the live
+    // onSnapshot listeners pick up these writes on their own.
     if (failed > 0) {
       toast(`${n - failed} of ${n} ${orderWord} marked ${action.doneLabel}; ${failed} failed.`, "error");
     } else {
@@ -7542,9 +7776,9 @@
     savePlatformFeesFromForm().catch((e) => toast(e.message || String(e), "error"));
   });
   document.getElementById("btn-reload-withdrawals")?.addEventListener("click", () => {
-    loadWithdrawals()
-      .then(() => renderWithdrawals())
-      .catch((e) => toast(e.message || String(e), "error"));
+    // Data is live (startWithdrawalsListeners) — this just restarts the
+    // listener, useful if it dropped after an error.
+    startWithdrawalsListeners().catch((e) => toast(e.message || String(e), "error"));
   });
   document.querySelector("#table-withdrawals")?.addEventListener("click", (e) => {
     const payBtn = e.target.closest("[data-pay-withdrawal]");
@@ -7558,9 +7792,9 @@
     }
   });
   document.getElementById("btn-reload-vendor-payouts")?.addEventListener("click", () => {
-    loadVendorPayouts()
-      .then(() => renderVendorPayouts())
-      .catch((e) => toast(e.message || String(e), "error"));
+    // Data is live (startVendorPayoutsListeners) — this just restarts the
+    // listener, useful if it dropped after an error.
+    startVendorPayoutsListeners().catch((e) => toast(e.message || String(e), "error"));
   });
   document.querySelector("#table-vendor-payouts")?.addEventListener("click", (e) => {
     const payBtn = e.target.closest("[data-pay-vendor-payout]");
@@ -7574,9 +7808,9 @@
     }
   });
   document.getElementById("btn-reload-shop-cash")?.addEventListener("click", () => {
-    loadProductCash()
-      .then(() => renderProductCash())
-      .catch((e) => toast(e.message || String(e), "error"));
+    // Data is live (startProductCashListeners) — this just restarts the
+    // listeners, useful if one of them dropped after an error.
+    startProductCashListeners().catch((e) => toast(e.message || String(e), "error"));
   });
   document.getElementById("shop-cash-tabs")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-shop-cash-tab]");
@@ -7590,9 +7824,9 @@
   });
   document.getElementById("filter-shop-cash-shop")?.addEventListener("change", () => renderProductCash());
   document.getElementById("btn-reload-rider-cash")?.addEventListener("click", () => {
-    loadRiderCash()
-      .then(() => renderRiderCash())
-      .catch((e) => toast(e.message || String(e), "error"));
+    // Data is live (startRiderCashListeners) — this just restarts the
+    // listeners, useful if one of them dropped after an error.
+    startRiderCashListeners().catch((e) => toast(e.message || String(e), "error"));
   });
   document.querySelector("#table-cash-settlements")?.addEventListener("click", (e) => {
     const confirmBtn = e.target.closest("[data-confirm-cash]");

@@ -77,7 +77,7 @@ export function readCashCounters(
  * how long a rider has been blocked; callers delete the key from the patch
  * when an existing hold is merely continuing.
  */
-function counterPatch(
+export function counterPatch(
   counters: RiderCashCounters,
   holdActive: boolean,
   wasHeld: boolean,

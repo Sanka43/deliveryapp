@@ -1,7 +1,9 @@
 import {FieldValue, getFirestore} from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {assertAdmin} from "./adminAuth";
-import {REMITTABLE_PRODUCT_CASH} from "./riderCash";
+import {loadPlatformFeeConfig} from "./platformConfig";
+import {counterPatch, readCashCounters, REMITTABLE_PRODUCT_CASH} from "./riderCash";
+import {evaluateCashHold} from "./riderCashLogic";
 
 const REGION = "asia-south1";
 
@@ -14,6 +16,12 @@ const REGION = "asia-south1";
  * through the app's request-a-handover flow — can still record it here.
  * Same allowance the bulk cash-settlement flow already has
  * (adminConfirmCashSettlement in riderCash.ts).
+ *
+ * Also settles this order's own `cash_ledger` entry and decrements the
+ * rider's `cashInHandLkr` / `cashOwedToAdminLkr` counters — otherwise this
+ * shortcut (bypassing the rider's own handover flow) left the order marked
+ * remitted while the rider app kept showing that same cash as still owed,
+ * and it would get asked for again on the rider's next real handover.
  */
 export const adminMarkProductCashRemitted = onCall(
   {region: REGION},
@@ -29,6 +37,8 @@ export const adminMarkProductCashRemitted = onCall(
 
     const db = getFirestore();
     const ref = db.collection("orders").doc(orderId);
+    const maxCashInHandLkr = (await loadPlatformFeeConfig()).maxRiderCashInHandLkr;
+
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) {
@@ -42,6 +52,57 @@ export const adminMarkProductCashRemitted = onCall(
           `Expected productCashStatus "owed" or "remittance_requested", got "${status || "none"}".`,
         );
       }
+
+      const riderId = String(
+        data.productCashRiderId ?? data.riderId ?? data.assignedRiderId ?? "",
+      ).trim();
+      const riderRef = riderId ? db.collection("riders").doc(riderId) : null;
+      const ledgerRef = riderRef ?
+        riderRef.collection("cash_ledger").doc(`order_${orderId}`) :
+        null;
+      const [riderSnap, ledgerSnap] = riderRef && ledgerRef ?
+        await tx.getAll(riderRef, ledgerRef) :
+        [null, null];
+
+      if (ledgerSnap?.exists) {
+        const entryStatus = String(ledgerSnap.data()?.status ?? "").trim();
+        if (entryStatus === "pending_settlement") {
+          throw new HttpsError(
+            "failed-precondition",
+            "This rider already has a handover pending for this cash — " +
+              "confirm or reject it from the Rider cash page instead.",
+          );
+        }
+        if (entryStatus === "open") {
+          const entry = ledgerSnap.data() ?? {};
+          const wasHeld = riderSnap?.data()?.cashHoldActive === true;
+          const current = readCashCounters(riderSnap?.data());
+          const counters = {
+            cashInHandLkr: Math.max(
+              0,
+              current.cashInHandLkr - Math.round(Number(entry.cashLkr) || 0),
+            ),
+            cashOwedToAdminLkr: Math.max(
+              0,
+              current.cashOwedToAdminLkr - Math.round(Number(entry.owedLkr) || 0),
+            ),
+            cashPendingSettlementLkr: current.cashPendingSettlementLkr,
+            cashAdvanceCreditLkr: current.cashAdvanceCreditLkr,
+          };
+          const holdActive = evaluateCashHold({
+            cashInHandLkr: counters.cashInHandLkr,
+            maxCashInHandLkr,
+          });
+          tx.update(ledgerRef!, {
+            status: "settled",
+            settledAt: FieldValue.serverTimestamp(),
+          });
+          tx.set(riderRef!, counterPatch(counters, holdActive, wasHeld), {
+            merge: true,
+          });
+        }
+      }
+
       tx.update(ref, {
         productCashStatus: "remitted_to_admin",
         productCashRemittedAt: FieldValue.serverTimestamp(),
