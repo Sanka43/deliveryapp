@@ -5,6 +5,7 @@ import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
 import 'package:mnd_shop/core/utils/phone_call_launcher.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
+import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
 import 'package:mnd_shop/features/orders/presentation/widgets/vendor_item_variant_chip.dart';
 
 /// Polished "New order" popup shown when an order lands on the vendor board.
@@ -136,8 +137,45 @@ class _VendorNewOrderDialogState extends ConsumerState<VendorNewOrderDialog> {
     );
   }
 
+  /// Closes the popup on its own when the order no longer needs a
+  /// shop decision — e.g. the 7-minute `vendor_no_response` auto-cancel
+  /// sweep cancels it server-side, the customer cancels it, or another
+  /// device accepts/rejects it first. Without this the dialog just sits
+  /// there showing a live Accept/Reject on an order that's already gone.
+  void _dismissIfOrderLeftIncoming(VendorOrderBoard board) {
+    if (_busy) {
+      return;
+    }
+    final bool stillIncoming =
+        board.incoming.any((VendorPendingOrder o) => o.id == widget.order.id);
+    if (stillIncoming) {
+      return;
+    }
+    final NavigatorState navigator = Navigator.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    navigator.pop();
+    _snack(
+      messenger,
+      _vTxt(
+        context,
+        en: 'This order is no longer available',
+        si: 'මෙම ඇණවුම තවදුරටත් ලබා ගත නොහැක',
+      ),
+      error: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<VendorOrderBoard>>(
+      vendorOrderBoardProvider,
+      (_, AsyncValue<VendorOrderBoard> next) {
+        final VendorOrderBoard? board = next.valueOrNull;
+        if (board != null) {
+          _dismissIfOrderLeftIncoming(board);
+        }
+      },
+    );
     final VendorPendingOrder order = widget.order;
     final ThemeData theme = Theme.of(context);
     final ColorScheme cs = theme.colorScheme;
