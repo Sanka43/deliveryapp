@@ -34,6 +34,12 @@ import 'package:mnd_shop/features/jobs/presentation/pages/vendor_jobs_page.dart'
 import 'package:mnd_shop/features/reports/presentation/pages/vendor_reports_page.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
 
+/// Tracks whether a "Close shop account" request is in flight, so the tile
+/// can't be re-tapped to fire a second reauthenticate/deletion request
+/// while the first is still processing.
+final StateProvider<bool> _vendorAccountDeletionBusyProvider =
+    StateProvider<bool>((Ref ref) => false);
+
 /// Hub tab: shop identity, settings shortcuts, preferences, and account.
 class VendorSettingsPage extends ConsumerWidget {
   const VendorSettingsPage({super.key});
@@ -394,7 +400,9 @@ class VendorSettingsPage extends ConsumerWidget {
                   en: 'Permanently close this shop and remove sign-in',
                   si: 'Permanently close this shop and remove sign-in',
                 ),
-                onTap: () => _requestAccountDeletion(context, ref, shopName),
+                onTap: ref.watch(_vendorAccountDeletionBusyProvider)
+                    ? null
+                    : () => _requestAccountDeletion(context, ref, shopName),
               ),
             VendorSettingsNavTile(
               icon: Icons.logout_rounded,
@@ -448,6 +456,7 @@ class VendorSettingsPage extends ConsumerWidget {
       return;
     }
 
+    ref.read(_vendorAccountDeletionBusyProvider.notifier).state = true;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Closing shop account...')),
     );
@@ -512,6 +521,12 @@ class VendorSettingsPage extends ConsumerWidget {
             ),
           ),
         );
+      }
+    } finally {
+      // On success the account gets signed out above, which unmounts this
+      // page — only clear the flag when it's still around to see it.
+      if (context.mounted) {
+        ref.read(_vendorAccountDeletionBusyProvider.notifier).state = false;
       }
     }
   }

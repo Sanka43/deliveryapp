@@ -50,7 +50,7 @@ class VendorSettingsNavTile extends StatelessWidget {
   final String? subtitle;
   final int? trailingBadge;
   final bool trimBottomSpacing;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -59,81 +59,91 @@ class VendorSettingsNavTile extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.only(bottom: trimBottomSpacing ? 0 : 10),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? 0.5 : 1,
+        child: Material(
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(18),
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              color: theme.brightness == Brightness.dark
-                  ? cs.surfaceContainerLow
-                  : Colors.white,
-              border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.4),
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: cs.shadow.withValues(alpha: 0.08),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Ink(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: theme.brightness == Brightness.dark
+                    ? cs.surfaceContainerLow
+                    : Colors.white,
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.4),
                 ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
-                children: <Widget>[
-                  Icon(icon, color: AppColors.primaryBlue, size: 22),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          label,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: _primaryText(context),
-                          ),
-                        ),
-                        if (subtitle != null &&
-                            subtitle!.isNotEmpty) ...<Widget>[
-                          const SizedBox(height: 2),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: cs.shadow.withValues(alpha: 0.08),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Icon(icon, color: AppColors.primaryBlue, size: 22),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
                           Text(
-                            subtitle!,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: _mutedText(context),
+                            label,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: _primaryText(context),
                             ),
                           ),
+                          if (subtitle != null &&
+                              subtitle!.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle!,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: _mutedText(context),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  if (trailingBadge != null && trailingBadge! > 0) ...<Widget>[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cs.error,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        trailingBadge! > 99 ? '99+' : '$trailingBadge',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: cs.onError,
-                          fontWeight: FontWeight.w700,
+                    if (trailingBadge != null &&
+                        trailingBadge! > 0) ...<Widget>[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.error,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          trailingBadge! > 99 ? '99+' : '$trailingBadge',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: cs.onError,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 6),
+                    ],
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: _mutedText(context),
                     ),
-                    const SizedBox(width: 6),
                   ],
-                  Icon(Icons.chevron_right_rounded, color: _mutedText(context)),
-                ],
+                ),
               ),
             ),
           ),

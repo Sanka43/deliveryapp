@@ -155,6 +155,12 @@ class _ShopLoginPageState extends ConsumerState<ShopLoginPage> {
   }
 
   Future<void> _signIn() async {
+    // The submit button already disables on _busy, but onFieldSubmitted
+    // (Enter key) calls _signIn() directly — guard here too so a fast
+    // Enter-key repeat can't fire signInWithEmailAndPassword twice.
+    if (_busy) {
+      return;
+    }
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }

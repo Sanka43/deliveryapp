@@ -21,10 +21,12 @@ class ShopOtpPinField extends StatefulWidget {
 
 class _ShopOtpPinFieldState extends State<ShopOtpPinField> {
   final FocusNode _focus = FocusNode();
+  int _lastLength = 0;
 
   @override
   void initState() {
     super.initState();
+    _lastLength = widget.controller.text.length;
     widget.controller.addListener(_onTextChanged);
   }
 
@@ -36,9 +38,15 @@ class _ShopOtpPinFieldState extends State<ShopOtpPinField> {
   }
 
   void _onTextChanged() {
-    if (widget.controller.text.length >= 6) {
+    // TextEditingController notifies on selection-only changes too (e.g.
+    // refocusing the hidden field while already at 6 digits), not just text
+    // edits — only fire onCompleted on the actual <6 → 6 transition, or a
+    // refocus/tap could re-trigger verify while it's already in flight.
+    final int length = widget.controller.text.length;
+    if (length >= 6 && _lastLength < 6) {
       widget.onCompleted?.call();
     }
+    _lastLength = length;
     setState(() {});
   }
 

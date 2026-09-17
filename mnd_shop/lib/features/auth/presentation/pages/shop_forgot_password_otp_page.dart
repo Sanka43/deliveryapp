@@ -34,6 +34,9 @@ class _ShopForgotPasswordOtpPageState
   }
 
   Future<void> _verify() async {
+    if (_busy) {
+      return;
+    }
     final String code = _otp.text.trim();
     if (code.length != 6) {
       setState(() {
