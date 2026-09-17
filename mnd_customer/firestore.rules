@@ -436,6 +436,15 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // Platform-wide daily cash-flow aggregate for the mnd_web admin "Cash
+    // Flow" tab (functions/src/platformCashFlow.ts writes it via Admin SDK,
+    // which bypasses rules). Admin-only — this is aggregate revenue/payout
+    // data across every vendor and rider, not any single user's own data.
+    match /platform_daily_cashflow/{dateKey} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     // Products: public read for storefront; writes restricted.
     // Writes: admin, or the store owner (storeId == auth uid). Shop app ties storeId to uid;
     // do not rely only on customers/{uid}.role == 'vendor' (missing/out-of-sync profile caused

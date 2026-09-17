@@ -1,0 +1,189 @@
+import {dayKey} from "./vendorStatsLogic";
+
+/** One day's worth of increments to apply to `platform_daily_cashflow/{docId}`. */
+export type CashFlowMutation = {
+  docId: string;
+  increments: Record<string, number>;
+};
+
+function toDate(ts: unknown, fallback: Date): Date {
+  if (
+    ts != null &&
+    typeof ts === "object" &&
+    "toDate" in ts &&
+    typeof (ts as {toDate: unknown}).toDate === "function"
+  ) {
+    const d = (ts as {toDate: () => Date}).toDate();
+    if (d instanceof Date && !Number.isNaN(d.getTime())) {
+      return d;
+    }
+  }
+  return fallback;
+}
+
+export function readNumber(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function readStatus(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function single(
+  at: unknown,
+  field: string,
+  amount: number,
+  fallbackDate: Date,
+): CashFlowMutation[] {
+  if (amount === 0) {
+    return [];
+  }
+  return [{docId: dayKey(toDate(at, fallbackDate)), increments: {[field]: amount}}];
+}
+
+function isCompletedOrderStatus(status: string): boolean {
+  return status === "completed" || status === "delivered";
+}
+
+/**
+ * Order-level cash events — all three land on the same `orders/{orderId}`
+ * document, so one trigger covers them instead of three separate ones:
+ *  - Completion (status -> completed/delivered): platform income = the
+ *    admin-set orderCommissionLkr + the IPG gateway fee it fronted at
+ *    checkout; whatever coupon/referral discount applied on the order is
+ *    tracked as a cost. Reversed (direction -1) if the order is later
+ *    un-completed/cancelled after having been counted, mirroring
+ *    vendorStatsLogic's isCompletedStatus symmetry so the aggregate can't
+ *    drift from a status correction.
+ *  - Refund (paymentStatus -> refunded): outgoing = the refunded amount
+ *    (order.total — no separate refund-amount field exists; every refund
+ *    call site in orderRefunds.ts uses the order's own total).
+ *  - COD settlement (productCashStatus -> settled_to_shop): outgoing =
+ *    productCashLkr, the cash a rider collected that the platform has now
+ *    paid on to the shop.
+ * Deliberately does NOT include orderRiderCommissionLkr (the platform's
+ * cut of the delivery fee, credited in riderEarnings.ts) — that amount is
+ * capped by the actual delivery fee inside a computation this module would
+ * have to duplicate to get right, and getting it wrong would silently
+ * misstate income. Left for a later pass once that logic is shared instead
+ * of re-derived.
+ */
+export function mutationsForOrderUpdated(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  fallbackDate: Date,
+): CashFlowMutation[] {
+  const mutations: CashFlowMutation[] = [];
+  const at = after.deliveredAt ?? after.completedAt ?? after.createdAt;
+
+  const beforeCompleted = isCompletedOrderStatus(readStatus(before.status));
+  const afterCompleted = isCompletedOrderStatus(readStatus(after.status));
+  if (!beforeCompleted && afterCompleted) {
+    mutations.push(
+      ...single(at, "income.orderCommissionLkr", readNumber(after.orderCommissionLkr), fallbackDate),
+      ...single(at, "income.ipgFeeLkr", readNumber(after.ipgFeeLkr), fallbackDate),
+      ...single(at, "discountCost.couponsAndReferralsLkr", readNumber(after.discount), fallbackDate),
+    );
+  } else if (beforeCompleted && !afterCompleted) {
+    mutations.push(
+      ...single(at, "income.orderCommissionLkr", -readNumber(before.orderCommissionLkr), fallbackDate),
+      ...single(at, "income.ipgFeeLkr", -readNumber(before.ipgFeeLkr), fallbackDate),
+      ...single(at, "discountCost.couponsAndReferralsLkr", -readNumber(before.discount), fallbackDate),
+    );
+  }
+
+  if (readStatus(before.paymentStatus) !== "refunded" && readStatus(after.paymentStatus) === "refunded") {
+    mutations.push(
+      ...single(after.refundedAt ?? at, "outgoing.refundsPaidLkr", readNumber(after.total), fallbackDate),
+    );
+  }
+
+  if (
+    readStatus(before.productCashStatus) !== "settled_to_shop" &&
+    readStatus(after.productCashStatus) === "settled_to_shop"
+  ) {
+    mutations.push(
+      ...single(
+        after.productCashSettledAt ?? at,
+        "outgoing.codSettledToShopLkr",
+        readNumber(after.productCashLkr),
+        fallbackDate,
+      ),
+    );
+  }
+
+  return mutations;
+}
+
+/**
+ * Trip reaches completed+paid (same guard as onTripCompletedCreditRider):
+ * platform income = the flat rideCommissionLkr rate in effect right now.
+ * Rate isn't snapshotted per-trip, so a later rate change reclassifies
+ * historical days the same way the existing dashboard estimate already
+ * does — a known, pre-existing approximation, not new to this aggregate.
+ */
+export function mutationsForTripUpdated(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  rideCommissionLkr: number,
+  fallbackDate: Date,
+): CashFlowMutation[] {
+  const afterReady = readStatus(after.status) === "completed" && readStatus(after.paymentStatus) === "paid";
+  const beforeReady = readStatus(before.status) === "completed" && readStatus(before.paymentStatus) === "paid";
+  if (!afterReady || beforeReady) {
+    return [];
+  }
+  const fareLkr = readNumber(after.estimatedFareLkr);
+  if (fareLkr <= 0) {
+    return [];
+  }
+  const commissionLkr = Math.min(fareLkr, Math.max(0, rideCommissionLkr));
+  return single(after.updatedAt ?? after.createdAt, "income.rideCommissionLkr", commissionLkr, fallbackDate);
+}
+
+/** Rider withdrawal settled paid (adminSettleRiderWithdrawal). */
+export function mutationsForWithdrawalUpdated(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  fallbackDate: Date,
+): CashFlowMutation[] {
+  if (readStatus(before.status) === "paid" || readStatus(after.status) !== "paid") {
+    return [];
+  }
+  return single(
+    after.processedAt ?? after.createdAt,
+    "outgoing.riderWithdrawalsPaidLkr",
+    readNumber(after.amountLkr),
+    fallbackDate,
+  );
+}
+
+/** Vendor payout settled paid (adminSettleVendorPayout). */
+export function mutationsForPayoutUpdated(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  fallbackDate: Date,
+): CashFlowMutation[] {
+  if (readStatus(before.status) === "paid" || readStatus(after.status) !== "paid") {
+    return [];
+  }
+  return single(
+    after.processedAt ?? after.createdAt,
+    "outgoing.vendorPayoutsPaidLkr",
+    readNumber(after.amountLkr),
+    fallbackDate,
+  );
+}
+
+/** Monthly vendor commission invoice marked paid (mnd_web Fees & commissions page). */
+export function mutationsForMonthlyInvoiceUpdated(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  fallbackDate: Date,
+): CashFlowMutation[] {
+  if (readStatus(before.status) === "paid" || readStatus(after.status) !== "paid") {
+    return [];
+  }
+  return single(after.paidAt, "income.monthlyInvoiceLkr", readNumber(after.feeLkr), fallbackDate);
+}

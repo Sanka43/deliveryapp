@@ -114,3 +114,10 @@ export {
   onJobStatusUpdatedNotify,
   onJobApplicationCreatedNotify,
 } from "./jobs";
+export {
+  onOrderUpdatedCashFlow,
+  onTripUpdatedCashFlow,
+  onWithdrawalUpdatedCashFlow,
+  onVendorPayoutUpdatedCashFlow,
+  onMonthlyInvoiceUpdatedCashFlow,
+} from "./platformCashFlow";
