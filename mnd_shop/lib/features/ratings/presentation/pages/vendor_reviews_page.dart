@@ -272,6 +272,20 @@ class _ReviewTileState extends ConsumerState<_ReviewTile> {
       TextEditingController(text: widget.review.vendorReply);
 
   @override
+  void didUpdateWidget(covariant _ReviewTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // This tile is keyed by review id and reused across stream updates —
+    // _replyCtrl was only ever seeded once at construction, so a reply
+    // written from another device/session while this tile was open never
+    // refreshed it. Only resync while not actively composing, so a live
+    // update can't clobber text the vendor is mid-typing.
+    if (!_composing &&
+        widget.review.vendorReply != oldWidget.review.vendorReply) {
+      _replyCtrl.text = widget.review.vendorReply;
+    }
+  }
+
+  @override
   void dispose() {
     _replyCtrl.dispose();
     super.dispose();

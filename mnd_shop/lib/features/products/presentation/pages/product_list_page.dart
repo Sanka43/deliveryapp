@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mnd_shop/core/utils/user_facing_error.dart';
-import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/products/presentation/widgets/vendor_products_ui.dart';
 import 'package:mnd_shop/features/products/data/vendor_product_repository.dart';
-import 'package:mnd_shop/features/products/domain/vendor_product.dart';
 
 /// Upper bound for "low stock" band (1 through this many units).
 const int vendorLowStockMax = 9;
@@ -19,42 +15,6 @@ bool vendorCatalogCanAddProducts(
 }) {
   return effectiveStoreId.trim().isNotEmpty &&
       productCount < vendorProductLimitForShop(isGrocery: isGrocery);
-}
-
-Future<void> confirmDeleteVendorProduct(
-  BuildContext context,
-  WidgetRef ref,
-  VendorProduct p,
-) async {
-  final bool? ok = await showVendorConfirmDialog(
-    context,
-    title: 'Delete product?',
-    message: 'Remove "${p.name}" from the catalogue?',
-    confirmLabel: 'Delete',
-    destructive: true,
-  );
-  if (ok != true || !context.mounted) {
-    return;
-  }
-  try {
-    await ref.read(vendorProductRepositoryProvider).deleteProduct(p);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deleted · ${p.name}')));
-    }
-  } on Exception catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not delete. Please try again.',
-            ),
-          ),
-        ),
-      );
-    }
-  }
 }
 
 /// Square thumbnail for product cards (size defaults for modern grid/list density).

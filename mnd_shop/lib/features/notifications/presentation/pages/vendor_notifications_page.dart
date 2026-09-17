@@ -7,6 +7,11 @@ import 'package:mnd_shop/features/notifications/domain/vendor_notification.dart'
 import 'package:mnd_shop/features/notifications/presentation/providers/vendor_notifications_providers.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 
+/// Guards "Mark all read" against a fast double-tap firing two concurrent
+/// batch writes (idempotent, but no reason to let it happen twice).
+final AutoDisposeStateProvider<bool> _markAllReadBusyProvider =
+    StateProvider.autoDispose<bool>((Ref ref) => false);
+
 /// Lists Firestore notifications for `vendors/{storeId}/notifications`.
 class VendorNotificationsPage extends ConsumerWidget {
   const VendorNotificationsPage({super.key});
@@ -44,6 +49,7 @@ class VendorNotificationsPage extends ConsumerWidget {
     final ColorScheme cs = theme.colorScheme;
     final String storeId = ref.watch(vendorEffectiveStoreIdProvider).trim();
     final AsyncValue<List<VendorNotification>> list = ref.watch(vendorNotificationsListProvider);
+    final bool markAllReadBusy = ref.watch(_markAllReadBusyProvider);
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
@@ -52,18 +58,28 @@ class VendorNotificationsPage extends ConsumerWidget {
         actions: <Widget>[
           if (storeId.isNotEmpty)
             TextButton(
-              onPressed: () async {
-                final String? err =
-                    await ref.read(vendorNotificationsRepositoryProvider).markAllRead(storeId);
-                if (!context.mounted) {
-                  return;
-                }
-                if (err != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(err), backgroundColor: cs.error),
-                  );
-                }
-              },
+              onPressed: markAllReadBusy
+                  ? null
+                  : () async {
+                      ref.read(_markAllReadBusyProvider.notifier).state =
+                          true;
+                      final String? err = await ref
+                          .read(vendorNotificationsRepositoryProvider)
+                          .markAllRead(storeId);
+                      if (!context.mounted) {
+                        return;
+                      }
+                      ref.read(_markAllReadBusyProvider.notifier).state =
+                          false;
+                      if (err != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(err),
+                            backgroundColor: cs.error,
+                          ),
+                        );
+                      }
+                    },
               child: const Text('Mark all read'),
             ),
         ],

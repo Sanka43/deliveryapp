@@ -303,9 +303,9 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                                       message: _vTxt(
                                         context,
                                         en:
-                                            'Showing recent orders only (last 30 days). Older orders are hidden.',
+                                            'Showing recent orders only. Older orders are hidden.',
                                         si:
-                                            'මෑත ඇණවුම් පමණක් පෙන්වයි (දින 30). පැරණි ඇණවුම් සඟවා ඇත.',
+                                            'මෑත ඇණවුම් පමණක් පෙන්වයි. පැරණි ඇණවුම් සඟවා ඇත.',
                                       ),
                                       theme: theme,
                                       cs: cs,
@@ -379,7 +379,18 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                                   ),
                                   loading: () => const SizedBox(height: 120),
                                   error: (Object e, StackTrace s) =>
-                                      const SizedBox.shrink(),
+                                      _DashboardWarningBanner(
+                                    message: _vTxt(
+                                      context,
+                                      en: 'Could not load kitchen/ready orders.',
+                                      si:
+                                          'මුළුතැන්ගෙයි/සූදානම් ඇණවුම් load කරගත නොහැක.',
+                                    ),
+                                    theme: theme,
+                                    cs: cs,
+                                    onRetry: () =>
+                                        ref.invalidate(vendorOrderBoardProvider),
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 const _SalesPreviewCard(),
@@ -688,11 +699,13 @@ class _DashboardWarningBanner extends StatelessWidget {
     required this.message,
     required this.theme,
     required this.cs,
+    this.onRetry,
   });
 
   final String message;
   final ThemeData theme;
   final ColorScheme cs;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -717,6 +730,17 @@ class _DashboardWarningBanner extends StatelessWidget {
               ),
             ),
           ),
+          if (onRetry != null)
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: cs.error,
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Retry'),
+            ),
         ],
       ),
     );

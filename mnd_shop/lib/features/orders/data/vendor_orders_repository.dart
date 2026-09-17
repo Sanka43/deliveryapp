@@ -35,7 +35,11 @@ class VendorOrderBoard {
   final List<VendorPendingOrder> kitchen;
   final List<VendorPendingOrder> readyForPickup;
 
-  /// Reserved for a future `shipping` / out-for-delivery status; empty with current schema.
+  /// Orders a rider has claimed and is en route with — statuses
+  /// `out_for_delivery`/`picked_up`/`on_the_way` (see [VendorOrderStatus.isWithRider]),
+  /// set by the rider-claim transaction. Shown read-only in the "With rider"
+  /// section; do NOT remove this as dead code — it exists specifically so
+  /// the vendor can't accept/reject an order that's already with a rider.
   final List<VendorPendingOrder> outForDelivery;
   final List<VendorPendingOrder> completed;
   final List<VendorPendingOrder> cancelled;

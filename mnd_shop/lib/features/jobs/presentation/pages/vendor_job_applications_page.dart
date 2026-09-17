@@ -10,6 +10,14 @@ import 'package:mnd_shop/features/jobs/presentation/providers/vendor_jobs_provid
 import 'package:mnd_shop/features/products/presentation/widgets/vendor_products_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+/// Application ids with a Shortlist/Book/Reject request in flight, so a
+/// fast double-tap can't fire two concurrent status updates for the same
+/// applicant (server-side booking is transactional and safe either way,
+/// but a second tap otherwise surfaces a spurious "slots full" error toast
+/// for a tap that never should have gone through).
+final AutoDisposeStateProvider<Set<String>> _jobApplicationBusyIdsProvider =
+    StateProvider.autoDispose<Set<String>>((Ref ref) => const <String>{});
+
 class VendorJobApplicationsPage extends ConsumerWidget {
   const VendorJobApplicationsPage({required this.jobId, super.key});
 
@@ -33,6 +41,14 @@ class VendorJobApplicationsPage extends ConsumerWidget {
     String status,
     String message,
   ) async {
+    final Set<String> busy = ref.read(_jobApplicationBusyIdsProvider);
+    if (busy.contains(applicationId)) {
+      return;
+    }
+    ref.read(_jobApplicationBusyIdsProvider.notifier).state = <String>{
+      ...busy,
+      applicationId,
+    };
     try {
       await ref.read(vendorJobsRepositoryProvider).updateApplicationStatus(
             applicationId: applicationId,
@@ -56,6 +72,10 @@ class VendorJobApplicationsPage extends ConsumerWidget {
           ),
         );
       }
+    } finally {
+      final Set<String> current = ref.read(_jobApplicationBusyIdsProvider);
+      ref.read(_jobApplicationBusyIdsProvider.notifier).state =
+          <String>{...current}..remove(applicationId);
     }
   }
 
@@ -74,6 +94,8 @@ class VendorJobApplicationsPage extends ConsumerWidget {
         ref.watch(vendorJobDetailStreamProvider(jobId));
     final AsyncValue<List<JobApplication>> appsAsync =
         ref.watch(vendorJobApplicationsStreamProvider(jobId));
+    final Set<String> busyApplicationIds =
+        ref.watch(_jobApplicationBusyIdsProvider);
 
     return Scaffold(
       backgroundColor: VendorProductsTheme.canvas(context),
@@ -221,8 +243,10 @@ class VendorJobApplicationsPage extends ConsumerWidget {
                                   ?.copyWith(fontWeight: FontWeight.w700),
                             ),
                             const SizedBox(height: 8),
-                            ...rest.map(
-                              (JobApplication a) => _ApplicantTile(
+                            ...rest.map((JobApplication a) {
+                              final bool appBusy =
+                                  busyApplicationIds.contains(a.id);
+                              return _ApplicantTile(
                                 application: a,
                                 onCall: () => _call(a.applicantPhone),
                                 actions: a.status ==
@@ -230,17 +254,20 @@ class VendorJobApplicationsPage extends ConsumerWidget {
                                     ? null
                                     : <Widget>[
                                         TextButton(
-                                          onPressed: () => _setStatus(
-                                            ref,
-                                            context,
-                                            a.id,
-                                            JobApplicationStatus.shortlisted,
-                                            _vTxt(
-                                              context,
-                                              en: 'Shortlisted',
-                                              si: 'Shortlisted',
-                                            ),
-                                          ),
+                                          onPressed: appBusy
+                                              ? null
+                                              : () => _setStatus(
+                                                    ref,
+                                                    context,
+                                                    a.id,
+                                                    JobApplicationStatus
+                                                        .shortlisted,
+                                                    _vTxt(
+                                                      context,
+                                                      en: 'Shortlisted',
+                                                      si: 'Shortlisted',
+                                                    ),
+                                                  ),
                                           child: Text(
                                             _vTxt(
                                               context,
@@ -251,17 +278,20 @@ class VendorJobApplicationsPage extends ConsumerWidget {
                                         ),
                                         if (canBookMore)
                                           TextButton(
-                                            onPressed: () => _setStatus(
-                                              ref,
-                                              context,
-                                              a.id,
-                                              JobApplicationStatus.booked,
-                                              _vTxt(
-                                                context,
-                                                en: 'Worker booked',
-                                                si: 'Booked',
-                                              ),
-                                            ),
+                                            onPressed: appBusy
+                                                ? null
+                                                : () => _setStatus(
+                                                      ref,
+                                                      context,
+                                                      a.id,
+                                                      JobApplicationStatus
+                                                          .booked,
+                                                      _vTxt(
+                                                        context,
+                                                        en: 'Worker booked',
+                                                        si: 'Booked',
+                                                      ),
+                                                    ),
                                             child: Text(
                                               _vTxt(
                                                 context,
@@ -271,17 +301,20 @@ class VendorJobApplicationsPage extends ConsumerWidget {
                                             ),
                                           ),
                                         TextButton(
-                                          onPressed: () => _setStatus(
-                                            ref,
-                                            context,
-                                            a.id,
-                                            JobApplicationStatus.rejected,
-                                            _vTxt(
-                                              context,
-                                              en: 'Rejected',
-                                              si: 'ප්‍රතික්ෂේප',
-                                            ),
-                                          ),
+                                          onPressed: appBusy
+                                              ? null
+                                              : () => _setStatus(
+                                                    ref,
+                                                    context,
+                                                    a.id,
+                                                    JobApplicationStatus
+                                                        .rejected,
+                                                    _vTxt(
+                                                      context,
+                                                      en: 'Rejected',
+                                                      si: 'ප්‍රතික්ෂේප',
+                                                    ),
+                                                  ),
                                           child: Text(
                                             _vTxt(
                                               context,
@@ -291,8 +324,8 @@ class VendorJobApplicationsPage extends ConsumerWidget {
                                           ),
                                         ),
                                       ],
-                              ),
-                            ),
+                              );
+                            }),
                           ],
                         ],
                       );
