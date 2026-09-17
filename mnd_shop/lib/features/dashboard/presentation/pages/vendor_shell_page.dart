@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/vendor_shell_tab_provider.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
-import 'package:mnd_shop/features/dashboard/presentation/pages/vendor_analytics_tab_page.dart';
 import 'package:mnd_shop/features/dashboard/presentation/pages/vendor_dashboard_page.dart';
 import 'package:mnd_shop/features/orders/presentation/pages/vendor_orders_tab_page.dart';
 import 'package:mnd_shop/features/products/presentation/pages/vendor_catalog_hub_page.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
 import 'package:mnd_shop/features/profile/presentation/pages/vendor_settings_page.dart';
+import 'package:mnd_shop/features/reports/presentation/pages/vendor_reports_page.dart';
 
 /// Main authenticated shell: Home, Products, Orders, Analytics, Settings.
 class VendorShellPage extends ConsumerWidget {
@@ -55,7 +55,7 @@ class VendorShellPage extends ConsumerWidget {
         VendorDashboardPage(),
         VendorCatalogHubPage(),
         VendorOrdersTabPage(),
-        VendorAnalyticsTabPage(),
+        VendorReportsPage(embedded: true),
         VendorSettingsPage(),
       ],
     );

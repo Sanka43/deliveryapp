@@ -15,6 +15,7 @@ import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_catalog_metrics_snapshot.dart';
 import 'package:mnd_shop/features/dashboard/presentation/providers/vendor_catalog_metrics_provider.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_dashboard_ui.dart';
+import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bottom_nav.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
 import 'package:mnd_shop/features/products/domain/vendor_product.dart';
@@ -29,7 +30,15 @@ import 'package:mnd_shop/features/reports/presentation/widgets/vendor_analytics_
 import 'package:printing/printing.dart';
 
 class VendorReportsPage extends ConsumerWidget {
-  const VendorReportsPage({super.key});
+  const VendorReportsPage({super.key, this.embedded = false});
+
+  /// True when shown as the Analytics bottom-nav tab (inside the shell's
+  /// IndexedStack, no back stack to pop to) rather than pushed as a
+  /// standalone route. Hides the back button; everything else is
+  /// identical — this used to be a separate ~600-line near-duplicate
+  /// page (VendorAnalyticsTabPage) that only showed a lighter subset of
+  /// this content and linked out to this page for the rest.
+  final bool embedded;
 
   static const int _lowStockMax = vendorLowStockMax;
   static const Color _accent = AppColors.vendorHeroBlue;
@@ -271,25 +280,28 @@ class VendorReportsPage extends ConsumerWidget {
                       height: 48,
                       child: Row(
                         children: <Widget>[
-                          SizedBox(
-                            width: 36,
-                            child: IconButton(
-                              tooltip: MaterialLocalizations.of(context)
-                                  .backButtonTooltip,
-                              onPressed: () =>
-                                  Navigator.of(context).maybePop(),
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                              alignment: Alignment.centerLeft,
-                              icon: Icon(
-                                Icons.arrow_back_rounded,
-                                size: 24,
-                                color: theme.brightness == Brightness.dark
-                                    ? cs.onSurface
-                                    : AppColors.textCharcoal,
+                          if (embedded)
+                            const SizedBox(width: 4)
+                          else
+                            SizedBox(
+                              width: 36,
+                              child: IconButton(
+                                tooltip: MaterialLocalizations.of(context)
+                                    .backButtonTooltip,
+                                onPressed: () =>
+                                    Navigator.of(context).maybePop(),
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                alignment: Alignment.centerLeft,
+                                icon: Icon(
+                                  Icons.arrow_back_rounded,
+                                  size: 24,
+                                  color: theme.brightness == Brightness.dark
+                                      ? cs.onSurface
+                                      : AppColors.textCharcoal,
+                                ),
                               ),
                             ),
-                          ),
                           Expanded(
                             child: Align(
                               alignment: const Alignment(-1, -0.08),
@@ -557,7 +569,20 @@ class VendorReportsPage extends ConsumerWidget {
                 ),
               ),
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 28),
+                padding: EdgeInsets.fromLTRB(
+                  gutter,
+                  0,
+                  gutter,
+                  // Embedded in the shell, the floating pill nav overlays the
+                  // bottom of the scroll view (Scaffold.extendBody) — clear
+                  // it the same way every other shell tab does.
+                  embedded
+                      ? VendorPillBottomNav.scrollBottomPadding(
+                          context,
+                          extra: 0,
+                        )
+                      : 28,
+                ),
                 sliver: SliverToBoxAdapter(
                   child: _ProductWiseSalesPanel(
                     rows: data.productRows.take(20).toList(growable: false),
