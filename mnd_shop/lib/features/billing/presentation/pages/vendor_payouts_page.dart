@@ -10,6 +10,8 @@ import 'package:mnd_shop/features/billing/domain/vendor_wallet.dart';
 import 'package:mnd_shop/features/billing/presentation/providers/vendor_product_cash_providers.dart';
 import 'package:mnd_shop/features/billing/presentation/providers/vendor_wallet_providers.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
+import 'package:mnd_shop/features/reports/presentation/widgets/vendor_analytics_widgets.dart'
+    show vendorAnalyticsFormatMoney;
 
 const int _kMinPayoutLkr = 1000;
 
@@ -19,7 +21,7 @@ const int _kMinPayoutLkr = 1000;
 class VendorPayoutsPage extends ConsumerWidget {
   const VendorPayoutsPage({super.key});
 
-  static String _money(double v) => 'Rs. ${v.toStringAsFixed(2)}';
+  static String _money(double v) => vendorAnalyticsFormatMoney(v);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -276,19 +278,35 @@ class _WalletStat extends StatelessWidget {
 class _ProductCashSummaryCard extends ConsumerWidget {
   const _ProductCashSummaryCard();
 
-  static String _money(double v) => 'Rs. ${v.toStringAsFixed(2)}';
+  static String _money(double v) => vendorAnalyticsFormatMoney(v);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
+    final AsyncValue<VendorProductCashBucket> owedAsync =
+        ref.watch(vendorProductCashOwedProvider);
+    final AsyncValue<VendorProductCashBucket> requestedAsync =
+        ref.watch(vendorProductCashRequestedProvider);
+    final AsyncValue<VendorProductCashBucket> withAdminAsync =
+        ref.watch(vendorProductCashWithAdminProvider);
+    final AsyncValue<VendorProductCashBucket> settledAsync =
+        ref.watch(vendorProductCashSettledProvider);
     final VendorProductCashBucket owed =
-        ref.watch(vendorProductCashOwedProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+        owedAsync.valueOrNull ?? (totalLkr: 0, count: 0);
     final VendorProductCashBucket requested =
-        ref.watch(vendorProductCashRequestedProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+        requestedAsync.valueOrNull ?? (totalLkr: 0, count: 0);
     final VendorProductCashBucket withAdmin =
-        ref.watch(vendorProductCashWithAdminProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+        withAdminAsync.valueOrNull ?? (totalLkr: 0, count: 0);
     final VendorProductCashBucket settled =
-        ref.watch(vendorProductCashSettledProvider).valueOrNull ?? (totalLkr: 0, count: 0);
+        settledAsync.valueOrNull ?? (totalLkr: 0, count: 0);
+    // The zeros above are also what a genuinely-clear ledger looks like —
+    // without this, a failed watchStatus() stream read the same as "nothing
+    // owed", which is the wrong thing to show a shop for money it's owed.
+    final bool hasError = owedAsync.hasError ||
+        requestedAsync.hasError ||
+        withAdminAsync.hasError ||
+        settledAsync.hasError;
 
     String stat(VendorProductCashBucket b) => '${_money(b.totalLkr)} (${b.count})';
 
@@ -309,6 +327,34 @@ class _ProductCashSummaryCard extends ConsumerWidget {
               color: AppColors.textCharcoal,
             ),
           ),
+          if (hasError) ...<Widget>[
+            const SizedBox(height: 10),
+            Row(
+              children: <Widget>[
+                Icon(Icons.error_outline_rounded, color: cs.error, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _vTxt(
+                      context,
+                      en: 'Could not load cash totals — numbers below may be wrong.',
+                      si: 'Cash totals load කරගත නොහැක — පහත සංඛ්‍යා වැරදි විය හැක.',
+                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    ref.invalidate(vendorProductCashOwedProvider);
+                    ref.invalidate(vendorProductCashRequestedProvider);
+                    ref.invalidate(vendorProductCashWithAdminProvider);
+                    ref.invalidate(vendorProductCashSettledProvider);
+                  },
+                  child: Text(_vTxt(context, en: 'Retry', si: 'නැවත උත්සාහ කරන්න')),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: <Widget>[

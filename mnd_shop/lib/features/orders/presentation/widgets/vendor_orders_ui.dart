@@ -534,6 +534,7 @@ class VendorOrderListCard extends StatefulWidget {
 class _VendorOrderListCardState extends State<VendorOrderListCard> {
   bool _primaryPressed = false;
   bool _primaryBusy = false;
+  bool _secondaryBusy = false;
 
   Color get _stageAccent => switch (widget.stage) {
         VendorOrderCardStage.urgent => VendorOrdersStageColors.newOrders,
@@ -561,6 +562,24 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
     } finally {
       if (mounted) {
         setState(() => _primaryBusy = false);
+      }
+    }
+  }
+
+  Future<void> _runSecondary() async {
+    // Same double-tap guard as _runPrimary — Decline had none, so a fast
+    // double-tap fired rejectOrder() twice with no feedback that the first
+    // tap had already registered.
+    if (widget.onSecondary == null || _secondaryBusy) {
+      return;
+    }
+    HapticFeedback.lightImpact();
+    setState(() => _secondaryBusy = true);
+    try {
+      await widget.onSecondary!();
+    } finally {
+      if (mounted) {
+        setState(() => _secondaryBusy = false);
       }
     }
   }
@@ -832,7 +851,7 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                       if (widget.onSecondary != null && widget.secondaryLabel != null) ...<Widget>[
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: widget.onSecondary,
+                            onPressed: _secondaryBusy ? null : _runSecondary,
                             style: OutlinedButton.styleFrom(
                               foregroundColor: titleColor,
                               backgroundColor: cardBg,
@@ -848,7 +867,16 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                                 fontSize: 14,
                               ),
                             ),
-                            child: Text(widget.secondaryLabel!),
+                            child: _secondaryBusy
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: titleColor,
+                                    ),
+                                  )
+                                : Text(widget.secondaryLabel!),
                           ),
                         ),
                         const SizedBox(width: 10),

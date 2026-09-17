@@ -283,7 +283,15 @@ class VendorOrdersRepository {
     if (id.isEmpty || _auth.currentUser == null) {
       return Stream<VendorOrderBoard>.value(VendorOrderBoard.empty);
     }
-    final DateTime lookbackStart = DateTime.now().subtract(const Duration(days: 30));
+    final DateTime now = DateTime.now();
+    final DateTime monthStart = DateTime(now.year, now.month, 1);
+    final DateTime thirtyDaysAgo = now.subtract(const Duration(days: 30));
+    // VendorSalesAggregator.fromOrders computes "this month" from
+    // monthStart — a plain 30-day lookback falls short of that on the
+    // later days of a 31-day month, silently dropping day-1 orders from
+    // the month total. Always cover at least the whole current month.
+    final DateTime lookbackStart =
+        thirtyDaysAgo.isBefore(monthStart) ? thirtyDaysAgo : monthStart;
     final Timestamp lookbackTimestamp = Timestamp.fromDate(lookbackStart);
     return _orders
         .where('vendorId', isEqualTo: id)

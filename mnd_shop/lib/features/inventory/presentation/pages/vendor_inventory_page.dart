@@ -142,6 +142,37 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
     }
   }
 
+  Future<void> _confirmAndAutoHideOutOfStock(int outCount) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Hide out-of-stock products?'),
+        content: Text(
+          outCount == 1
+              ? 'This will take the 1 out-of-stock product offline. Customers '
+                  'will not see it until you restock and re-enable it.'
+              : 'This will take all $outCount out-of-stock products offline. '
+                  'Customers will not see them until you restock and re-enable '
+                  'each one.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Hide'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    await _autoHideOutOfStock();
+  }
+
   Future<void> _autoHideOutOfStock() async {
     final String storeId = ref.read(vendorProductCatalogStoreIdProvider).trim();
     if (storeId.isEmpty) {
@@ -270,7 +301,9 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
                         ),
                         IconButton.filledTonal(
                           tooltip: 'Hide out-of-stock products',
-                          onPressed: _bulkBusy ? null : _autoHideOutOfStock,
+                          onPressed: (_bulkBusy || out == 0)
+                              ? null
+                              : () => _confirmAndAutoHideOutOfStock(out),
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(Icons.visibility_off_outlined),
                         ),

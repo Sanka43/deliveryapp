@@ -15,7 +15,21 @@ String vendorAnalyticsFormatLkr(double v) {
   return v.toStringAsFixed(0);
 }
 
-String vendorAnalyticsFormatMoney(double v) => 'Rs. ${v.toStringAsFixed(2)}';
+/// 'Rs. 1,234,567.89' — grouped by thousands. Plain `toStringAsFixed` read
+/// as an unbroken string of digits for any real payout/revenue figure.
+String vendorAnalyticsFormatMoney(double v) {
+  final bool negative = v < 0;
+  final List<String> parts = v.abs().toStringAsFixed(2).split('.');
+  final String whole = parts[0];
+  final StringBuffer grouped = StringBuffer();
+  for (int i = 0; i < whole.length; i++) {
+    if (i > 0 && (whole.length - i) % 3 == 0) {
+      grouped.write(',');
+    }
+    grouped.write(whole[i]);
+  }
+  return 'Rs. ${negative ? '-' : ''}$grouped.${parts[1]}';
+}
 
 class VendorAnalyticsRangeSelector extends StatelessWidget {
   const VendorAnalyticsRangeSelector({

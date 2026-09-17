@@ -621,16 +621,18 @@ class _IncomingOrdersSection extends StatelessWidget {
               error: (Object e, _) => _EmptyOrdersPanel(
                 title: _vTxt(
                   context,
-                  en: 'No incoming orders yet',
-                  si: 'තවම එන ඇණවුම් නැත',
+                  en: 'Could not load orders',
+                  si: 'ඇණවුම් load කරගත නොහැක',
                 ),
                 subtitle: _vTxt(
                   context,
-                  en: 'Orders will appear here when customers place them.',
-                  si: 'පාරිභෝගිකයන් ඇණවුම් දාන විට මෙතන පෙන්වයි.',
+                  en: 'Check your connection and try again.',
+                  si: 'ඔබේ සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.',
                 ),
-                icon: Icons.move_to_inbox_rounded,
+                icon: Icons.error_outline_rounded,
                 embeddedInSection: true,
+                isError: true,
+                onRetry: () => ref.invalidate(vendorOrderBoardProvider),
               ),
             ),
           ),
@@ -1162,12 +1164,18 @@ class _EmptyOrdersPanel extends StatelessWidget {
     this.subtitle,
     this.icon = Icons.move_to_inbox_rounded,
     this.embeddedInSection = false,
+    this.isError = false,
+    this.onRetry,
   });
 
   final String title;
   final String? subtitle;
   final IconData icon;
   final bool embeddedInSection;
+  // Distinguishes "the feed failed to load" from a genuine empty state —
+  // same copy for both used to read as "no orders today" either way.
+  final bool isError;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -1177,7 +1185,7 @@ class _EmptyOrdersPanel extends StatelessWidget {
     final Widget body = Column(
       children: <Widget>[
         _EmptyOrdersIllustration(
-          color: cs.primary.withValues(alpha: 0.85),
+          color: (isError ? cs.error : cs.primary).withValues(alpha: 0.85),
           icon: icon,
           colorScheme: cs,
         ),
@@ -1189,7 +1197,7 @@ class _EmptyOrdersPanel extends StatelessWidget {
             fontWeight: FontWeight.w800,
             letterSpacing: -0.45,
             height: 1.15,
-            color: VendorDashboardTheme.primaryText(context),
+            color: isError ? cs.error : VendorDashboardTheme.primaryText(context),
           ),
         ),
         if (hasSubtitle) ...<Widget>[
@@ -1202,6 +1210,10 @@ class _EmptyOrdersPanel extends StatelessWidget {
               height: 1.45,
             ),
           ),
+        ],
+        if (onRetry != null) ...<Widget>[
+          const SizedBox(height: 10),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ],
     );
