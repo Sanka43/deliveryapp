@@ -26,25 +26,8 @@ class VendorAnalyticsTabPage extends ConsumerWidget {
 
   static const int _lowStockMax = 9;
 
-  Future<void> _pickCustomRange(BuildContext context, WidgetRef ref) async {
-    final VendorAnalyticsRange current = ref.read(vendorAnalyticsRangeProvider);
-    final DateTimeRange? picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2024),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-      initialDateRange: DateTimeRange(
-        start: current.start.toLocal(),
-        end: current.end.toLocal(),
-      ),
-    );
-    if (picked == null) {
-      return;
-    }
-    ref.read(vendorAnalyticsRangeProvider.notifier).state = current.custom(
-      picked.start,
-      picked.end,
-    );
-  }
+  Future<void> _pickCustomRange(BuildContext context, WidgetRef ref) =>
+      pickVendorAnalyticsCustomRange(context, ref);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

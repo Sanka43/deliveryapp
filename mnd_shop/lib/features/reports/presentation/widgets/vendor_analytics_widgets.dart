@@ -2,12 +2,14 @@ import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_catalog_metrics_snapshot.dart';
 import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_dashboard_ui.dart';
 import 'package:mnd_shop/features/products/domain/vendor_product.dart';
 import 'package:mnd_shop/features/reports/data/vendor_stats_repository.dart';
 import 'package:mnd_shop/features/reports/domain/vendor_report_snapshot.dart';
+import 'package:mnd_shop/features/reports/presentation/providers/vendor_reports_provider.dart';
 
 String vendorAnalyticsFormatLkr(double v) {
   if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
@@ -29,6 +31,57 @@ String vendorAnalyticsFormatMoney(double v) {
     grouped.write(whole[i]);
   }
   return 'Rs. ${negative ? '-' : ''}$grouped.${parts[1]}';
+}
+
+/// Caps how wide a custom range can be. An earlier version of this picker
+/// had no upper bound, so a multi-year span issued an unbounded (no
+/// `.limit()`) daily + per-product Firestore query on every load. Shared by
+/// the Reports page and the dashboard Analytics tab (both write the same
+/// [vendorAnalyticsRangeProvider]) so the cap can't drift out of sync
+/// between two near-identical pickers again, which is exactly what
+/// happened the first time this was fixed in only one of them.
+const int vendorAnalyticsMaxCustomRangeDays = 366;
+
+Future<void> pickVendorAnalyticsCustomRange(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  final VendorAnalyticsRange current = ref.read(vendorAnalyticsRangeProvider);
+  final DateTimeRange? picked = await showDateRangePicker(
+    context: context,
+    firstDate: DateTime(2024),
+    lastDate: DateTime.now().add(const Duration(days: 1)),
+    initialDateRange: DateTimeRange(
+      start: current.start.toLocal(),
+      end: current.end.toLocal(),
+    ),
+  );
+  if (picked == null) {
+    return;
+  }
+  DateTime start = picked.start;
+  final DateTime end = picked.end;
+  if (end.difference(start).inDays > vendorAnalyticsMaxCustomRangeDays) {
+    start = end.subtract(
+      const Duration(days: vendorAnalyticsMaxCustomRangeDays),
+    );
+    if (context.mounted) {
+      final String languageCode = Localizations.localeOf(context).languageCode;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            languageCode == 'si'
+                ? 'Custom range එක අවුරුද්දකට සීමා වේ — ගැලපෙන පරිදි කෙටි කළා.'
+                : 'Custom range is capped at 1 year — shortened to fit.',
+          ),
+        ),
+      );
+    }
+  }
+  ref.read(vendorAnalyticsRangeProvider.notifier).state = current.custom(
+    start,
+    end,
+  );
 }
 
 class VendorAnalyticsRangeSelector extends StatelessWidget {

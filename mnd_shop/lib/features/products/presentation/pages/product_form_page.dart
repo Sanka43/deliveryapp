@@ -735,6 +735,14 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   }
 
   Future<void> _save() async {
+    // Must be set before the first `await` below (the duplicate-name check),
+    // not just before the upload/write step further down — otherwise the
+    // Save button stays enabled for that whole round trip and a fast
+    // double-tap re-enters this method before either call has committed,
+    // creating two duplicate products.
+    if (_saving) {
+      return;
+    }
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -763,6 +771,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       );
       return;
     }
+
+    setState(() => _saving = true);
     final bool nameTaken = await ref
         .read(vendorProductRepositoryProvider)
         .nameExistsInStore(
@@ -774,6 +784,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       return;
     }
     if (nameTaken) {
+      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -790,6 +801,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     if (_pricedOptionsMode) {
       final List<ProductSizeOption>? built = _tryBuildSizeOptionsList();
       if (built == null) {
+        setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -800,6 +812,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         return;
       }
       if (built.isEmpty) {
+        setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Enter at least one price (or add a custom option).'),
@@ -814,7 +827,6 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       sizeOptions = const <ProductSizeOption>[];
     }
 
-    setState(() => _saving = true);
     try {
       final VendorProductRepository repo =
           ref.read(vendorProductRepositoryProvider);

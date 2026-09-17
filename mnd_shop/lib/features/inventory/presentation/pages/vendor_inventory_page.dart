@@ -142,6 +142,38 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
     }
   }
 
+  /// Every stock control (+/-, typed quantity) unconditionally sets
+  /// `manageStock: true` server-side — so tapping one on a product marked
+  /// "Not tracked" used to silently switch it into stock-tracked mode with
+  /// no warning, and it could later vanish from customer view when it hit
+  /// zero. Confirm first; already-tracked products skip straight through.
+  Future<bool> _confirmEnableStockTracking(VendorProduct product) async {
+    if (product.manageStock) {
+      return true;
+    }
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Start tracking stock?'),
+        content: Text(
+          '"${product.name}" isn\'t stock-tracked yet. Turning this on lets '
+          'its quantity reach 0 and go out of stock automatically.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Start tracking'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _confirmAndAutoHideOutOfStock(int outCount) async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
@@ -351,9 +383,26 @@ class _VendorInventoryPageState extends ConsumerState<VendorInventoryPage> {
                               product: product,
                               controller: _controllerFor(product),
                               busy: _busyIds.contains(product.id),
-                              onMinus: () => _adjustStock(product, -1),
-                              onPlus: () => _adjustStock(product, 1),
-                              onSubmit: () {
+                              onMinus: () async {
+                                if (await _confirmEnableStockTracking(
+                                  product,
+                                )) {
+                                  _adjustStock(product, -1);
+                                }
+                              },
+                              onPlus: () async {
+                                if (await _confirmEnableStockTracking(
+                                  product,
+                                )) {
+                                  _adjustStock(product, 1);
+                                }
+                              },
+                              onSubmit: () async {
+                                if (!await _confirmEnableStockTracking(
+                                  product,
+                                )) {
+                                  return;
+                                }
                                 final int? qty = int.tryParse(
                                   _controllerFor(product).text.trim(),
                                 );

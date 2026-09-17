@@ -37,8 +37,17 @@ import 'package:mnd_shop/features/dashboard/presentation/widgets/vendor_pill_bot
 /// Tracks whether a "Close shop account" request is in flight, so the tile
 /// can't be re-tapped to fire a second reauthenticate/deletion request
 /// while the first is still processing.
-final StateProvider<bool> _vendorAccountDeletionBusyProvider =
-    StateProvider<bool>((Ref ref) => false);
+///
+/// autoDispose matters here: on success this page unmounts (via signOut())
+/// before the `finally` block's `context.mounted` guard lets it reset the
+/// flag back to false, so a plain (non-autoDispose) StateProvider would
+/// keep reporting "busy" for the rest of the app process — permanently
+/// disabling this tile for whichever vendor account signs in next on the
+/// same app instance. autoDispose discards the state as soon as nothing
+/// watches it (i.e. once this page unmounts), so the next time this page
+/// is built it starts fresh.
+final AutoDisposeStateProvider<bool> _vendorAccountDeletionBusyProvider =
+    StateProvider.autoDispose<bool>((Ref ref) => false);
 
 /// Hub tab: shop identity, settings shortcuts, preferences, and account.
 class VendorSettingsPage extends ConsumerWidget {

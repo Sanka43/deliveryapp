@@ -33,48 +33,9 @@ class VendorReportsPage extends ConsumerWidget {
 
   static const int _lowStockMax = vendorLowStockMax;
   static const Color _accent = AppColors.vendorHeroBlue;
-  // Caps how wide a custom range can be — the range picker had no upper
-  // bound, so a multi-year span issued an unbounded (no `.limit()`) daily +
-  // per-product Firestore query on every load.
-  static const int _maxCustomRangeDays = 366;
 
-  Future<void> _pickCustomRange(BuildContext context, WidgetRef ref) async {
-    final VendorAnalyticsRange current = ref.read(vendorAnalyticsRangeProvider);
-    final DateTimeRange? picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2024),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-      initialDateRange: DateTimeRange(
-        start: current.start.toLocal(),
-        end: current.end.toLocal(),
-      ),
-    );
-    if (picked == null) {
-      return;
-    }
-    DateTime start = picked.start;
-    final DateTime end = picked.end;
-    if (end.difference(start).inDays > _maxCustomRangeDays) {
-      start = end.subtract(const Duration(days: _maxCustomRangeDays));
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _vTxt(
-                context,
-                en: 'Custom range is capped at 1 year — shortened to fit.',
-                si: 'Custom range එක අවුරුද්දකට සීමා වේ — ගැලපෙන පරිදි කෙටි කළා.',
-              ),
-            ),
-          ),
-        );
-      }
-    }
-    ref.read(vendorAnalyticsRangeProvider.notifier).state = current.custom(
-      start,
-      end,
-    );
-  }
+  Future<void> _pickCustomRange(BuildContext context, WidgetRef ref) =>
+      pickVendorAnalyticsCustomRange(context, ref);
 
   ShopReportParty _shopParty(WidgetRef ref) {
     final Map<String, dynamic>? doc =

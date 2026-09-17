@@ -6,12 +6,14 @@ import 'package:mnd_shop/core/utils/user_facing_error.dart';
 import 'package:mnd_shop/features/billing/domain/vendor_monthly_invoice.dart';
 import 'package:mnd_shop/features/billing/presentation/providers/vendor_monthly_invoices_providers.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
+import 'package:mnd_shop/features/reports/presentation/widgets/vendor_analytics_widgets.dart'
+    show vendorAnalyticsFormatMoney;
 
 /// Monthly platform fee invoices for the signed-in shop (read-only).
 class VendorMonthlyFeesPage extends ConsumerWidget {
   const VendorMonthlyFeesPage({super.key});
 
-  static String _money(double v) => 'Rs. ${v.toStringAsFixed(2)}';
+  static String _money(double v) => vendorAnalyticsFormatMoney(v);
 
   static String _monthLabel(String monthKey) {
     final List<String> parts = monthKey.split('-');
