@@ -77,107 +77,132 @@ export const backfillPlatformCashFlow = onCall(
 
     const totals = new Map<string, Record<string, number>>();
     const now = new Date();
+    const failedSteps: Record<string, string> = {};
+    const scannedCounts: Record<string, number> = {};
 
-    const completedOrders = await db
-      .collection("orders")
-      .where("status", "in", ["completed", "delivered"])
-      .get();
-    for (const doc of completedOrders.docs) {
-      const o = doc.data();
-      const at = o.deliveredAt ?? o.completedAt ?? o.createdAt;
-      const d = dayKey(toDate(at, now));
-      add(totals, d, "income.orderCommissionLkr", readNumber(o.orderCommissionLkr));
-      add(totals, d, "income.ipgFeeLkr", readNumber(o.ipgFeeLkr));
-      add(totals, d, "discountCost.couponsAndReferralsLkr", readNumber(o.discount));
-    }
-
-    const refundedOrders = await db
-      .collection("orders")
-      .where("paymentStatus", "==", "refunded")
-      .get();
-    for (const doc of refundedOrders.docs) {
-      const o = doc.data();
-      const at = o.refundedAt ?? o.createdAt;
-      add(totals, dayKey(toDate(at, now)), "outgoing.refundsPaidLkr", readNumber(o.total));
-    }
-
-    const settledOrders = await db
-      .collection("orders")
-      .where("productCashStatus", "==", "settled_to_shop")
-      .get();
-    for (const doc of settledOrders.docs) {
-      const o = doc.data();
-      const at = o.productCashSettledAt ?? o.createdAt;
-      add(
-        totals,
-        dayKey(toDate(at, now)),
-        "outgoing.codSettledToShopLkr",
-        readNumber(o.productCashLkr),
-      );
-    }
-
-    const {rideCommissionLkr} = await loadPlatformFeeConfig();
-    const completedTrips = await db
-      .collection("trips")
-      .where("status", "==", "completed")
-      .get();
-    for (const doc of completedTrips.docs) {
-      const t = doc.data();
-      if (String(t.paymentStatus ?? "").trim().toLowerCase() !== "paid") {
-        continue;
+    // Each step is isolated: one query failing (e.g. a collection-group
+    // index that's still building) must not discard every other step's
+    // already-fetched, already-accumulated data — a single try/catch
+    // around the whole function would do exactly that, since nothing gets
+    // written until the very end. Failed steps are reported back so
+    // they're easy to identify and re-run (this function is safe to call
+    // again; FieldValue.increment only double-counts steps that actually
+    // wrote, and a failed step never wrote anything).
+    async function step(name: string, run: () => Promise<number>): Promise<void> {
+      try {
+        scannedCounts[name] = await run();
+      } catch (e) {
+        failedSteps[name] = e instanceof Error ? e.message : String(e);
+        logger.warn(`backfillPlatformCashFlow step failed: ${name}`, {error: failedSteps[name]});
       }
-      const fareLkr = readNumber(t.estimatedFareLkr);
-      if (fareLkr <= 0) {
-        continue;
+    }
+
+    await step("completedOrders", async () => {
+      const snap = await db
+        .collection("orders")
+        .where("status", "in", ["completed", "delivered"])
+        .get();
+      for (const doc of snap.docs) {
+        const o = doc.data();
+        const at = o.deliveredAt ?? o.completedAt ?? o.createdAt;
+        const d = dayKey(toDate(at, now));
+        add(totals, d, "income.orderCommissionLkr", readNumber(o.orderCommissionLkr));
+        add(totals, d, "income.ipgFeeLkr", readNumber(o.ipgFeeLkr));
+        add(totals, d, "discountCost.couponsAndReferralsLkr", readNumber(o.discount));
       }
-      const commissionLkr = Math.min(fareLkr, Math.max(0, rideCommissionLkr));
-      const at = t.updatedAt ?? t.createdAt;
-      add(totals, dayKey(toDate(at, now)), "income.rideCommissionLkr", commissionLkr);
-    }
+      return snap.size;
+    });
 
-    const paidWithdrawals = await db
-      .collectionGroup("withdrawals")
-      .where("status", "==", "paid")
-      .get();
-    for (const doc of paidWithdrawals.docs) {
-      const w = doc.data();
-      const at = w.processedAt ?? w.createdAt;
-      add(
-        totals,
-        dayKey(toDate(at, now)),
-        "outgoing.riderWithdrawalsPaidLkr",
-        readNumber(w.amountLkr),
-      );
-    }
+    await step("refundedOrders", async () => {
+      const snap = await db.collection("orders").where("paymentStatus", "==", "refunded").get();
+      for (const doc of snap.docs) {
+        const o = doc.data();
+        const at = o.refundedAt ?? o.createdAt;
+        add(totals, dayKey(toDate(at, now)), "outgoing.refundsPaidLkr", readNumber(o.total));
+      }
+      return snap.size;
+    });
 
-    const paidPayouts = await db
-      .collectionGroup("payouts")
-      .where("status", "==", "paid")
-      .get();
-    for (const doc of paidPayouts.docs) {
-      const p = doc.data();
-      const at = p.processedAt ?? p.createdAt;
-      add(
-        totals,
-        dayKey(toDate(at, now)),
-        "outgoing.vendorPayoutsPaidLkr",
-        readNumber(p.amountLkr),
-      );
-    }
+    await step("settledOrders", async () => {
+      const snap = await db
+        .collection("orders")
+        .where("productCashStatus", "==", "settled_to_shop")
+        .get();
+      for (const doc of snap.docs) {
+        const o = doc.data();
+        const at = o.productCashSettledAt ?? o.createdAt;
+        add(
+          totals,
+          dayKey(toDate(at, now)),
+          "outgoing.codSettledToShopLkr",
+          readNumber(o.productCashLkr),
+        );
+      }
+      return snap.size;
+    });
 
-    const paidInvoices = await db
-      .collectionGroup("monthly_invoices")
-      .where("status", "==", "paid")
-      .get();
-    for (const doc of paidInvoices.docs) {
-      const inv = doc.data();
-      add(
-        totals,
-        dayKey(toDate(inv.paidAt, now)),
-        "income.monthlyInvoiceLkr",
-        readNumber(inv.feeLkr),
-      );
-    }
+    await step("completedTrips", async () => {
+      const {rideCommissionLkr} = await loadPlatformFeeConfig();
+      const snap = await db.collection("trips").where("status", "==", "completed").get();
+      for (const doc of snap.docs) {
+        const t = doc.data();
+        if (String(t.paymentStatus ?? "").trim().toLowerCase() !== "paid") {
+          continue;
+        }
+        const fareLkr = readNumber(t.estimatedFareLkr);
+        if (fareLkr <= 0) {
+          continue;
+        }
+        const commissionLkr = Math.min(fareLkr, Math.max(0, rideCommissionLkr));
+        const at = t.updatedAt ?? t.createdAt;
+        add(totals, dayKey(toDate(at, now)), "income.rideCommissionLkr", commissionLkr);
+      }
+      return snap.size;
+    });
+
+    await step("paidWithdrawals", async () => {
+      const snap = await db.collectionGroup("withdrawals").where("status", "==", "paid").get();
+      for (const doc of snap.docs) {
+        const w = doc.data();
+        const at = w.processedAt ?? w.createdAt;
+        add(
+          totals,
+          dayKey(toDate(at, now)),
+          "outgoing.riderWithdrawalsPaidLkr",
+          readNumber(w.amountLkr),
+        );
+      }
+      return snap.size;
+    });
+
+    await step("paidPayouts", async () => {
+      const snap = await db.collectionGroup("payouts").where("status", "==", "paid").get();
+      for (const doc of snap.docs) {
+        const p = doc.data();
+        const at = p.processedAt ?? p.createdAt;
+        add(
+          totals,
+          dayKey(toDate(at, now)),
+          "outgoing.vendorPayoutsPaidLkr",
+          readNumber(p.amountLkr),
+        );
+      }
+      return snap.size;
+    });
+
+    await step("paidInvoices", async () => {
+      const snap = await db.collectionGroup("monthly_invoices").where("status", "==", "paid").get();
+      for (const doc of snap.docs) {
+        const inv = doc.data();
+        add(
+          totals,
+          dayKey(toDate(inv.paidAt, now)),
+          "income.monthlyInvoiceLkr",
+          readNumber(inv.feeLkr),
+        );
+      }
+      return snap.size;
+    });
 
     const entries = Array.from(totals.entries());
     const ref = db.collection("platform_daily_cashflow");
@@ -200,21 +225,27 @@ export const backfillPlatformCashFlow = onCall(
       await batch.commit();
     }
 
-    await markerRef.set({
-      completedAt: FieldValue.serverTimestamp(),
-      byUid: request.auth.uid,
-      daysWritten: entries.length,
-    });
+    const hasFailures = Object.keys(failedSteps).length > 0;
+    // Only mark fully complete if every step succeeded — a partial run
+    // (e.g. a collection-group index still building) can be safely
+    // re-run: FieldValue.increment only double-counts a step that
+    // actually wrote data, and no step here writes twice for the same
+    // event within one run.
+    if (!hasFailures) {
+      await markerRef.set({
+        completedAt: FieldValue.serverTimestamp(),
+        byUid: request.auth.uid,
+        daysWritten: entries.length,
+      });
+    }
 
     logger.info("backfillPlatformCashFlow complete", {
       days: entries.length,
-      ordersScanned: completedOrders.size + refundedOrders.size + settledOrders.size,
-      tripsScanned: completedTrips.size,
-      withdrawalsScanned: paidWithdrawals.size,
-      payoutsScanned: paidPayouts.size,
-      invoicesScanned: paidInvoices.size,
+      scannedCounts,
+      failedSteps,
+      markedComplete: !hasFailures,
     });
 
-    return {daysWritten: entries.length};
+    return {daysWritten: entries.length, scannedCounts, failedSteps, markedComplete: !hasFailures};
   },
 );
