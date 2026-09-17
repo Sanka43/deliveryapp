@@ -1424,7 +1424,10 @@
       attachDashboardListener(
         db
           .collectionGroup(COL.riderWithdrawals)
-          .where("status", "in", ["pending", "approved"])
+          // Includes "paid" (not just pending/approved) so the dashboard's
+          // Income-vs-outgoings chart can show money that actually went
+          // out, not only still-queued requests.
+          .where("status", "in", ["pending", "approved", "paid"])
           .orderBy("createdAt", "desc")
           .limit(100),
         (snap) => {
@@ -1435,7 +1438,11 @@
 
     waits.push(
       attachDashboardListener(
-        db.collectionGroup(COL.vendorPayouts).where("status", "==", "pending").orderBy("createdAt", "desc").limit(100),
+        db
+          .collectionGroup(COL.vendorPayouts)
+          .where("status", "in", ["pending", "paid"])
+          .orderBy("createdAt", "desc")
+          .limit(100),
         (snap) => {
           cache.vendorPayouts = withParentId(snap).map((p) => ({ ...p, vendorDocId: p.parentDocId }));
         }

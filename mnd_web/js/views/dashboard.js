@@ -252,6 +252,9 @@
 
   // Same day-bucketing as bucketByDay() above, but sums a value per item
   // instead of counting items — used for the income/outgoings chart.
+  // dateField may be a field name (string) or a function(item) -> raw
+  // timestamp, for callers that need to bucket by whichever of two fields
+  // an item actually has (e.g. settled date if paid, else requested date).
   function bucketByDaySum(items, days, dateField, valueFn) {
     const now = new Date();
     const daysArr = [];
@@ -263,7 +266,8 @@
     }
     const sums = daysArr.map(() => 0);
     items.forEach((it) => {
-      const d = tsToDate(it[dateField]);
+      const raw = typeof dateField === "function" ? dateField(it) : it[dateField];
+      const d = tsToDate(raw);
       if (!d) return;
       for (let i = 0; i < daysArr.length; i++) {
         const dayEnd = new Date(daysArr[i]);
@@ -316,10 +320,14 @@
   // create/edit) + a flat per-ride commission rate for completed rides,
   // since trips don't carry a per-trip commission snapshot — same
   // approximation the "Platform fees" stat tile already uses. Outgoings:
-  // rider withdrawal + vendor payout amounts requested that day (cache.
-  // withdrawals/vendorPayouts only hold pending/approved rows, not a full
-  // paid-out ledger, so this reads as "money queued to go out" per day
-  // rather than a strict cash-flow statement).
+  // rider withdrawal + vendor payout amounts, bucketed by processedAt
+  // (the day an admin actually paid/rejected it) when settled, or
+  // createdAt while still pending. cache.withdrawals/vendorPayouts are
+  // capped at the 100 most-recently-requested rows each (dashboard-only
+  // listener, separate from the dedicated Withdrawals/Vendor Payouts
+  // management pages' own pending-only listeners) — a request old enough
+  // to have scrolled out of that cap won't show here even if settled
+  // today, same caveat as the existing 200-doc order/trip caps.
   function renderDashboardIncomeVsOutgoings() {
     const el = document.getElementById("dashboard-income-outgoings-chart");
     if (!el || !window.MndCharts) return;
@@ -333,8 +341,23 @@
     const rideIncome = bucketByDaySum(completedTrips, days, "createdAt", () => rideRate);
     const incomePoints = orderIncome.map((p, i) => ({ label: p.label, value: p.value + rideIncome[i].value }));
 
-    const withdrawalOut = bucketByDaySum(cache.withdrawals || [], days, "createdAt", (w) => Number(w.amountLkr) || 0);
-    const payoutOut = bucketByDaySum(cache.vendorPayouts || [], days, "createdAt", (p) => Number(p.amountLkr) || 0);
+    // Bucket by the day money actually moved (processedAt, once an admin
+    // pays/rejects it) rather than the day it was requested (createdAt) —
+    // otherwise a payout that sat pending for a while and got paid today
+    // shows up on its request date instead of today, or not at all once
+    // the request date scrolls out of the selected range.
+    const withdrawalOut = bucketByDaySum(
+      cache.withdrawals || [],
+      days,
+      (w) => w.processedAt || w.createdAt,
+      (w) => Number(w.amountLkr) || 0
+    );
+    const payoutOut = bucketByDaySum(
+      cache.vendorPayouts || [],
+      days,
+      (p) => p.processedAt || p.createdAt,
+      (p) => Number(p.amountLkr) || 0
+    );
     const outgoingPoints = withdrawalOut.map((p, i) => ({ label: p.label, value: p.value + payoutOut[i].value }));
 
     window.MndCharts.renderMultiLineChart(
@@ -346,7 +369,7 @@
       {
         id: "dashboard-income-outgoings",
         title: `Income vs outgoings — last ${days} days`,
-        desc: "Platform commission earned vs rider/vendor payout amounts requested, by day.",
+        desc: "Platform commission earned vs rider/vendor payout amounts paid or still pending, by day.",
         xLabel: "Date",
         yLabel: "LKR",
         height: 130,
