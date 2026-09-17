@@ -121,3 +121,4 @@ export {
   onVendorPayoutUpdatedCashFlow,
   onMonthlyInvoiceUpdatedCashFlow,
 } from "./platformCashFlow";
+export {backfillPlatformCashFlow} from "./platformCashFlowBackfill";
