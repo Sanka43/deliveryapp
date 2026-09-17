@@ -411,6 +411,20 @@ service cloud.firestore {
         allow read: if vendorNonAdminStoreOwner(vendorId) || isAdmin();
         allow write: if isAdmin();
       }
+
+      // Daily/per-product sales aggregates written server-side (order
+      // triggers, via Admin SDK) for the shop app's Reports/Analytics
+      // pages. No explicit rule existed for these before, so every client
+      // read was denied by the default-deny fallback — the UI silently
+      // showed "Rs. 0 / no sales" instead of surfacing the failure.
+      match /daily_stats/{dateKey} {
+        allow read: if vendorNonAdminStoreOwner(vendorId) || isAdmin();
+        allow write: if isAdmin();
+      }
+      match /product_daily_stats/{docId} {
+        allow read: if vendorNonAdminStoreOwner(vendorId) || isAdmin();
+        allow write: if isAdmin();
+      }
     }
 
     // Admin web billing / fee config (mnd_web). Any signed-in user may read —
