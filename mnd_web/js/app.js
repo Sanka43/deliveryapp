@@ -1052,6 +1052,7 @@
     dashboard: "Dashboard",
     orders: "Orders",
     rides: "Rides",
+    "cash-flow": "Cash Flow",
     vendors: "Vendors",
     products: "Products",
     banners: "Banners",
@@ -1117,6 +1118,9 @@
     }
     if (currentView === "refunds" && name !== "refunds") {
       stopRefundRequestsListeners();
+    }
+    if (currentView === "cash-flow" && name !== "cash-flow" && window.stopCashFlowListeners) {
+      window.stopCashFlowListeners();
     }
     currentView = name;
     elPageTitle.textContent = titles[name] || name;
@@ -1552,6 +1556,10 @@
     }
     if (name === "orders") await Promise.all([loadOrdersPage("first"), loadCustomers(), loadVendors()]);
     if (name === "rides") await Promise.all([loadTrips(), loadCustomers(), loadRiders()]);
+    if (name === "cash-flow") {
+      if (cache.riders.length === 0) await loadRiders();
+      await window.startCashFlowListeners();
+    }
     if (name === "vendors" || name === "approvals") {
       await loadVendors();
     }
@@ -1591,6 +1599,7 @@
       await loadMonthlyInvoicesForSelectedMonth();
     }
     if (name === "dashboard") renderDashboard();
+    if (name === "cash-flow" && window.renderCashFlow) window.renderCashFlow();
     if (name === "orders") renderOrders();
     if (name === "rides") renderTrips();
     if (name === "vendors") renderVendors();
