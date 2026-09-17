@@ -81,6 +81,25 @@ function isCompletedOrderStatus(status: string): boolean {
 }
 
 /**
+ * Referral rewards are implemented entirely as newly-minted single-use
+ * coupons (functions/src/referrals.ts) rather than their own ledger:
+ * `REF-{code}-{uid}` for the referee's signup discount,
+ * `REFR-{orderId}` for the referrer's reward once that referee's first
+ * order is delivered. Both prefixes start with "REF", which is what lets
+ * this split their cost out from ordinary admin/vendor coupon discounts
+ * without a separate data model.
+ */
+function isReferralCouponCode(couponCode: unknown): boolean {
+  return String(couponCode ?? "").trim().toUpperCase().startsWith("REF");
+}
+
+export function discountCostField(order: Record<string, unknown>): string {
+  return isReferralCouponCode(order.couponCode)
+    ? "discountCost.referralsLkr"
+    : "discountCost.couponsLkr";
+}
+
+/**
  * Order-level cash events — all three land on the same `orders/{orderId}`
  * document, so one trigger covers them instead of three separate ones:
  *  - Completion (status -> completed/delivered): platform income = the
@@ -117,13 +136,13 @@ export function mutationsForOrderUpdated(
     mutations.push(
       ...single(at, "income.orderCommissionLkr", readNumber(after.orderCommissionLkr), fallbackDate),
       ...single(at, "income.ipgFeeLkr", readNumber(after.ipgFeeLkr), fallbackDate),
-      ...single(at, "discountCost.couponsAndReferralsLkr", readNumber(after.discount), fallbackDate),
+      ...single(at, discountCostField(after), readNumber(after.discount), fallbackDate),
     );
   } else if (beforeCompleted && !afterCompleted) {
     mutations.push(
       ...single(at, "income.orderCommissionLkr", -readNumber(before.orderCommissionLkr), fallbackDate),
       ...single(at, "income.ipgFeeLkr", -readNumber(before.ipgFeeLkr), fallbackDate),
-      ...single(at, "discountCost.couponsAndReferralsLkr", -readNumber(before.discount), fallbackDate),
+      ...single(at, discountCostField(before), -readNumber(before.discount), fallbackDate),
     );
   }
 

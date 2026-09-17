@@ -50,8 +50,33 @@ test("order placed to delivered counts commission, IPG fee, and discount cost on
   assert.deepEqual(mutations, [
     {docId: "2026-07-11", increments: {"income.orderCommissionLkr": 120}},
     {docId: "2026-07-11", increments: {"income.ipgFeeLkr": 30}},
-    {docId: "2026-07-11", increments: {"discountCost.couponsAndReferralsLkr": 50}},
+    {docId: "2026-07-11", increments: {"discountCost.couponsLkr": 50}},
   ]);
+});
+
+test("order with a referral coupon counts discount as a referral cost, not a plain coupon", () => {
+  const before = order({couponCode: "REF-WELCOME10-AB12CD"});
+  const after = order({status: "delivered", deliveredAt, couponCode: "REF-WELCOME10-AB12CD"});
+
+  const mutations = mutationsForOrderUpdated(before, after, fixedDate);
+
+  assert.deepEqual(mutations, [
+    {docId: "2026-07-11", increments: {"income.orderCommissionLkr": 120}},
+    {docId: "2026-07-11", increments: {"income.ipgFeeLkr": 30}},
+    {docId: "2026-07-11", increments: {"discountCost.referralsLkr": 50}},
+  ]);
+});
+
+test("order with a referrer-reward coupon (REFR- prefix) also counts as referral cost", () => {
+  const before = order({couponCode: "REFR-ABC123"});
+  const after = order({status: "delivered", deliveredAt, couponCode: "REFR-ABC123"});
+
+  const mutations = mutationsForOrderUpdated(before, after, fixedDate);
+
+  assert.deepEqual(mutations[2], {
+    docId: "2026-07-11",
+    increments: {"discountCost.referralsLkr": 50},
+  });
 });
 
 test("delivered to delivered update does not double-count", () => {
@@ -70,7 +95,7 @@ test("delivered order reverted (e.g. status correction) reverses the income", ()
   assert.deepEqual(mutations, [
     {docId: "2026-07-11", increments: {"income.orderCommissionLkr": -120}},
     {docId: "2026-07-11", increments: {"income.ipgFeeLkr": -30}},
-    {docId: "2026-07-11", increments: {"discountCost.couponsAndReferralsLkr": -50}},
+    {docId: "2026-07-11", increments: {"discountCost.couponsLkr": -50}},
   ]);
 });
 

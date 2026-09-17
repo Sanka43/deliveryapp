@@ -230,7 +230,8 @@
       breakdownRow("Vendor payouts paid", f["outgoing.vendorPayoutsPaidLkr"] || 0, "vendor-payouts"),
       breakdownRow("COD cash settled to shops", f["outgoing.codSettledToShopLkr"] || 0, "shop-cash"),
       breakdownRow("Refunds paid", f["outgoing.refundsPaidLkr"] || 0, "refunds"),
-      breakdownRow("Coupon & referral discount cost", f["discountCost.couponsAndReferralsLkr"] || 0, "coupons"),
+      breakdownRow("Coupon discount cost", f["discountCost.couponsLkr"] || 0, "coupons"),
+      breakdownRow("Referral reward cost", f["discountCost.referralsLkr"] || 0, "coupons"),
     ].join("");
     bindGoNav(tbody);
   }

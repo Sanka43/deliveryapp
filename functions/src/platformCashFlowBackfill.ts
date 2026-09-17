@@ -2,7 +2,7 @@ import {FieldValue, getFirestore} from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {assertAdmin} from "./adminAuth";
-import {nestDottedFields, readNumber} from "./platformCashFlowLogic";
+import {discountCostField, nestDottedFields, readNumber} from "./platformCashFlowLogic";
 import {loadPlatformFeeConfig} from "./platformConfig";
 import {dayKey} from "./vendorStatsLogic";
 
@@ -108,7 +108,7 @@ export const backfillPlatformCashFlow = onCall(
         const d = dayKey(toDate(at, now));
         add(totals, d, "income.orderCommissionLkr", readNumber(o.orderCommissionLkr));
         add(totals, d, "income.ipgFeeLkr", readNumber(o.ipgFeeLkr));
-        add(totals, d, "discountCost.couponsAndReferralsLkr", readNumber(o.discount));
+        add(totals, d, discountCostField(o), readNumber(o.discount));
       }
       return snap.size;
     });
