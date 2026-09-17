@@ -738,6 +738,14 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    final bool hasExistingImage =
+        widget.product != null && widget.product!.imageUrl.trim().isNotEmpty;
+    if (_pickedBytes == null && !hasExistingImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a product photo.')),
+      );
+      return;
+    }
     final bool isGrocery = ref.read(isGroceryShopProvider);
     if (isGrocery && _pricedOptionsMode) {
       _priceVariableKind = 'pack';
@@ -752,6 +760,26 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     if (isGrocery && _productCategory.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select a product aisle.')),
+      );
+      return;
+    }
+    final bool nameTaken = await ref
+        .read(vendorProductRepositoryProvider)
+        .nameExistsInStore(
+          storeId: storeId,
+          name: _nameCtrl.text,
+          excludingProductId: widget.product?.id,
+        );
+    if (!mounted) {
+      return;
+    }
+    if (nameTaken) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'You already have a product with this name. Use a different name to avoid confusing customers.',
+          ),
+        ),
       );
       return;
     }

@@ -179,6 +179,71 @@ void main() {
     );
   });
 
+  group('VendorProductRepository nameExistsInStore', () {
+    late FakeFirebaseFirestore firestore;
+    late VendorProductRepository repo;
+
+    setUp(() {
+      firestore = FakeFirebaseFirestore();
+      repo = VendorProductRepository(
+        firestore: firestore,
+        storage: MockFirebaseStorage(),
+      );
+    });
+
+    Future<void> seedNamed(String id, String name, {String storeId = 'store-1'}) {
+      return firestore
+          .collection(FirebaseCollections.products)
+          .doc(id)
+          .set(<String, dynamic>{
+            'storeId': storeId,
+            'storeName': 'Store',
+            'name': name,
+            'description': '',
+            'price': 100,
+            'imageUrl': '',
+            'lookupKey': id,
+            'active': true,
+            'stockQty': 1,
+          });
+    }
+
+    test('is case/whitespace-insensitive within the same store', () async {
+      await seedNamed('p1', 'Cheese Koththu');
+
+      expect(
+        await repo.nameExistsInStore(storeId: 'store-1', name: '  cheese koththu  '),
+        isTrue,
+      );
+      expect(
+        await repo.nameExistsInStore(storeId: 'store-1', name: 'Chicken Koththu'),
+        isFalse,
+      );
+    });
+
+    test('ignores a match from a different store', () async {
+      await seedNamed('p1', 'Cheese Koththu', storeId: 'store-2');
+
+      expect(
+        await repo.nameExistsInStore(storeId: 'store-1', name: 'Cheese Koththu'),
+        isFalse,
+      );
+    });
+
+    test('excludes the product being edited', () async {
+      await seedNamed('p1', 'Cheese Koththu');
+
+      expect(
+        await repo.nameExistsInStore(
+          storeId: 'store-1',
+          name: 'Cheese Koththu',
+          excludingProductId: 'p1',
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('VendorProductRepository create limit', () {
     late FakeFirebaseFirestore firestore;
     late VendorProductRepository repo;
@@ -306,6 +371,76 @@ void main() {
               .data();
       expect(created?['productCategory'], 'Fresh Produce');
       expect(await repo.countByStore('store-1'), vendorMaxProductsPerShop + 1);
+    });
+
+    test(
+      'createProduct seeds and increments vendors/{storeId}.productCount',
+      () async {
+        await seedStoreProducts('store-1', 2);
+
+        await repo.createProduct(
+          productId: 'new-1',
+          storeId: 'store-1',
+          storeName: 'Store',
+          name: 'Fresh item',
+          description: '',
+          priceLkr: 250,
+          sizeOptions: const <ProductSizeOption>[],
+          imageUrl: '',
+          active: true,
+          stockQty: 2,
+          etaLabel: '10-15 min',
+        );
+
+        final Map<String, dynamic>? vendorDoc =
+            (await firestore
+                    .collection(FirebaseCollections.vendors)
+                    .doc('store-1')
+                    .get())
+                .data();
+        // 2 pre-existing (query-seeded) + the one just created.
+        expect(vendorDoc?['productCount'], 3);
+      },
+    );
+
+    test('deleteProduct decrements vendors/{storeId}.productCount', () async {
+      await seedStoreProducts('store-1', 3);
+      // Establish the counter the same way createProduct would.
+      await repo.createProduct(
+        productId: 'extra-1',
+        storeId: 'store-1',
+        storeName: 'Store',
+        name: 'Extra item',
+        description: '',
+        priceLkr: 100,
+        sizeOptions: const <ProductSizeOption>[],
+        imageUrl: '',
+        active: true,
+        stockQty: 1,
+        etaLabel: '10-15 min',
+      );
+      expect(
+        (await firestore.collection(FirebaseCollections.vendors).doc('store-1').get())
+            .data()?['productCount'],
+        4,
+      );
+
+      final VendorProduct toDelete = VendorProduct.fromDoc(
+        await firestore
+            .collection(FirebaseCollections.products)
+            .doc('extra-1')
+            .get(),
+      );
+      await repo.deleteProduct(toDelete);
+
+      final Map<String, dynamic>? vendorDoc =
+          (await firestore
+                  .collection(FirebaseCollections.vendors)
+                  .doc('store-1')
+                  .get())
+              .data();
+      expect(vendorDoc?['productCount'], 3);
+      expect(await repo.countByStore('store-1'), 3);
     });
   });
 }

@@ -67,6 +67,32 @@ class VendorProductRepository {
         });
   }
 
+  /// Case/whitespace-insensitive check for another product in [storeId]
+  /// already using [name] — the form uses this to warn before saving a
+  /// look-alike duplicate, since nothing else in the catalogue stops two
+  /// products with the same name from coexisting.
+  Future<bool> nameExistsInStore({
+    required String storeId,
+    required String name,
+    String? excludingProductId,
+  }) async {
+    final String normalized = name.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    final QuerySnapshot<Map<String, dynamic>> snap = await _products
+        .where('storeId', isEqualTo: storeId)
+        .get();
+    return snap.docs.any((QueryDocumentSnapshot<Map<String, dynamic>> d) {
+      if (d.id == excludingProductId) {
+        return false;
+      }
+      final String existingName =
+          ((d.data())['name'] as String? ?? '').trim().toLowerCase();
+      return existingName == normalized;
+    });
+  }
+
   Future<String> fetchVendorDisplayName(String storeId) async {
     final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
         .collection(FirebaseCollections.vendors)
@@ -105,6 +131,34 @@ class VendorProductRepository {
     return snap.docs.length;
   }
 
+  DocumentReference<Map<String, dynamic>> _vendorDoc(String storeId) =>
+      _firestore.collection(FirebaseCollections.vendors).doc(storeId);
+
+  /// Seeds `vendors/{storeId}.productCount` from an actual count query the
+  /// first time it's needed, so [createProduct] can enforce the per-shop
+  /// cap with a single-document transactional read/increment afterwards
+  /// instead of a separate count query racing the write. Safe to call
+  /// repeatedly / concurrently: only sets the field when it's still absent,
+  /// and Firestore retries this transaction if a concurrent caller wins the
+  /// same initialization first.
+  Future<void> _ensureProductCountInitialized(String storeId) async {
+    final DocumentReference<Map<String, dynamic>> vendorRef = _vendorDoc(
+      storeId,
+    );
+    await _firestore.runTransaction((Transaction tx) async {
+      final DocumentSnapshot<Map<String, dynamic>> snap = await tx.get(
+        vendorRef,
+      );
+      if (snap.data()?.containsKey('productCount') ?? false) {
+        return;
+      }
+      final int actual = await countByStore(storeId);
+      tx.set(vendorRef, <String, dynamic>{
+        'productCount': actual,
+      }, SetOptions(merge: true));
+    });
+  }
+
   Future<void> createProduct({
     required String productId,
     required String storeId,
@@ -122,32 +176,50 @@ class VendorProductRepository {
     int? maxProducts,
   }) async {
     final int cap = maxProducts ?? vendorMaxProductsPerShop;
-    final int existing = await countByStore(storeId);
-    if (existing >= cap) {
-      throw VendorProductLimitExceededException(max: cap);
-    }
+    await _ensureProductCountInitialized(storeId);
     final DocumentReference<Map<String, dynamic>> doc = _products.doc(
       productId,
     );
-    final String lookupKey = buildLookupKey(name, doc.id);
-    await doc.set(
-      VendorProduct(
-        id: doc.id,
-        storeId: storeId,
-        storeName: storeName,
-        name: name,
-        description: description,
-        priceLkr: priceLkr,
-        imageUrl: imageUrl,
-        lookupKey: lookupKey,
-        active: active,
-        stockQty: stockQty.clamp(0, 9999999),
-        manageStock: manageStock,
-        etaLabel: etaLabel.trim(),
-        productCategory: productCategory.trim(),
-        sizeOptions: sizeOptions,
-      ).toFirestore(storeName: storeName, lookupKey: lookupKey),
+    final DocumentReference<Map<String, dynamic>> vendorRef = _vendorDoc(
+      storeId,
     );
+    final String lookupKey = buildLookupKey(name, doc.id);
+    // Reading + incrementing the count inside this transaction (rather than
+    // checking a pre-fetched count, then writing separately) is what
+    // actually closes the race: Firestore retries the whole callback if
+    // vendorRef changed since it was read, so two near-simultaneous
+    // "Add product" submissions can no longer both pass the cap check
+    // before either commits.
+    await _firestore.runTransaction((Transaction tx) async {
+      final DocumentSnapshot<Map<String, dynamic>> vendorSnap = await tx.get(
+        vendorRef,
+      );
+      final int current =
+          (vendorSnap.data()?['productCount'] as num?)?.round() ?? 0;
+      if (current >= cap) {
+        throw VendorProductLimitExceededException(max: cap);
+      }
+      tx.set(
+        doc,
+        VendorProduct(
+          id: doc.id,
+          storeId: storeId,
+          storeName: storeName,
+          name: name,
+          description: description,
+          priceLkr: priceLkr,
+          imageUrl: imageUrl,
+          lookupKey: lookupKey,
+          active: active,
+          stockQty: stockQty.clamp(0, 9999999),
+          manageStock: manageStock,
+          etaLabel: etaLabel.trim(),
+          productCategory: productCategory.trim(),
+          sizeOptions: sizeOptions,
+        ).toFirestore(storeName: storeName, lookupKey: lookupKey),
+      );
+      tx.update(vendorRef, <String, dynamic>{'productCount': current + 1});
+    });
   }
 
   Future<void> updateProduct({
@@ -342,7 +414,22 @@ class VendorProductRepository {
 
   Future<void> deleteProduct(VendorProduct product) async {
     await deleteStoredProductImage(product.imageUrl);
-    await _products.doc(product.id).delete();
+    final DocumentReference<Map<String, dynamic>> vendorRef = _vendorDoc(
+      product.storeId,
+    );
+    await _firestore.runTransaction((Transaction tx) async {
+      final DocumentSnapshot<Map<String, dynamic>> vendorSnap = await tx.get(
+        vendorRef,
+      );
+      tx.delete(_products.doc(product.id));
+      if (vendorSnap.data()?.containsKey('productCount') ?? false) {
+        final int current =
+            (vendorSnap.data()?['productCount'] as num?)?.round() ?? 0;
+        tx.update(vendorRef, <String, dynamic>{
+          'productCount': current > 0 ? current - 1 : 0,
+        });
+      }
+    });
   }
 
   Future<void> deleteStoredProductImage(String imageUrl) async {
