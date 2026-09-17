@@ -358,7 +358,19 @@
       (p) => p.processedAt || p.createdAt,
       (p) => Number(p.amountLkr) || 0
     );
-    const outgoingPoints = withdrawalOut.map((p, i) => ({ label: p.label, value: p.value + payoutOut[i].value }));
+    // COD cash the platform paid shops for (adminMarkProductCashSettledToShop)
+    // — a separate money path from the wallet `payouts` above, and in
+    // practice the more common one, so this was previously missing entirely.
+    const productCashOut = bucketByDaySum(
+      cache.productCashSettledToShop || [],
+      days,
+      (o) => o.productCashSettledAt || o.deliveredAt || o.createdAt,
+      (o) => Number(o.productCashLkr) || 0
+    );
+    const outgoingPoints = withdrawalOut.map((p, i) => ({
+      label: p.label,
+      value: p.value + payoutOut[i].value + productCashOut[i].value,
+    }));
 
     window.MndCharts.renderMultiLineChart(
       el,

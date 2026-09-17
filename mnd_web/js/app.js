@@ -177,6 +177,7 @@
     cashRiders: [],
     withdrawals: [],
     vendorPayouts: [],
+    productCashSettledToShop: [],
     refundRequests: [],
     supportThreads: [],
     vendorSupportThreads: [],
@@ -1445,6 +1446,24 @@
           .limit(100),
         (snap) => {
           cache.vendorPayouts = withParentId(snap).map((p) => ({ ...p, vendorDocId: p.parentDocId }));
+        }
+      )
+    );
+
+    waits.push(
+      // COD product-cash settled to shops (adminMarkProductCashSettledToShop,
+      // functions/src/productCash.ts) — this is a completely separate money
+      // path from the `payouts` subcollection above (that one is online/
+      // PayHere wallet payouts only). Most shop "payouts" in practice are
+      // this COD flow, so the outgoings chart was missing them entirely.
+      // No orderBy/limit, matching startProductCashListeners()'s existing
+      // choice for this exact field: an admin-wide top-N-by-delivery-date
+      // cap would risk dropping a just-settled order whose original
+      // delivery date was old, which is exactly the case that matters here.
+      attachDashboardListener(
+        db.collection(COL.orders).where("productCashStatus", "==", "settled_to_shop"),
+        (snap) => {
+          cache.productCashSettledToShop = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         }
       )
     );
