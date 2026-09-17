@@ -26,6 +26,40 @@ export function readNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Converts flat "category.leaf" keys (as produced by every mutation
+ * function below, e.g. "income.orderCommissionLkr") into a properly
+ * nested object: {income: {orderCommissionLkr: value}}.
+ *
+ * This matters because Firestore's `.set(data, {merge: true})` does NOT
+ * interpret a dotted string key as a nested field path the way `.update()`
+ * does — passed flat, "income.orderCommissionLkr" is stored as one literal
+ * field NAMED "income.orderCommissionLkr", not as income.orderCommissionLkr
+ * inside a nested income map. Both platformCashFlow.ts (live triggers) and
+ * platformCashFlowBackfill.ts must run their increments through this
+ * before writing, or the document shape silently doesn't match what
+ * mnd_web/js/views/cashflow.js reads (doc.income.orderCommissionLkr).
+ * Multiple keys under the same category merge into one nested object.
+ */
+export function nestDottedFields(
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const dotIndex = key.indexOf(".");
+    if (dotIndex === -1) {
+      result[key] = value;
+      continue;
+    }
+    const category = key.slice(0, dotIndex);
+    const leaf = key.slice(dotIndex + 1);
+    const bucket = (result[category] as Record<string, unknown> | undefined) ?? {};
+    bucket[leaf] = value;
+    result[category] = bucket;
+  }
+  return result;
+}
+
 function readStatus(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }

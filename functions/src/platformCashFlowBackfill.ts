@@ -2,7 +2,7 @@ import {FieldValue, getFirestore} from "firebase-admin/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {assertAdmin} from "./adminAuth";
-import {readNumber} from "./platformCashFlowLogic";
+import {nestDottedFields, readNumber} from "./platformCashFlowLogic";
 import {loadPlatformFeeConfig} from "./platformConfig";
 import {dayKey} from "./vendorStatsLogic";
 
@@ -218,7 +218,11 @@ export const backfillPlatformCashFlow = onCall(
         );
         batch.set(
           ref.doc(docId),
-          {date: docId, ...incrementFields, updatedAt: FieldValue.serverTimestamp()},
+          {
+            date: docId,
+            ...nestDottedFields(incrementFields),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
           {merge: true},
         );
       }

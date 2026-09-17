@@ -6,7 +6,24 @@ import {
   mutationsForPayoutUpdated,
   mutationsForTripUpdated,
   mutationsForWithdrawalUpdated,
+  nestDottedFields,
 } from "./platformCashFlowLogic";
+
+test("nestDottedFields nests category.leaf keys and merges siblings", () => {
+  assert.deepEqual(
+    nestDottedFields({
+      "income.orderCommissionLkr": 50,
+      "income.ipgFeeLkr": 10,
+      "outgoing.refundsPaidLkr": 200,
+      "plainKey": "unchanged",
+    }),
+    {
+      income: {orderCommissionLkr: 50, ipgFeeLkr: 10},
+      outgoing: {refundsPaidLkr: 200},
+      plainKey: "unchanged",
+    },
+  );
+});
 
 const fixedDate = new Date("2026-07-10T10:15:00.000Z");
 const deliveredAt = {toDate: () => new Date("2026-07-11T09:00:00.000Z")};

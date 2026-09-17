@@ -8,6 +8,7 @@ import {
   mutationsForPayoutUpdated,
   mutationsForTripUpdated,
   mutationsForWithdrawalUpdated,
+  nestDottedFields,
 } from "./platformCashFlowLogic";
 
 const REGION = "asia-south1";
@@ -37,7 +38,11 @@ async function applyMutations(mutations: CashFlowMutation[]): Promise<void> {
     );
     batch.set(
       ref.doc(mutation.docId),
-      {date: mutation.docId, ...increments, updatedAt: FieldValue.serverTimestamp()},
+      {
+        date: mutation.docId,
+        ...nestDottedFields(increments),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
       {merge: true},
     );
   }
