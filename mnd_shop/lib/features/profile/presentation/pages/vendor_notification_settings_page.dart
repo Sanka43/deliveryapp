@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_shop/app/providers/vendor_notification_prefs_provider.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
+import 'package:mnd_shop/core/notifications/vendor_notification_permission.dart';
 import 'package:mnd_shop/core/notifications/vendor_alert_audio_context.dart';
 import 'package:mnd_shop/core/notifications/vendor_alert_sound.dart';
 import 'package:mnd_shop/core/utils/user_facing_error.dart';
@@ -193,6 +194,7 @@ class _VendorNotificationSettingsPageState
             return ListView(
               padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 32),
               children: <Widget>[
+                const VendorNotificationPermissionBanner(bottomMargin: 16),
                 const VendorSettingsSectionTitle(label: 'Device'),
                 const SizedBox(height: 10),
                 VendorSettingsNavTile(

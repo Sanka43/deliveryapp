@@ -9,6 +9,7 @@ import 'package:mnd_shop/app/providers/shop_auth_state_provider.dart';
 import 'package:mnd_shop/app/providers/vendor_shell_tab_provider.dart';
 import 'package:mnd_shop/core/constants/app_colors.dart';
 import 'package:mnd_shop/core/locale/vendor_ta_fallback.dart';
+import 'package:mnd_shop/core/notifications/vendor_notification_permission.dart';
 import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_open_hours.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
@@ -278,6 +279,9 @@ class _VendorDashboardPageState extends ConsumerState<VendorDashboardPage>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: <Widget>[
+                                const VendorNotificationPermissionBanner(
+                                  bottomMargin: 16,
+                                ),
                                 if (profileStoreSync.isLoading)
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 16),

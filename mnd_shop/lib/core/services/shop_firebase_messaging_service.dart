@@ -180,4 +180,45 @@ class ShopFirebaseMessagingService {
       debugPrint('Shop FCM token sync failed: $e\n$st');
     }
   }
+
+  /// Removes this device's push-token mapping when the vendor signs out —
+  /// nothing previously pruned `deviceTokens/{tokenDocId}` on sign-out, so
+  /// tokens accumulated indefinitely and a signed-out device could keep
+  /// matching push queries meant for whoever is signed in next on it.
+  /// Call before `FirebaseAuth.signOut()`, while the vendor session is
+  /// still valid. Best-effort — must never block sign-out.
+  Future<void> clearDeviceToken({required String vendorId}) async {
+    final String storeId = vendorId.trim();
+    if (storeId.isEmpty) {
+      return;
+    }
+    try {
+      final String? token = await _messaging.getToken();
+      if (token == null || token.isEmpty) {
+        return;
+      }
+      final String tokenDocId = token.replaceAll('/', '_');
+      await _firestore
+          .collection(FirebaseCollections.deviceTokens)
+          .doc(tokenDocId)
+          .delete();
+
+      final DocumentReference<Map<String, dynamic>> vendorRef = _firestore
+          .collection(FirebaseCollections.vendors)
+          .doc(storeId);
+      // Only clear vendors/{storeId}.fcmToken if it still points at this
+      // device's token — avoids erasing a newer token another device may
+      // have already written for the same store in the meantime.
+      final DocumentSnapshot<Map<String, dynamic>> vendorSnap =
+          await vendorRef.get();
+      if ((vendorSnap.data()?['fcmToken'] as String?) == token) {
+        await vendorRef.set(<String, dynamic>{
+          'fcmToken': FieldValue.delete(),
+          'fcmTokenUpdatedAt': FieldValue.delete(),
+        }, SetOptions(merge: true));
+      }
+    } catch (e, st) {
+      debugPrint('Shop FCM token cleanup failed: $e\n$st');
+    }
+  }
 }

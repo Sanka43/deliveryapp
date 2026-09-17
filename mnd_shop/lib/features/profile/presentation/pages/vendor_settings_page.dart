@@ -415,6 +415,11 @@ class VendorSettingsPage extends ConsumerWidget {
                 if (ok != true || !context.mounted) {
                   return;
                 }
+                final String vendorId =
+                    ref.read(vendorEffectiveStoreIdProvider).trim();
+                await ref
+                    .read(shopFirebaseMessagingServiceProvider)
+                    .clearDeviceToken(vendorId: vendorId);
                 await ref.read(vendorStoreIdProvider.notifier).setStoreId('');
                 ref.invalidate(vendorShellTabIndexProvider);
                 await ref.read(firebaseAuthProvider).signOut();
@@ -494,6 +499,10 @@ class VendorSettingsPage extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
+      final String vendorId = ref.read(vendorEffectiveStoreIdProvider).trim();
+      await ref
+          .read(shopFirebaseMessagingServiceProvider)
+          .clearDeviceToken(vendorId: vendorId);
       await ref.read(vendorStoreIdProvider.notifier).setStoreId('');
       ref.invalidate(vendorShellTabIndexProvider);
       await ref.read(firebaseAuthProvider).signOut();
