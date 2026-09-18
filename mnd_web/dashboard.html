@@ -352,29 +352,31 @@
                 Realized (settled) money only — <code>platform_daily_cashflow</code>. Pending amounts below are
                 live totals from their own pages.
               </p>
-              <div class="stats">
-                <div class="stat-card stat-card--accent">
-                  <div class="label">Income</div>
-                  <div class="value" id="cashflow-income" style="font-size: 1.25rem">LKR 0</div>
-                  <div class="stat-card__delta">commission + fees + invoices</div>
+              <div class="u-flex u-flex-wrap u-items-center" style="gap: 20px; margin-top: 4px">
+                <div class="stats" style="flex: 1 1 320px; margin-bottom: 0">
+                  <div class="stat-card stat-card--accent">
+                    <div class="label">Income</div>
+                    <div class="value" id="cashflow-income" style="font-size: 1.25rem">LKR 0</div>
+                    <div class="stat-card__delta">commission + fees + invoices</div>
+                  </div>
+                  <div class="stat-card stat-card-warn">
+                    <div class="label">Outgoing (paid)</div>
+                    <div class="value" id="cashflow-outgoing" style="font-size: 1.25rem">LKR 0</div>
+                    <div class="stat-card__delta">withdrawals + payouts + COD + refunds</div>
+                  </div>
+                  <div class="stat-card stat-card-warn">
+                    <div class="label">Discount cost</div>
+                    <div class="value" id="cashflow-discount" style="font-size: 1.25rem">LKR 0</div>
+                    <div class="stat-card__delta">coupons + referrals</div>
+                  </div>
+                  <div class="stat-card stat-card--brand">
+                    <div class="label">Net</div>
+                    <div class="value" id="cashflow-net" style="font-size: 1.25rem">LKR 0</div>
+                    <div class="stat-card__delta">income − outgoing − discount</div>
+                  </div>
                 </div>
-                <div class="stat-card stat-card-warn">
-                  <div class="label">Outgoing (paid)</div>
-                  <div class="value" id="cashflow-outgoing" style="font-size: 1.25rem">LKR 0</div>
-                  <div class="stat-card__delta">withdrawals + payouts + COD + refunds</div>
-                </div>
-                <div class="stat-card stat-card-warn">
-                  <div class="label">Discount cost</div>
-                  <div class="value" id="cashflow-discount" style="font-size: 1.25rem">LKR 0</div>
-                  <div class="stat-card__delta">coupons + referrals</div>
-                </div>
-                <div class="stat-card stat-card--brand">
-                  <div class="label">Net</div>
-                  <div class="value" id="cashflow-net" style="font-size: 1.25rem">LKR 0</div>
-                  <div class="stat-card__delta">income − outgoing − discount</div>
-                </div>
+                <div id="cashflow-chart" style="flex: 1 1 280px; max-width: 380px"></div>
               </div>
-              <div id="cashflow-chart" style="margin-top: 10px; max-width: 420px; margin-left: auto"></div>
             </div>
 
             <div class="panel">
