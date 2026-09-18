@@ -1187,6 +1187,7 @@
   window.statusLabel = statusLabel;
   window.missedByShopBadge = missedByShopBadge;
   window.orderMissedByShop = orderMissedByShop;
+  window.openTripDetails = openTripDetails;
   window.isSelfPickupOrder = isSelfPickupOrder;
   window.resolveOrderStatusOptions = resolveOrderStatusOptions;
   window.orderAddrLine = orderAddrLine;

@@ -15,14 +15,42 @@
   let payHereRows = [];
   let payHereLoaded = false;
 
-  function goNav(el) {
-    window.MndRouter.navigate(el.getAttribute("data-go-nav"));
+  // Opens the same order/trip detail modal the Orders/Rides tabs use
+  // (openOrderDetails/openTripDetails only look at cache.orders/cache.trips
+  // — a PayHere order may not be in either cache yet, e.g. it's older than
+  // the dashboard's recent-200 listener window, so fetch it fresh and
+  // upsert it into the cache first rather than risk a silent no-op).
+  async function openDetails(row) {
+    try {
+      const isOrder = row.type === "Order";
+      const colName = isOrder ? COL.orders : COL.trips;
+      const snap = await db.collection(colName).doc(row.id).get();
+      if (!snap.exists) {
+        toast("Not found — it may have been deleted.", "error");
+        return;
+      }
+      const doc = { id: snap.id, ...snap.data() };
+      const list = isOrder ? cache.orders : cache.trips;
+      const idx = list.findIndex((x) => x.id === doc.id);
+      if (idx >= 0) list[idx] = doc;
+      else list.unshift(doc);
+      if (isOrder && window.openOrderDetails) window.openOrderDetails(doc.id);
+      else if (!isOrder && window.openTripDetails) window.openTripDetails(doc.id);
+    } catch (e) {
+      console.error(e);
+      toast(e.message || String(e), "error");
+    }
   }
 
-  function bindGoNav(container) {
+  function bindOpenButtons(container) {
     if (!container) return;
-    container.querySelectorAll("[data-go-nav]").forEach((el) => {
-      el.addEventListener("click", () => goNav(el));
+    container.querySelectorAll("[data-open-detail]").forEach((el) => {
+      el.addEventListener("click", () => {
+        openDetails({
+          id: el.getAttribute("data-open-detail"),
+          type: el.getAttribute("data-open-type"),
+        });
+      });
     });
   }
 
@@ -44,7 +72,6 @@
   function rowFromOrder(id, o) {
     return {
       type: "Order",
-      navTarget: "orders",
       id,
       amountLkr: Number(o.total) || 0,
       status: String(o.paymentStatus || "").trim().toLowerCase(),
@@ -57,7 +84,6 @@
   function rowFromTrip(id, t) {
     return {
       type: "Trip",
-      navTarget: "rides",
       id,
       amountLkr: Number(t.estimatedFareLkr) || 0,
       status: String(t.paymentStatus || "").trim().toLowerCase(),
@@ -125,14 +151,12 @@
           <td data-label="Transaction ID">${r.transactionId ? `<code>${escapeHtml(r.transactionId)}</code>` : "—"}</td>
           <td data-label="Updated">${escapeHtml(fmtTs(r.updatedAtRaw))}</td>
           <td class="row-actions" data-label="Actions">
-            <button type="button" class="btn btn-ghost btn-sm" data-go-nav="${r.navTarget}">Open ${escapeHtml(
-              r.type
-            )}s</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-open-detail="${escapeHtml(r.id)}" data-open-type="${escapeHtml(r.type)}">Open</button>
           </td>
         </tr>`
       )
       .join("");
-    bindGoNav(tbody);
+    bindOpenButtons(tbody);
   }
 
   document.addEventListener("DOMContentLoaded", () => {
