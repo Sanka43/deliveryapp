@@ -12,6 +12,28 @@
     return global.MndDom ? global.MndDom.esc(s) : String(s == null ? "" : s);
   }
 
+  // Catmull-Rom -> cubic Bezier smoothing, so trend lines read as soft
+  // curves instead of sharp zig-zags between days. Endpoints repeat the
+  // adjacent point as their own neighbor so the curve doesn't overshoot
+  // past the first/last dot.
+  function smoothPath(coords) {
+    if (coords.length === 0) return "";
+    if (coords.length === 1) return `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
+    let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p0 = coords[i === 0 ? 0 : i - 1];
+      const p1 = coords[i];
+      const p2 = coords[i + 1];
+      const p3 = coords[i + 2 < coords.length ? i + 2 : i + 1];
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    }
+    return d;
+  }
+
   /**
    * points: [{ label: string, value: number }, ...]
    * opts: { id, title, desc, xLabel, yLabel, width, height }
@@ -40,21 +62,24 @@
       value: Number(p.value) || 0,
     }));
 
-    const pathD = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(" ");
+    const pathD = smoothPath(coords);
     const floorY = (padding.top + innerH).toFixed(1);
     const areaD = `${pathD} L ${coords[coords.length - 1].x.toFixed(1)} ${floorY} L ${coords[0].x.toFixed(1)} ${floorY} Z`;
 
-    const gridLines = [0, 0.5, 1]
+    const gridLines = [0.5, 1]
       .map((f) => {
         const y = (padding.top + innerH * f).toFixed(1);
         return `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--border)" stroke-width="1"/>`;
       })
       .join("");
 
+    const lastIdx = coords.length - 1;
     const dots = coords
-      .map(
-        (c) =>
-          `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3.5" fill="var(--brand)" stroke="var(--surface)" stroke-width="1.5"><title>${esc(c.label)}: ${esc(String(c.value))}</title></circle>`
+      .map((c, i) =>
+        i === lastIdx
+          ? `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="7" fill="var(--brand)" opacity="0.16"></circle>
+             <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4" fill="var(--brand)" stroke="var(--surface)" stroke-width="2"><title>${esc(c.label)}: ${esc(String(c.value))}</title></circle>`
+          : `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" fill="var(--surface)" stroke="var(--brand)" stroke-width="1.5"><title>${esc(c.label)}: ${esc(String(c.value))}</title></circle>`
       )
       .join("");
 
@@ -67,6 +92,7 @@
 
     const titleId = (opts.id || "chart") + "-title";
     const descId = (opts.id || "chart") + "-desc";
+    const gradId = titleId + "-fill";
 
     const tableRows = points
       .map((p) => `<tr><td>${esc(p.label)}</td><td>${esc(String(p.value))}</td></tr>`)
@@ -76,9 +102,15 @@
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${titleId} ${descId}" style="width:100%;height:auto;display:block">
         <title id="${titleId}">${esc(opts.title || "Trend chart")}</title>
         <desc id="${descId}">${esc(opts.desc || "")}</desc>
+        <defs>
+          <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--brand)" stop-opacity="0.22"></stop>
+            <stop offset="100%" stop-color="var(--brand)" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
         ${gridLines}
-        <path d="${areaD}" fill="var(--brand-glow)" stroke="none"></path>
-        <path d="${pathD}" fill="none" stroke="var(--brand)" stroke-width="2"></path>
+        <path d="${areaD}" fill="url(#${gradId})" stroke="none"></path>
+        <path d="${pathD}" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round"></path>
         ${dots}
         ${xLabels}
       </svg>
@@ -115,15 +147,18 @@
     const maxV = Math.max(1, ...allValues);
     const stepX = pointCount > 1 ? innerW / (pointCount - 1) : 0;
 
-    const gridLines = [0, 0.5, 1]
+    const gridLines = [0.5, 1]
       .map((f) => {
         const y = (padding.top + innerH * f).toFixed(1);
         return `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--border)" stroke-width="1"/>`;
       })
       .join("");
 
+    const titleId = (opts.id || "chart") + "-title";
+    const descId = (opts.id || "chart") + "-desc";
+    const defs = [];
     const seriesSvg = series
-      .map((s) => {
+      .map((s, si) => {
         const color = s.color || "var(--brand)";
         const coords = s.points.map((p, i) => ({
           x: padding.left + i * stepX,
@@ -131,15 +166,30 @@
           label: p.label,
           value: Number(p.value) || 0,
         }));
-        const pathD = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(" ");
+        const pathD = smoothPath(coords);
         const dashAttr = s.dashed ? ' stroke-dasharray="4 3"' : "";
+        const lastIdx = coords.length - 1;
         const dots = coords
-          .map(
-            (c) =>
-              `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3" fill="${color}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(s.name)} · ${esc(c.label)}: ${esc(fmt(c.value))}</title></circle>`
+          .map((c, i) =>
+            i === lastIdx
+              ? `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="5" fill="${color}" stroke="var(--surface)" stroke-width="2"><title>${esc(s.name)} · ${esc(c.label)}: ${esc(fmt(c.value))}</title></circle>`
+              : `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" fill="${s.dashed ? "var(--surface)" : color}" stroke="${color}" stroke-width="1.5"><title>${esc(s.name)} · ${esc(c.label)}: ${esc(fmt(c.value))}</title></circle>`
           )
           .join("");
-        return `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2"${dashAttr}></path>${dots}`;
+        // Only the primary (solid) series gets a soft gradient fill under
+        // its curve — filling every dashed comparison series too would
+        // just muddy the overlaps.
+        let areaPath = "";
+        if (!s.dashed) {
+          const gradId = `${titleId}-fill-${si}`;
+          const floorY = (padding.top + innerH).toFixed(1);
+          const areaD = `${pathD} L ${coords[lastIdx].x.toFixed(1)} ${floorY} L ${coords[0].x.toFixed(1)} ${floorY} Z`;
+          defs.push(
+            `<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.18"></stop><stop offset="100%" stop-color="${color}" stop-opacity="0"></stop></linearGradient>`
+          );
+          areaPath = `<path d="${areaD}" fill="url(#${gradId})" stroke="none"></path>`;
+        }
+        return `${areaPath}<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"${dashAttr}></path>${dots}`;
       })
       .join("");
 
@@ -152,9 +202,6 @@
           `<text x="${c.x.toFixed(1)}" y="${height - 8}" font-size="10" fill="var(--muted-2)" text-anchor="middle">${esc(c.label)}</text>`
       )
       .join("");
-
-    const titleId = (opts.id || "chart") + "-title";
-    const descId = (opts.id || "chart") + "-desc";
 
     const tableRows = series
       .map((s) => s.points.map((p) => `<tr><td>${esc(s.name)}</td><td>${esc(p.label)}</td><td>${esc(fmt(p.value))}</td></tr>`).join(""))
@@ -171,6 +218,7 @@
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${titleId} ${descId}" style="width:100%;height:auto;display:block">
         <title id="${titleId}">${esc(opts.title || "Trend chart")}</title>
         <desc id="${descId}">${esc(opts.desc || "")}</desc>
+        <defs>${defs.join("")}</defs>
         ${gridLines}
         ${seriesSvg}
         ${xLabels}

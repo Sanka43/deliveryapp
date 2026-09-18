@@ -201,7 +201,7 @@
         desc: "Platform income, money paid out, and discount cost, by day.",
         xLabel: "Date",
         yLabel: "LKR",
-        height: 220,
+        height: 150,
         valueFormatter: (v) => fmtMoney(v),
       }
     );
