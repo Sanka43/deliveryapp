@@ -60,6 +60,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/><circle cx="12" cy="12" r="10" stroke-dasharray="1 3"/></svg>
             Cash Flow
           </button>
+          <button type="button" class="nav-btn" data-nav="payhere-log">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+            PayHere Payments
+          </button>
           <p class="nav-group-label">Approvals</p>
           <button type="button" class="nav-btn" data-nav="approvals">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -408,6 +412,45 @@
                     <tr>
                       <th>Category</th>
                       <th>This period</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section data-view="payhere-log" class="view" hidden>
+            <div class="panel">
+              <div class="panel-header">
+                <h3>PayHere payments</h3>
+                <button type="button" id="btn-payhere-log-refresh" class="btn btn-ghost btn-sm" style="width: auto">Refresh</button>
+              </div>
+              <p class="panel-sub" style="margin-top: -8px">
+                Orders and rides paid via PayHere, read directly from <code>orders</code>/<code>trips</code>
+                payment fields — not a separate persisted log. Most recent 200 shown.
+              </p>
+              <div class="toolbar">
+                <input type="search" id="filter-payhere-log" placeholder="Search order/trip id, transaction id, customer…" />
+                <select id="filter-payhere-log-status">
+                  <option value="">All statuses</option>
+                  <option value="paid">Paid</option>
+                  <option value="failed">Failed</option>
+                  <option value="refunded">Refunded</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+              <div class="table-wrap table-responsive">
+                <table id="table-payhere-log">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>ID</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Transaction ID</th>
+                      <th>Updated</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -1530,6 +1573,7 @@
     <script src="js/app.js?v=dashboard-redesign-v31"></script>
     <script src="js/views/dashboard.js?v=dashboard-redesign-v31"></script>
     <script src="js/views/cashflow.js?v=dashboard-redesign-v31"></script>
+    <script src="js/views/payhereLog.js?v=dashboard-redesign-v31"></script>
     <script src="js/views/orders.js?v=dashboard-redesign-v31"></script>
     <script src="js/views/shop-approvals.js?v=dashboard-redesign-v31"></script>
     <script src="js/views/job-approvals.js?v=dashboard-redesign-v31"></script>

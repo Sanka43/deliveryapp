@@ -1053,6 +1053,7 @@
     orders: "Orders",
     rides: "Rides",
     "cash-flow": "Cash Flow",
+    "payhere-log": "PayHere Payments",
     vendors: "Vendors",
     products: "Products",
     banners: "Banners",
@@ -1560,6 +1561,7 @@
       if (cache.riders.length === 0) await loadRiders();
       await window.startCashFlowListeners();
     }
+    if (name === "payhere-log" && window.loadPayHereLog) await window.loadPayHereLog();
     if (name === "vendors" || name === "approvals") {
       await loadVendors();
     }
