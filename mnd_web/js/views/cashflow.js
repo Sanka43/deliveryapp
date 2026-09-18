@@ -154,10 +154,13 @@
 
   function renderCashFlowStats() {
     const totals = periodTotals(cashFlowRangeDays);
+    const net = totals.incomeLkr - totals.outgoingLkr - totals.discountLkr;
     setText("cashflow-income", fmtMoney(totals.incomeLkr));
     setText("cashflow-outgoing", fmtMoney(totals.outgoingLkr));
     setText("cashflow-discount", fmtMoney(totals.discountLkr));
-    setText("cashflow-net", fmtMoney(totals.incomeLkr - totals.outgoingLkr - totals.discountLkr));
+    setText("cashflow-net", fmtMoney(net));
+    const netEl = document.getElementById("cashflow-net");
+    if (netEl) netEl.style.color = net < 0 ? "var(--danger)" : "var(--success)";
   }
 
   function renderCashFlowPending() {
@@ -201,7 +204,10 @@
         desc: "Platform income, money paid out, and discount cost, by day.",
         xLabel: "Date",
         yLabel: "LKR",
-        height: 150,
+        height: 230,
+        // The left-hand breakdown already shows a swatch + label per
+        // series, so the chart's own legend underneath would just repeat it.
+        showLegend: false,
         valueFormatter: (v) => fmtMoney(v),
       }
     );

@@ -207,12 +207,15 @@
       .map((s) => s.points.map((p) => `<tr><td>${esc(s.name)}</td><td>${esc(p.label)}</td><td>${esc(fmt(p.value))}</td></tr>`).join(""))
       .join("");
 
-    const legend = series
-      .map(
-        (s) =>
-          `<span class="chart-legend__item"><span class="chart-legend__swatch" style="background:${s.color || "var(--brand)"}"></span>${esc(s.name)}</span>`
-      )
-      .join("");
+    const legend =
+      opts.showLegend === false
+        ? ""
+        : `<div class="chart-legend">${series
+            .map(
+              (s) =>
+                `<span class="chart-legend__item"><span class="chart-legend__swatch" style="background:${s.color || "var(--brand)"}"></span>${esc(s.name)}</span>`
+            )
+            .join("")}</div>`;
 
     el.innerHTML = `
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${titleId} ${descId}" style="width:100%;height:auto;display:block">
@@ -223,7 +226,7 @@
         ${seriesSvg}
         ${xLabels}
       </svg>
-      <div class="chart-legend">${legend}</div>
+      ${legend}
       <table class="sr-only">
         <caption>${esc(opts.title || "Trend chart")} — data table</caption>
         <thead><tr><th>Series</th><th>${esc(opts.xLabel || "Label")}</th><th>${esc(opts.yLabel || "Value")}</th></tr></thead>
