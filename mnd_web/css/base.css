@@ -56,6 +56,17 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* .app (dashboard.html) is a fixed-height (100vh) flex shell whose only
+     scroll regions are .sidebar-scroll and .content — see layout.css's
+     comments on .app/.main. Without this, any sub-pixel rounding of 100vh
+     (browser chrome, zoom) lets the outer document scroll too, stacking a
+     second scrollbar right next to .content's own one. */
+  html:has(body.dashboard-page),
+  body.dashboard-page {
+    height: 100%;
+    overflow: hidden;
+  }
+
   a {
     color: var(--brand);
     text-decoration: none;
