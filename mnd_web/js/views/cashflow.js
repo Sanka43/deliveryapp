@@ -192,8 +192,8 @@
       el,
       [
         { name: "Income", color: "var(--success)", points: incomePoints },
-        { name: "Outgoing (paid)", color: "var(--danger)", dashed: true, points: outgoingPoints },
-        { name: "Discount cost", color: "var(--accent)", dashed: true, points: discountPoints },
+        { name: "Outgoing (paid)", color: "var(--danger)", points: outgoingPoints },
+        { name: "Discount cost", color: "var(--accent)", points: discountPoints },
       ],
       {
         id: "cashflow-chart",

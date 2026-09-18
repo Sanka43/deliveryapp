@@ -123,7 +123,8 @@
   }
 
   /**
-   * series: [{ name, color, dashed?, points: [{label, value}, ...] }, ...]
+   * series: [{ name, color, points: [{label, value}, ...] }, ...] — all
+   * lines are solid; only the first series gets a gradient fill.
    * All series must share the same point count/labels (one per x position).
    * opts: same as renderLineChart, minus per-series color (set per series).
    */
@@ -167,20 +168,19 @@
           value: Number(p.value) || 0,
         }));
         const pathD = smoothPath(coords);
-        const dashAttr = s.dashed ? ' stroke-dasharray="4 3"' : "";
         const lastIdx = coords.length - 1;
         const dots = coords
           .map((c, i) =>
             i === lastIdx
               ? `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="5" fill="${color}" stroke="var(--surface)" stroke-width="2"><title>${esc(s.name)} · ${esc(c.label)}: ${esc(fmt(c.value))}</title></circle>`
-              : `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" fill="${s.dashed ? "var(--surface)" : color}" stroke="${color}" stroke-width="1.5"><title>${esc(s.name)} · ${esc(c.label)}: ${esc(fmt(c.value))}</title></circle>`
+              : `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" fill="${color}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(s.name)} · ${esc(c.label)}: ${esc(fmt(c.value))}</title></circle>`
           )
           .join("");
-        // Only the primary (solid) series gets a soft gradient fill under
-        // its curve — filling every dashed comparison series too would
-        // just muddy the overlaps.
+        // Only the primary (first) series gets a soft gradient fill under
+        // its curve — filling every series would just muddy the overlaps
+        // once several lines cross.
         let areaPath = "";
-        if (!s.dashed) {
+        if (si === 0) {
           const gradId = `${titleId}-fill-${si}`;
           const floorY = (padding.top + innerH).toFixed(1);
           const areaD = `${pathD} L ${coords[lastIdx].x.toFixed(1)} ${floorY} L ${coords[0].x.toFixed(1)} ${floorY} Z`;
@@ -189,7 +189,7 @@
           );
           areaPath = `<path d="${areaD}" fill="url(#${gradId})" stroke="none"></path>`;
         }
-        return `${areaPath}<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"${dashAttr}></path>${dots}`;
+        return `${areaPath}<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"></path>${dots}`;
       })
       .join("");
 

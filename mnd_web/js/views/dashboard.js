@@ -300,7 +300,7 @@
       el,
       [
         { name: "Orders", color: "var(--brand)", points: orderPoints },
-        { name: "Rides", color: "var(--accent)", dashed: true, points: ridePoints },
+        { name: "Rides", color: "var(--accent)", points: ridePoints },
       ],
       {
         id: "dashboard-orders-rides",
@@ -376,7 +376,7 @@
       el,
       [
         { name: "Income", color: "var(--success)", points: incomePoints },
-        { name: "Outgoings", color: "var(--danger)", dashed: true, points: outgoingPoints },
+        { name: "Outgoings", color: "var(--danger)", points: outgoingPoints },
       ],
       {
         id: "dashboard-income-outgoings",
