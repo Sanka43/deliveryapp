@@ -105,16 +105,16 @@ class OrderLineItem {
             .whereType<Map<String, dynamic>>()
             .map(OrderLineExtra.fromMap)
             .toList(growable: false);
-    final int extrasSum = extras.fold<int>(0, (int s, OrderLineExtra e) => s + e.priceDelta);
+    final int extrasSum =
+        extras.fold<int>(0, (int s, OrderLineExtra e) => s + e.priceDelta);
     final int lineTotalVal = readInt(map['lineTotal']);
     final int qty = readInt(map['quantity']).clamp(1, 999);
     int base = readInt(map['basePrice']);
     int sizeDelta = readInt(map['sizePriceDelta']);
     final int unitFromDoc = readInt(map['unitPrice']);
     if (base == 0 && sizeDelta == 0) {
-      final int unit = unitFromDoc > 0
-          ? unitFromDoc
-          : (qty > 0 ? lineTotalVal ~/ qty : 0);
+      final int unit =
+          unitFromDoc > 0 ? unitFromDoc : (qty > 0 ? lineTotalVal ~/ qty : 0);
       int remainder = unit - extrasSum;
       if (remainder < 0) {
         remainder = 0;
@@ -149,6 +149,7 @@ class CustomerOrderDetail {
     required this.discount,
     required this.deliveryFee,
     this.serviceCharge = 0,
+    this.emergencyFee = 0,
     required this.total,
     required this.paymentMethod,
     this.paymentStatus = '',
@@ -173,6 +174,8 @@ class CustomerOrderDetail {
     this.riderRatingStars,
     this.fulfillmentMode = 'delivery',
     this.refundRequestStatus,
+    this.orderType = 'standard',
+    this.scheduledFor,
   });
 
   final String id;
@@ -183,6 +186,7 @@ class CustomerOrderDetail {
   final int discount;
   final int deliveryFee;
   final int serviceCharge;
+  final int emergencyFee;
   final int total;
   final String paymentMethod;
   final String paymentStatus;
@@ -225,6 +229,17 @@ class CustomerOrderDetail {
   /// been requested (by cancelling a paid order, or via [canRequestRefund]).
   final String? refundRequestStatus;
 
+  /// `standard` | `emergency` | `schedule`; absent on orders placed before
+  /// order types existed.
+  final String orderType;
+
+  /// Requested delivery/pickup time for a `schedule` order.
+  final DateTime? scheduledFor;
+
+  bool get isEmergency => orderType == 'emergency';
+
+  bool get isScheduled => orderType == 'schedule' && scheduledFor != null;
+
   bool get isSelfPickup => fulfillmentMode.trim() == 'selfPickup';
 
   bool get isOnlinePayment => paymentMethod.toLowerCase().trim() == 'payhere';
@@ -237,7 +252,8 @@ class CustomerOrderDetail {
 
   bool get isRefundPendingReview => refundRequestStatus == 'pending_review';
 
-  bool get hasPendingRefundRequest => isRefundProcessing || isRefundPendingReview;
+  bool get hasPendingRefundRequest =>
+      isRefundProcessing || isRefundPendingReview;
 
   /// Whether to show the explicit "Request a refund" action: the order is
   /// paid online, not already refunded or mid-refund, and past the window
@@ -287,7 +303,8 @@ class CustomerOrderDetail {
             .map(OrderLineItem.fromMap)
             .toList(growable: false);
 
-    final Map<String, dynamic>? addrMap = data['deliveryAddress'] as Map<String, dynamic>?;
+    final Map<String, dynamic>? addrMap =
+        data['deliveryAddress'] as Map<String, dynamic>?;
     final Timestamp? ts = data['createdAt'] as Timestamp?;
     final Timestamp? cancelledTs = data['cancelledAt'] as Timestamp?;
     final Timestamp? paidTs = data['paidAt'] as Timestamp?;
@@ -304,20 +321,23 @@ class CustomerOrderDetail {
       discount: _readIntField(data['discount']),
       deliveryFee: _readIntField(data['deliveryFee']),
       serviceCharge: _readIntField(data['serviceCharge']),
+      emergencyFee: _readIntField(data['emergencyFee']),
       total: _readIntField(data['total']),
       paymentMethod: (data['paymentMethod'] as String?)?.trim() ?? '',
       paymentStatus: (data['paymentStatus'] as String?)?.trim() ?? '',
       paidAt: paidTs?.toDate(),
       deliveryAddress: OrderDeliveryAddress.fromMap(addrMap),
       deliveryNote: (data['deliveryNote'] as String?)?.trim() ?? '',
-      specialInstructions: (data['specialInstructions'] as String?)?.trim() ?? '',
+      specialInstructions:
+          (data['specialInstructions'] as String?)?.trim() ?? '',
       items: items,
       createdAt: ts?.toDate(),
       couponCode: (data['couponCode'] as String?)?.trim(),
       dropoffLatitude: lat is num ? lat.toDouble() : null,
       dropoffLongitude: lng is num ? lng.toDouble() : null,
       cancellationReasonId: (data['cancellationReason'] as String?)?.trim(),
-      cancellationReasonDetail: (data['cancellationReasonDetail'] as String?)?.trim(),
+      cancellationReasonDetail:
+          (data['cancellationReasonDetail'] as String?)?.trim(),
       cancelledAt: cancelledTs?.toDate(),
       cancelledBy: (data['cancelledBy'] as String?)?.trim(),
       riderId: _readOptionalId(data['riderId'] ?? data['assignedRiderId']),
@@ -331,6 +351,8 @@ class CustomerOrderDetail {
               ? (data['fulfillmentMode'] as String).trim()
               : 'delivery',
       refundRequestStatus: _readOptionalId(data['refundRequestStatus']),
+      orderType: _readOptionalId(data['orderType']) ?? 'standard',
+      scheduledFor: (data['scheduledFor'] as Timestamp?)?.toDate(),
     );
   }
 

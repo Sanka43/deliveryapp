@@ -10,18 +10,24 @@ class PlatformFeeConfig {
     required this.perKmAfterIncludedLkr,
     required this.serviceChargePercent,
     required this.ipgFeePercent,
+    required this.emergencyFeeLkr,
   });
 
   const PlatformFeeConfig.defaults()
       : minimumFeeLkr = DeliveryPricing.minimumFeeLkr,
         perKmAfterIncludedLkr = DeliveryPricing.perKmAfterIncludedLkr,
         serviceChargePercent = ServiceChargePricing.percent,
-        ipgFeePercent = IpgFeePricing.percent;
+        ipgFeePercent = IpgFeePricing.percent,
+        emergencyFeeLkr = 200;
 
   final int minimumFeeLkr;
   final int perKmAfterIncludedLkr;
   final num serviceChargePercent;
   final num ipgFeePercent;
+
+  /// Flat surcharge for a delivery order marked "Emergency" at checkout.
+  /// Mirrors `emergencyFeeLkr` in `functions/src/platformConfig.ts`.
+  final int emergencyFeeLkr;
 
   /// Builds from the `platform_config/fees` doc, falling back field-by-field
   /// to code defaults when the doc, or an individual field, is missing or
@@ -34,6 +40,7 @@ class PlatformFeeConfig {
     final num? perKm = data['pricePerKmLkr'] as num?;
     final num? pct = data['serviceChargePercent'] as num?;
     final num? ipgPct = data['ipgFeePercent'] as num?;
+    final num? emergencyFee = data['emergencyFeeLkr'] as num?;
     return PlatformFeeConfig(
       minimumFeeLkr: (minFee != null && minFee > 0)
           ? minFee.round()
@@ -47,6 +54,9 @@ class PlatformFeeConfig {
       ipgFeePercent: (ipgPct != null && ipgPct >= 0 && ipgPct <= 100)
           ? ipgPct
           : IpgFeePricing.percent,
+      emergencyFeeLkr: (emergencyFee != null && emergencyFee >= 0)
+          ? emergencyFee.round()
+          : 200,
     );
   }
 

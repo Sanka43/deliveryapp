@@ -62,16 +62,16 @@ class SearchStore {
     }
 
     final String? image = pickCatalogImageUrl(map);
-    final String category = (map['category'] as String?)?.trim().isNotEmpty == true
-        ? (map['category'] as String).trim()
-        : 'General';
+    final String category =
+        (map['category'] as String?)?.trim().isNotEmpty == true
+            ? (map['category'] as String).trim()
+            : 'General';
     final String tag = (map['tag'] as String?)?.trim().isNotEmpty == true
         ? (map['tag'] as String).trim()
         : 'General';
     final String address = _pickStoreAddress(map);
     final String phone = _pickStorePhone(map);
-    final String catalogKind =
-        (map['catalogKind'] as String?)?.trim() ?? '';
+    final String catalogKind = (map['catalogKind'] as String?)?.trim() ?? '';
     return SearchStore(
       id: id,
       name: (map['name'] as String?)?.trim().isNotEmpty == true
@@ -125,6 +125,21 @@ bool vendorIsAcceptingOrders(Map<String, dynamic> map) {
     return true;
   }
   return true;
+}
+
+/// Like [vendorIsAcceptingOrders], but a closed-for-now shop still counts
+/// when the customer is placing a Schedule order (for later) — mirrors
+/// `vendorAcceptsOrderType` in `functions/src/checkoutOrderType.ts`: only an
+/// approved shop qualifies, never a pending/rejected/legacy-inactive one.
+bool vendorAcceptsOrders(
+  Map<String, dynamic> map, {
+  required bool scheduled,
+}) {
+  if (vendorIsAcceptingOrders(map)) {
+    return true;
+  }
+  return scheduled &&
+      _trimmedString(map['approvalStatus']).toLowerCase() == 'approved';
 }
 
 String _trimmedString(dynamic value) {
@@ -243,7 +258,8 @@ class SearchProduct {
     String documentId,
     Map<String, dynamic> map,
   ) {
-    final List<SearchProductSizeOption> sizeOpts = _parseSizeOptions(map['sizeOptions']);
+    final List<SearchProductSizeOption> sizeOpts =
+        _parseSizeOptions(map['sizeOptions']);
 
     int baseLkr = 0;
     String parsedPrice;
@@ -271,14 +287,16 @@ class SearchProduct {
     }
 
     final String storeId = ((map['storeId'] as String?) ?? '').trim();
-    final String rawLookup = ((map['lookupKey'] as String?) ?? '').trim().toLowerCase();
+    final String rawLookup =
+        ((map['lookupKey'] as String?) ?? '').trim().toLowerCase();
     final String lookupKey =
         rawLookup.isNotEmpty ? rawLookup : documentId.trim().toLowerCase();
 
     final String? img = pickCatalogImageUrl(map);
 
     final dynamic rawStock = map['stockQty'];
-    final int stockQty = rawStock is num ? rawStock.round().clamp(0, 9999999) : 0;
+    final int stockQty =
+        rawStock is num ? rawStock.round().clamp(0, 9999999) : 0;
 
     return SearchProduct(
       documentId: documentId,
@@ -301,7 +319,8 @@ class SearchProduct {
   }
 }
 
-final StateProvider<String> customerSearchQueryProvider = StateProvider<String>((Ref ref) {
+final StateProvider<String> customerSearchQueryProvider =
+    StateProvider<String>((Ref ref) {
   return '';
 });
 
@@ -427,8 +446,10 @@ final StreamProviderFamily<SearchStore?, String> vendorDocStreamProvider =
 });
 
 /// Active catalog for one vendor store (customer store details / menu).
-final StreamProviderFamily<List<SearchProduct>, String> storeActiveProductsStreamProvider =
-    StreamProvider.family<List<SearchProduct>, String>((Ref ref, String storeId) {
+final StreamProviderFamily<List<SearchProduct>, String>
+    storeActiveProductsStreamProvider =
+    StreamProvider.family<List<SearchProduct>, String>(
+        (Ref ref, String storeId) {
   final FirebaseFirestore firestore = ref.watch(firestoreProvider);
   final String id = storeId.trim();
   if (id.isEmpty) {
@@ -455,8 +476,10 @@ final StreamProviderFamily<List<SearchProduct>, String> storeActiveProductsStrea
 });
 
 /// Store menu: prefer dedicated store query; seed instantly from warm catalog.
-final ProviderFamily<AsyncValue<List<SearchProduct>>, String> storeMenuProductsProvider =
-    Provider.family<AsyncValue<List<SearchProduct>>, String>((Ref ref, String storeId) {
+final ProviderFamily<AsyncValue<List<SearchProduct>>, String>
+    storeMenuProductsProvider =
+    Provider.family<AsyncValue<List<SearchProduct>>, String>(
+        (Ref ref, String storeId) {
   final String id = storeId.trim();
   final AsyncValue<List<SearchProduct>> storeAsync =
       ref.watch(storeActiveProductsStreamProvider(id));
@@ -467,13 +490,12 @@ final ProviderFamily<AsyncValue<List<SearchProduct>>, String> storeMenuProductsP
   final List<SearchProduct>? warm =
       ref.watch(browseProductsStreamProvider).valueOrNull;
   if (warm != null) {
-    final List<SearchProduct> seeded = warm
-        .where((SearchProduct p) => p.storeId == id)
-        .toList()
-      ..sort(
-        (SearchProduct a, SearchProduct b) =>
-            a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-      );
+    final List<SearchProduct> seeded =
+        warm.where((SearchProduct p) => p.storeId == id).toList()
+          ..sort(
+            (SearchProduct a, SearchProduct b) =>
+                a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
     if (seeded.isNotEmpty) {
       return AsyncValue<List<SearchProduct>>.data(seeded);
     }
@@ -481,8 +503,10 @@ final ProviderFamily<AsyncValue<List<SearchProduct>>, String> storeMenuProductsP
   return storeAsync;
 });
 
-final Provider<List<SearchStore>> filteredStoresProvider = Provider<List<SearchStore>>((Ref ref) {
-  final String query = ref.watch(customerSearchQueryProvider).trim().toLowerCase();
+final Provider<List<SearchStore>> filteredStoresProvider =
+    Provider<List<SearchStore>>((Ref ref) {
+  final String query =
+      ref.watch(customerSearchQueryProvider).trim().toLowerCase();
   final List<SearchStore> stores = ref.watch(storesStreamProvider).maybeWhen(
         data: (items) => items,
         orElse: () => const <SearchStore>[],
@@ -502,15 +526,17 @@ final Provider<List<SearchStore>> filteredStoresProvider = Provider<List<SearchS
 
 final Provider<List<SearchProduct>> filteredProductsProvider =
     Provider<List<SearchProduct>>((Ref ref) {
-  final String query = ref.watch(customerSearchQueryProvider).trim().toLowerCase();
-  final List<SearchProduct> products = ref.watch(productsStreamProvider).maybeWhen(
-        data: (items) => items,
-        orElse: () => const <SearchProduct>[],
-      );
+  final String query =
+      ref.watch(customerSearchQueryProvider).trim().toLowerCase();
+  final List<SearchProduct> products =
+      ref.watch(productsStreamProvider).maybeWhen(
+            data: (items) => items,
+            orElse: () => const <SearchProduct>[],
+          );
   if (query.isEmpty) {
     return products;
   }
-      return products
+  return products
       .where(
         (product) =>
             product.name.toLowerCase().contains(query) ||

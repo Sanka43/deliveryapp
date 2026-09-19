@@ -19,13 +19,6 @@ Future<void> orderCustomerOffer(
     return;
   }
 
-  if (!isStoreOpenInCatalog(ref, offer.storeId)) {
-    if (context.mounted) {
-      showShopClosedSnackBar(context);
-    }
-    return;
-  }
-
   final CartItem item = CartItem(
     productKey: 'offer_${offer.id}',
     productName: offer.title,
@@ -49,10 +42,6 @@ Future<void> orderCustomerOffer(
       variant: MndSnackBarVariant.warning,
       actionLabel: 'Clear & order',
       onAction: () {
-        if (!isStoreOpenInCatalog(ref, offer.storeId)) {
-          showShopClosedSnackBar(context);
-          return;
-        }
         ref.read(cartProvider.notifier).clear();
         ref.read(cartProvider.notifier).addItem(item);
         if (context.mounted) {
@@ -66,6 +55,7 @@ Future<void> orderCustomerOffer(
   if (!context.mounted) {
     return;
   }
+  hintIfStoreClosed(context, ref, offer.storeId);
   context.push(AppRoutes.customerCart);
 }
 

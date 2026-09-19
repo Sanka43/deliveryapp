@@ -13,6 +13,7 @@ class StorePickupInfo {
     required this.city,
     required this.phone,
     this.location,
+    this.openingHours,
   });
 
   final String storeId;
@@ -21,6 +22,10 @@ class StorePickupInfo {
   final String city;
   final String phone;
   final StoreLocation? location;
+
+  /// Raw `openingHours` map off the vendor doc (`defaultOpen`/`defaultClose`/
+  /// `closedSunday`) — see `VendorOpeningHours.fromVendorDoc`.
+  final Map<String, dynamic>? openingHours;
 
   String get formattedAddress {
     final List<String> parts = <String>[
@@ -80,6 +85,7 @@ final storePickupInfoByStoreIdProvider =
       city: city,
       phone: phone,
       location: location,
+      openingHours: data['openingHours'] as Map<String, dynamic>?,
     );
   },
 );

@@ -83,8 +83,25 @@ void showShopClosedSnackBar(BuildContext context) {
   );
 }
 
-/// Opens store details for browsing. Closed shops are allowed; ordering is
-/// paused on the details page and other add-to-cart entry points.
+/// A closed shop can still take a Schedule order, so entry points no longer
+/// block it; this just tells the customer up front. Returns true when the
+/// shop is closed (hint shown). Checkout and the server enforce the rest.
+bool hintIfStoreClosed(BuildContext context, WidgetRef ref, String storeId) {
+  if (isStoreOpenInCatalog(ref, storeId)) {
+    return false;
+  }
+  if (context.mounted) {
+    showMndSnackBar(
+      context,
+      AppLocalizations.of(context).shopClosedScheduleHint,
+      variant: MndSnackBarVariant.warning,
+    );
+  }
+  return true;
+}
+
+/// Opens store details for browsing. Closed shops are allowed; the details
+/// page explains that only Schedule orders can be placed while it's closed.
 void openStoreDetails(BuildContext context, SearchStore store) {
   final Map<String, String> queryParameters = <String, String>{
     'name': store.name,
@@ -175,12 +192,7 @@ void openStoreMenuForProductChoice(
 }
 
 bool addProductToCart(BuildContext context, WidgetRef ref, SearchProduct item) {
-  if (!isStoreOpenInCatalog(ref, item.storeId)) {
-    if (context.mounted) {
-      showShopClosedSnackBar(context);
-    }
-    return false;
-  }
+  final bool storeClosed = !isStoreOpenInCatalog(ref, item.storeId);
   if (item.sizeOptions.isNotEmpty) {
     openStoreMenuForProductChoice(context, ref, item);
     return false;
@@ -207,6 +219,8 @@ bool addProductToCart(BuildContext context, WidgetRef ref, SearchProduct item) {
       AppLocalizations.of(context).cartDifferentStoreWarning,
       variant: MndSnackBarVariant.warning,
     );
+  } else if (storeClosed) {
+    hintIfStoreClosed(context, ref, item.storeId);
   } else {
     MndSnackBar.clear(context);
   }

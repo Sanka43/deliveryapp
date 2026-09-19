@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_delivery_app/core/utils/maps_proxy_client.dart';
 import 'package:mnd_delivery_app/core/utils/placemark_address_utils.dart';
+import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/delivery_map_pick_result.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/delivery_map_picker_page.dart';
 import 'package:mnd_delivery_app/features/rides/domain/entities/ride_place.dart';
@@ -38,23 +39,37 @@ Future<RidePlace?> pickRidePlaceOnMap(BuildContext context) async {
   if (!isRidesMapSupported()) {
     return _promptAddressFallback(context);
   }
-  final DeliveryMapPickResult? picked = await DeliveryMapPickerPage.pick(context);
+  final DeliveryMapPickResult? picked =
+      await DeliveryMapPickerPage.pick(context);
   if (picked == null) {
+    return null;
+  }
+  final double? lat = picked.latitude;
+  final double? lng = picked.longitude;
+  if (lat == null || lng == null) {
+    // Only a saved address picked without ever being pinned on the map
+    // reaches here (every other pick path always resolves real
+    // coordinates). Delivery can fall back to a flat fee without a pin;
+    // a ride can't, so ask for a pinned pick instead of booking to nowhere.
+    if (context.mounted) {
+      showMndSnackBar(
+        context,
+        'That saved address has no map pin. Please pick a location on the map.',
+        variant: MndSnackBarVariant.warning,
+      );
+    }
     return null;
   }
   final String composed = <String>[
     picked.line1,
     picked.line2,
     picked.city,
-  ]
-      .map(cleanAddressPart)
-      .where((String s) => s.isNotEmpty)
-      .join(', ');
+  ].map(cleanAddressPart).where((String s) => s.isNotEmpty).join(', ');
   return RidePlace(
-    lat: picked.latitude,
-    lng: picked.longitude,
+    lat: lat,
+    lng: lng,
     label: composed.isEmpty
-        ? '${picked.latitude.toStringAsFixed(5)}, ${picked.longitude.toStringAsFixed(5)}'
+        ? '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}'
         : composed,
   );
 }

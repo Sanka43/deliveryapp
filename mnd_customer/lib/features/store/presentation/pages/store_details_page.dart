@@ -15,11 +15,11 @@ import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/widgets/floating_cart_summary_bar.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
-import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/store/store_offers_section.dart';
 import 'package:mnd_delivery_app/features/offers/presentation/providers/customer_offers_provider.dart';
 import 'package:mnd_delivery_app/features/store/domain/product_availability.dart';
 import 'package:mnd_delivery_app/features/store/presentation/widgets/product_details_bottom_sheet.dart';
+import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class StoreDetailsPage extends ConsumerWidget {
   const StoreDetailsPage({
@@ -119,8 +119,9 @@ class StoreDetailsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final CartState cart = ref.watch(cartProvider);
-    final bool showFloatingCart =
-        !cart.isEmpty && cart.items.isNotEmpty && cart.items.first.storeId == storeId;
+    final bool showFloatingCart = !cart.isEmpty &&
+        cart.items.isNotEmpty &&
+        cart.items.first.storeId == storeId;
     const double floatingCartReserve = 88;
     final String heroImageUrl = _resolvedHeroImageUrl(ref);
     final String resolvedStoreName = _resolvedStoreName(ref);
@@ -136,167 +137,173 @@ class StoreDetailsPage extends ConsumerWidget {
         fit: StackFit.expand,
         children: <Widget>[
           NestedScrollView(
-          headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-            final Color onBar =
-                innerBoxIsScrolled ? Theme.of(context).colorScheme.onSurface : Colors.white;
-            return <Widget>[
-              SliverAppBar(
-                pinned: true,
-                expandedHeight: 272,
-                elevation: innerBoxIsScrolled ? 1 : 0,
-                scrolledUnderElevation: 0,
-                surfaceTintColor: Colors.transparent,
-                backgroundColor: innerBoxIsScrolled
-                    ? Theme.of(context).scaffoldBackgroundColor
-                    : Colors.transparent,
-                foregroundColor: onBar,
-                iconTheme: IconThemeData(color: onBar),
-                actionsIconTheme: IconThemeData(color: onBar),
-                systemOverlayStyle: innerBoxIsScrolled
-                    ? SystemUiOverlayStyle.dark
-                    : SystemUiOverlayStyle.light,
-                title: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: innerBoxIsScrolled ? 1 : 0,
-                  child: Text(
-                    resolvedStoreName.isNotEmpty ? resolvedStoreName : 'Store',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            headerSliverBuilder:
+                (BuildContext context, bool innerBoxIsScrolled) {
+              final Color onBar = innerBoxIsScrolled
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Colors.white;
+              return <Widget>[
+                SliverAppBar(
+                  pinned: true,
+                  expandedHeight: 272,
+                  elevation: innerBoxIsScrolled ? 1 : 0,
+                  scrolledUnderElevation: 0,
+                  surfaceTintColor: Colors.transparent,
+                  backgroundColor: innerBoxIsScrolled
+                      ? Theme.of(context).scaffoldBackgroundColor
+                      : Colors.transparent,
+                  foregroundColor: onBar,
+                  iconTheme: IconThemeData(color: onBar),
+                  actionsIconTheme: IconThemeData(color: onBar),
+                  systemOverlayStyle: innerBoxIsScrolled
+                      ? SystemUiOverlayStyle.dark
+                      : SystemUiOverlayStyle.light,
+                  title: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: innerBoxIsScrolled ? 1 : 0,
+                    child: Text(
+                      resolvedStoreName.isNotEmpty
+                          ? resolvedStoreName
+                          : 'Store',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                flexibleSpace: FlexibleSpaceBar(
-                  collapseMode: CollapseMode.parallax,
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      MndNetworkImage(
-                        imageUrl: heroImageUrl,
-                        width: double.infinity,
-                        height: double.infinity,
-                        fit: BoxFit.cover,
-                        errorChild: Container(
-                          color: AppColors.primaryBlue.withValues(alpha: 0.12),
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: const FittedBox(
-                            fit: BoxFit.contain,
-                            child: MndBrandWatermark(
-                              mndFontSize: 56,
-                              subtitleFontSize: 15,
-                              mndOpacity: 0.22,
-                              subtitleOpacity: 0.17,
+                  flexibleSpace: FlexibleSpaceBar(
+                    collapseMode: CollapseMode.parallax,
+                    background: Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        MndNetworkImage(
+                          imageUrl: heroImageUrl,
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                          errorChild: Container(
+                            color:
+                                AppColors.primaryBlue.withValues(alpha: 0.12),
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: const FittedBox(
+                              fit: BoxFit.contain,
+                              child: MndBrandWatermark(
+                                mndFontSize: 56,
+                                subtitleFontSize: 15,
+                                mndOpacity: 0.22,
+                                subtitleOpacity: 0.17,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: <Color>[
-                              Colors.black.withValues(alpha: 0.72),
-                              Colors.black.withValues(alpha: 0.35),
-                              Colors.transparent,
-                            ],
-                            stops: const <double>[0.0, 0.45, 1.0],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: SafeArea(
-                          top: false,
-                          minimum: EdgeInsets.zero,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.md,
-                              28,
-                              AppSpacing.md,
-                              AppSpacing.md,
-                            ),
-                            child: _StoreHeroOverlay(
-                              storeName: resolvedStoreName,
-                              address: resolvedAddress,
-                              phone: resolvedPhone,
-                              rating: resolvedRating,
-                              tag: resolvedTag,
-                              eta: resolvedEta,
-                              deliveryFee: resolvedDeliveryFee,
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: <Color>[
+                                Colors.black.withValues(alpha: 0.72),
+                                Colors.black.withValues(alpha: 0.35),
+                                Colors.transparent,
+                              ],
+                              stops: const <double>[0.0, 0.45, 1.0],
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ];
-          },
-          body: Padding(
-            padding: EdgeInsets.only(
-              bottom: showFloatingCart ? floatingCartReserve : 0,
-            ),
-            child: ref.watch(storeMenuProductsProvider(storeId)).when(
-                  data: (List<SearchProduct> items) {
-                    final List<StoreMenuProduct> products = items
-                        .map(StoreMenuProduct.fromSearchProduct)
-                        .toList(growable: false);
-                    final bool hasOffers = ref
-                            .watch(storeLiveOffersProvider(storeId))
-                            .asData
-                            ?.value
-                            .isNotEmpty ??
-                        false;
-                    if (products.isEmpty && !hasOffers) {
-                      return const _StoreMenuEmptyState();
-                    }
-                    if (products.isEmpty) {
-                      return ListView(
-                        padding: EdgeInsets.zero,
-                        children: <Widget>[
-                          StoreOffersSection(storeId: storeId),
-                          const SizedBox(height: AppSpacing.lg),
-                          const _StoreMenuEmptyState(),
-                        ],
-                      );
-                    }
-                    return _StoreProductList(
-                      storeId: storeId,
-                      storeName: resolvedStoreName,
-                      products: products,
-                    );
-                  },
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (Object err, StackTrace _) => Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      child: Text(
-                        userFacingError(
-                          err,
-                          fallback: 'Could not load menu. Please try again.',
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: SafeArea(
+                            top: false,
+                            minimum: EdgeInsets.zero,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                AppSpacing.md,
+                                28,
+                                AppSpacing.md,
+                                AppSpacing.md,
+                              ),
+                              child: _StoreHeroOverlay(
+                                storeName: resolvedStoreName,
+                                address: resolvedAddress,
+                                phone: resolvedPhone,
+                                rating: resolvedRating,
+                                tag: resolvedTag,
+                                eta: resolvedEta,
+                                deliveryFee: resolvedDeliveryFee,
+                              ),
+                            ),
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
+                      ],
                     ),
                   ),
                 ),
-          ),
-        ),
-        if (showFloatingCart)
-              Positioned(
-                left: AppSpacing.md,
-                right: AppSpacing.md,
-                bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.sm,
-                child: FloatingCartSummaryBar(
-                  filterStoreId: storeId,
-                  onViewCart: () => context.push(AppRoutes.customerCart),
-                ),
+              ];
+            },
+            body: Padding(
+              padding: EdgeInsets.only(
+                bottom: showFloatingCart ? floatingCartReserve : 0,
               ),
-          ],
-        ),
+              child: ref.watch(storeMenuProductsProvider(storeId)).when(
+                    data: (List<SearchProduct> items) {
+                      final List<StoreMenuProduct> products = items
+                          .map(StoreMenuProduct.fromSearchProduct)
+                          .toList(growable: false);
+                      final bool hasOffers = ref
+                              .watch(storeLiveOffersProvider(storeId))
+                              .asData
+                              ?.value
+                              .isNotEmpty ??
+                          false;
+                      if (products.isEmpty && !hasOffers) {
+                        return const _StoreMenuEmptyState();
+                      }
+                      if (products.isEmpty) {
+                        return ListView(
+                          padding: EdgeInsets.zero,
+                          children: <Widget>[
+                            StoreOffersSection(storeId: storeId),
+                            const SizedBox(height: AppSpacing.lg),
+                            const _StoreMenuEmptyState(),
+                          ],
+                        );
+                      }
+                      return _StoreProductList(
+                        storeId: storeId,
+                        storeName: resolvedStoreName,
+                        products: products,
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (Object err, StackTrace _) => Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        child: Text(
+                          userFacingError(
+                            err,
+                            fallback: 'Could not load menu. Please try again.',
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
+            ),
+          ),
+          if (showFloatingCart)
+            Positioned(
+              left: AppSpacing.md,
+              right: AppSpacing.md,
+              bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.sm,
+              child: FloatingCartSummaryBar(
+                filterStoreId: storeId,
+                onViewCart: () => context.push(AppRoutes.customerCart),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -399,7 +406,9 @@ class _StoreMenuProductRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Material(
-                color: isAvailable ? AppColors.brandPrimary : AppColors.homeMutedFill,
+                color: isAvailable
+                    ? AppColors.brandPrimary
+                    : AppColors.homeMutedFill,
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
@@ -408,7 +417,8 @@ class _StoreMenuProductRow extends StatelessWidget {
                     padding: const EdgeInsets.all(10),
                     child: Icon(
                       Icons.add_rounded,
-                      color: isAvailable ? Colors.white : AppColors.textSecondary,
+                      color:
+                          isAvailable ? Colors.white : AppColors.textSecondary,
                       size: 24,
                     ),
                   ),
@@ -537,7 +547,8 @@ class _StoreHeroOverlay extends StatelessWidget {
         Row(
           children: <Widget>[
             if (rating > 0) ...<Widget>[
-              const Icon(Icons.star_rounded, color: AppColors.warning, size: 18),
+              const Icon(Icons.star_rounded,
+                  color: AppColors.warning, size: 18),
               const SizedBox(width: 2),
               Text(rating.toStringAsFixed(1), style: whiteMeta),
             ],
@@ -614,7 +625,7 @@ class _StoreProductList extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'This shop is closed right now. You can browse, but ordering is paused.',
+                        AppLocalizations.of(context).shopClosedScheduleHint,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: AppColors.error,
                               fontWeight: FontWeight.w600,
@@ -642,12 +653,10 @@ class _StoreProductList extends ConsumerWidget {
         return _StoreMenuProductRow(
           item: item,
           priceLabel: _formatRs(item.basePrice),
-          isAvailable: isAvailable && storeOpen,
+          // A closed shop still lets customers add items for a Schedule order;
+          // the banner above explains, and checkout gates the other types.
+          isAvailable: isAvailable,
           onTap: () {
-            if (!storeOpen) {
-              showShopClosedSnackBar(context);
-              return;
-            }
             showProductDetailsBottomSheet(
               context: context,
               ref: ref,
@@ -682,8 +691,7 @@ class ProductAvailabilityInfo {
 
 ProductAvailabilityInfo _parseAvailabilityInfo(Map<String, dynamic> map) {
   final dynamic rawStock = map['stockQty'];
-  final int stockQty =
-      rawStock is num ? rawStock.round().clamp(0, 9999999) : 0;
+  final int stockQty = rawStock is num ? rawStock.round().clamp(0, 9999999) : 0;
   return ProductAvailabilityInfo(
     isAvailable: _parseAvailability(map),
     manageStock: map['manageStock'] == true,
@@ -691,8 +699,9 @@ ProductAvailabilityInfo _parseAvailabilityInfo(Map<String, dynamic> map) {
   );
 }
 
-final storeProductAvailabilityProvider = StreamProvider.family<
-    Map<String, ProductAvailabilityInfo>, String>((Ref ref, String storeId) {
+final storeProductAvailabilityProvider =
+    StreamProvider.family<Map<String, ProductAvailabilityInfo>, String>(
+        (Ref ref, String storeId) {
   final firestore = ref.watch(firestoreProvider);
   return firestore
       .collection(FirebaseCollections.products)
@@ -714,12 +723,14 @@ final storeProductAvailabilityProvider = StreamProvider.family<
 });
 
 String _getProductLookupKey(String docId, Map<String, dynamic> map) {
-  final String rawKey = ((map['lookupKey'] as String?) ?? '').trim().toLowerCase();
+  final String rawKey =
+      ((map['lookupKey'] as String?) ?? '').trim().toLowerCase();
   if (rawKey.isNotEmpty) {
     return rawKey;
   }
 
-  final String productId = ((map['productId'] as String?) ?? '').trim().toLowerCase();
+  final String productId =
+      ((map['productId'] as String?) ?? '').trim().toLowerCase();
   if (productId.isNotEmpty) {
     return productId;
   }

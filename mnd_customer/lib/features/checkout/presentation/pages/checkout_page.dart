@@ -4,14 +4,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
 import 'package:mnd_delivery_app/core/services/analytics_service.dart';
+import 'package:mnd_delivery_app/core/utils/delivery_address_resolver.dart';
 import 'package:mnd_delivery_app/core/utils/payhere_native_launcher.dart';
+import 'package:mnd_delivery_app/core/utils/vendor_open_hours.dart';
 import 'package:mnd_delivery_app/features/cart/domain/delivery_pricing.dart';
 import 'package:mnd_delivery_app/features/cart/domain/platform_fee_config.dart';
 import 'package:mnd_delivery_app/features/cart/data/coupon_repository.dart';
@@ -23,14 +27,13 @@ import 'package:mnd_delivery_app/features/cart/presentation/providers/platform_f
 import 'package:mnd_delivery_app/features/cart/presentation/providers/store_pickup_info_provider.dart';
 import 'package:mnd_delivery_app/features/orders/data/order_placement_repository.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/order_placement_repository_provider.dart';
-import 'package:mnd_delivery_app/features/customer/data/saved_address.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_profile_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
-import 'package:mnd_delivery_app/features/customer/presentation/providers/saved_addresses_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/delivery_map_pick_result.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/delivery_map_picker_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/core/widgets/sign_in_required_prompt.dart';
+import 'package:mnd_delivery_app/core/widgets/map_unavailable_banner.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_empty_state.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_expandable_card.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
@@ -45,6 +48,23 @@ import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 enum CheckoutPaymentMethod {
   cashOnDelivery,
   payhere,
+}
+
+enum CheckoutOrderType {
+  standard,
+  emergency,
+  schedule,
+}
+
+extension on CheckoutOrderType {
+  /// Value written to the order doc / sent to the placement callables —
+  /// matches the strings `resolveCheckoutOrderType` in
+  /// `functions/src/checkoutOrderType.ts` expects.
+  String get wireValue => switch (this) {
+        CheckoutOrderType.standard => 'standard',
+        CheckoutOrderType.emergency => 'emergency',
+        CheckoutOrderType.schedule => 'schedule',
+      };
 }
 
 class CheckoutPage extends ConsumerStatefulWidget {
@@ -64,8 +84,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   final TextEditingController _specialInstructionController =
       TextEditingController();
   CheckoutPaymentMethod _payment = CheckoutPaymentMethod.cashOnDelivery;
+  CheckoutOrderType _orderType = CheckoutOrderType.standard;
+  DateTime? _scheduledFor;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  String? _selectedSavedId;
   bool _placingOrder = false;
 
   /// Guards the very top of [_onPlaceOrder] against a fast double-tap firing
@@ -81,6 +102,11 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   /// complete on its own via the payment webhook.
   PendingCheckoutSnapshot? _resumedFrom;
 
+  /// True while silently resolving the customer's GPS position into a
+  /// delivery address on first entering checkout — see
+  /// [_tryAutoLocateIfNeeded]. Drives the loading overlay on the map preview.
+  bool _autoLocating = false;
+
   @override
   void initState() {
     super.initState();
@@ -95,7 +121,81 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       // A full browser reload (e.g. "back" from PayHere's hosted checkout on
       // web) wipes the in-memory cart — try to resume whatever the customer
       // was checking out instead of showing an empty cart / bouncing home.
-      _tryResumePendingCheckout();
+      // Auto-locate only after that resume settles, so it never races a
+      // restored address into overwriting it.
+      _tryResumePendingCheckout().then((_) => _tryAutoLocateIfNeeded());
+    } else {
+      _tryAutoLocateIfNeeded();
+    }
+  }
+
+  /// Silently grabs the customer's current GPS position and resolves it into
+  /// a delivery address the moment they land on checkout with no address
+  /// picked yet — so the map preview shows something useful immediately
+  /// instead of an empty "pick on map" prompt. Never surfaces a permission
+  /// error: if location is off/denied/slow, the customer can still set an
+  /// address by hand via "Pick on map" or a saved address.
+  Future<void> _tryAutoLocateIfNeeded() async {
+    if (!mounted || !isDeliveryMapPickerSupported()) {
+      return;
+    }
+    final CartState cart = ref.read(cartProvider);
+    if (cart.isSelfPickup || _hasSelectedAddress) {
+      return;
+    }
+    setState(() => _autoLocating = true);
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+      final Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 10),
+        ),
+      ).onError<TimeoutException>((_, __) async {
+        final Position? last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          return last;
+        }
+        throw TimeoutException('Location request timed out.');
+      });
+      if (!mounted || _hasSelectedAddress) {
+        // The customer picked an address by hand while this was resolving.
+        return;
+      }
+      final DeliveryMapPickResult resolved =
+          await resolveDeliveryAddressForPoint(
+        LatLng(position.latitude, position.longitude),
+      );
+      if (!mounted || _hasSelectedAddress) {
+        return;
+      }
+      // Always non-null: this came from resolveDeliveryAddressForPoint,
+      // which only ever geocodes a real GPS fix, never a saved address.
+      ref
+          .read(cartProvider.notifier)
+          .setDropoffLocation(resolved.latitude!, resolved.longitude!);
+      setState(() {
+        _line1Controller.text = resolved.line1;
+        _line2Controller.text = resolved.line2;
+        _cityController.text = resolved.city;
+      });
+    } catch (_) {
+      // Silent — the customer can still set an address with "Pick on map".
+    } finally {
+      if (mounted) {
+        setState(() => _autoLocating = false);
+      }
     }
   }
 
@@ -274,16 +374,22 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       subtotal,
       percentOverride: feeConfig.serviceChargePercent,
     );
+    final int emergencyFee = _orderType == CheckoutOrderType.emergency
+        ? feeConfig.emergencyFeeLkr
+        : 0;
     final bool payingOnline = _payment == CheckoutPaymentMethod.payhere;
     final int ipgFee = payingOnline
         ? IpgFeePricing.ipgFeeLkr(
-            subtotal - discount + deliveryFee + serviceCharge,
+            subtotal - discount + deliveryFee + serviceCharge + emergencyFee,
             percentOverride: feeConfig.ipgFeePercent,
           )
         : 0;
-    final int total =
-        subtotal - discount + deliveryFee + serviceCharge + ipgFee;
-    final String storeName = cart.items.first.storeName.trim();
+    final int total = subtotal -
+        discount +
+        deliveryFee +
+        serviceCharge +
+        emergencyFee +
+        ipgFee;
     final String storeId = cart.items.first.storeId;
 
     final bool missingDeliveryAddress = !isPickup && !_hasSelectedAddress;
@@ -291,6 +397,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     // so the delivery fee isn't always the flat estimate.
     final bool missingMapPin = !isPickup && _hasSelectedAddress && !hasMapPin;
     final bool missingPhone = !_hasResolvablePhone;
+    final bool missingScheduledTime =
+        _orderType == CheckoutOrderType.schedule && _scheduledFor == null;
     final String? readinessHint = placeOrderBlock != null
         ? null
         : missingDeliveryAddress
@@ -299,9 +407,12 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 ? l10n.checkoutHintPinAddress
                 : missingPhone
                     ? l10n.checkoutHintAddPhone
-                    : null;
+                    : missingScheduledTime
+                        ? l10n.checkoutScheduleRequiredWarning
+                        : null;
     final bool placeOrderDisabled = _placingOrder ||
         placeOrderBlock != null ||
+        missingScheduledTime ||
         missingDeliveryAddress ||
         missingPhone;
 
@@ -420,21 +531,38 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                               ),
                       ),
                     _CheckoutHeroCard(
-                      storeName: storeName.isNotEmpty
-                          ? storeName
-                          : l10n.checkoutStoreFallback,
-                      itemCount: cart.itemCount,
                       fulfillmentMode: cart.fulfillmentMode,
                       onFulfillmentChanged: (FulfillmentMode mode) {
                         ref
                             .read(cartProvider.notifier)
                             .setFulfillmentMode(mode);
                         if (mode == FulfillmentMode.selfPickup) {
-                          setState(
-                            () => _payment = CheckoutPaymentMethod.payhere,
-                          );
+                          setState(() {
+                            _payment = CheckoutPaymentMethod.payhere;
+                            // Emergency (rush delivery) doesn't apply once
+                            // the customer is collecting it themselves.
+                            if (_orderType == CheckoutOrderType.emergency) {
+                              _orderType = CheckoutOrderType.standard;
+                            }
+                          });
                         }
                       },
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    _OrderTypeSection(
+                      storeId: storeId,
+                      orderType: _orderType,
+                      isPickup: isPickup,
+                      scheduledFor: _scheduledFor,
+                      onOrderTypeChanged: (CheckoutOrderType type) {
+                        setState(() {
+                          _orderType = type;
+                          if (type != CheckoutOrderType.schedule) {
+                            _scheduledFor = null;
+                          }
+                        });
+                      },
+                      onPickScheduledTime: _pickScheduledTime,
                     ),
                     const SizedBox(height: AppSpacing.md),
                     if (isPickup)
@@ -443,34 +571,15 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       )
                     else
                       _DeliveryFulfillmentSection(
-                        selectedSavedId: _selectedSavedId,
                         hasSelectedAddress: _hasSelectedAddress,
-                        hasMapPin: cart.dropoffLatitude != null &&
-                            cart.dropoffLongitude != null,
+                        latitude: cart.dropoffLatitude,
+                        longitude: cart.dropoffLongitude,
+                        autoLocating: _autoLocating,
                         line1Controller: _line1Controller,
                         line2Controller: _line2Controller,
                         cityController: _cityController,
-                        phoneController: _phoneController,
                         onManageTap: () =>
                             context.push(AppRoutes.customerSavedAddresses),
-                        onSavedSelected: (SavedAddress a) {
-                          if (a.hasPin) {
-                            ref
-                                .read(cartProvider.notifier)
-                                .setDropoffLocation(a.latitude!, a.longitude!);
-                          } else {
-                            ref
-                                .read(cartProvider.notifier)
-                                .clearDropoffLocation();
-                          }
-                          setState(() {
-                            _selectedSavedId = a.id;
-                            _line1Controller.text = a.line1;
-                            _line2Controller.text = a.line2;
-                            _cityController.text = a.city;
-                            _phoneController.text = a.phone;
-                          });
-                        },
                         onMapTap: _openDeliveryMapPicker,
                       ),
                     const SizedBox(height: AppSpacing.md),
@@ -505,7 +614,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                           return PhoneNumberUtils.validateNationalNumber(
                             dialCode: '+94',
                             nationalNumber: v,
-                          );
+                          )?.message(l10n);
                         },
                       ),
                     ),
@@ -576,6 +685,34 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
+                          if (_orderType == CheckoutOrderType.schedule &&
+                              _scheduledFor != null) ...<Widget>[
+                            Row(
+                              children: <Widget>[
+                                const Icon(
+                                  Icons.schedule_rounded,
+                                  size: 16,
+                                  color: AppColors.primaryBlue,
+                                ),
+                                const SizedBox(width: AppSpacing.xs),
+                                Expanded(
+                                  child: Text(
+                                    l10n.checkoutConfirmScheduledNote(
+                                      _formatScheduledFor(_scheduledFor!),
+                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: AppColors.primaryBlue,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                          ],
                           _SummaryRow(
                             label: l10n.summarySubtotal,
                             value: MoneyFormat.lkr(subtotal),
@@ -594,12 +731,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                 ? l10n.checkoutPickupLabel
                                 : l10n.fulfillmentDelivery,
                             value: MoneyFormat.lkr(deliveryFee),
-                            detail: isPickup
-                                ? deliveryQuote.detail
-                                : hasMapPin
-                                    ? deliveryQuote.detail
-                                    : (deliveryQuote.detail ??
-                                        l10n.checkoutEstimatedFeeDetail),
+                            detail: _deliveryFeeDetailText(l10n, deliveryQuote),
                           ),
                           if (serviceCharge > 0) ...<Widget>[
                             const SizedBox(height: AppSpacing.xs),
@@ -608,6 +740,13 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                 feeConfig.serviceChargePercentLabel,
                               ),
                               value: MoneyFormat.lkr(serviceCharge),
+                            ),
+                          ],
+                          if (emergencyFee > 0) ...<Widget>[
+                            const SizedBox(height: AppSpacing.xs),
+                            _SummaryRow(
+                              label: l10n.summaryEmergencyFeeLabel,
+                              value: MoneyFormat.lkr(emergencyFee),
                             ),
                           ],
                           if (ipgFee > 0) ...<Widget>[
@@ -656,18 +795,84 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     if (pick == null || !mounted) {
       return;
     }
-    ref
-        .read(cartProvider.notifier)
-        .setDropoffLocation(pick.latitude, pick.longitude);
+    final double? pickedLat = pick.latitude;
+    final double? pickedLng = pick.longitude;
+    if (pickedLat != null && pickedLng != null) {
+      ref.read(cartProvider.notifier).setDropoffLocation(pickedLat, pickedLng);
+    } else {
+      // A saved address that was never pinned on the map — keep the text,
+      // drop any previous pin so the delivery fee falls back to the flat
+      // estimate rather than showing a stale distance-based one.
+      ref.read(cartProvider.notifier).clearDropoffLocation();
+    }
     setState(() {
-      _selectedSavedId = null;
       _line1Controller.text = pick.line1;
       _line2Controller.text = pick.line2;
       _cityController.text = pick.city;
+      // Set only when the pick came from a saved address (see
+      // DeliveryMapPickResult.phone) — a manual map pin or search result
+      // never carries a phone, so this leaves the field untouched then.
+      final String? phone = pick.phone;
+      if (phone != null && phone.isNotEmpty) {
+        _phoneController.text = phone;
+      }
     });
   }
 
+  /// Native date + time pickers for a "Schedule" order — bounded to today
+  /// through the next 2 days (see `MAX_SCHEDULE_AHEAD_MS` in
+  /// `functions/src/checkoutOrderType.ts`, which the server enforces
+  /// authoritatively; this is just the UI's matching window).
+  Future<void> _pickScheduledTime() async {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime? date = await showDatePicker(
+      context: context,
+      initialDate: _scheduledFor ?? now,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 2)),
+    );
+    if (date == null || !mounted) {
+      return;
+    }
+    final TimeOfDay? time = await showTimePicker(
+      context: context,
+      initialTime: _scheduledFor != null
+          ? TimeOfDay.fromDateTime(_scheduledFor!)
+          : TimeOfDay.fromDateTime(now.add(const Duration(minutes: 30))),
+    );
+    if (time == null || !mounted) {
+      return;
+    }
+    final DateTime combined =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (combined.isBefore(now)) {
+      showMndSnackBar(
+        context,
+        AppLocalizations.of(context).checkoutScheduledTimePastError,
+        variant: MndSnackBarVariant.warning,
+      );
+      return;
+    }
+    setState(() => _scheduledFor = combined);
+  }
+
+  /// A closed shop can still take a Schedule order, so when the customer
+  /// picked anything else, point them at that instead of a plain "closed".
+  void _showShopClosedNotice(BuildContext context) {
+    if (_orderType == CheckoutOrderType.schedule) {
+      showShopClosedSnackBar(context);
+      return;
+    }
+    showMndSnackBar(
+      context,
+      AppLocalizations.of(context).shopClosedScheduleHint,
+      variant: MndSnackBarVariant.warning,
+    );
+  }
+
   Future<bool> _cartStoreIsAcceptingOrders(String storeId) async {
+    final bool scheduled = _orderType == CheckoutOrderType.schedule;
     final String id = storeId.trim();
     if (id.isEmpty) {
       return false;
@@ -682,7 +887,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       if (map == null) {
         return false;
       }
-      return vendorIsAcceptingOrders(map);
+      return vendorAcceptsOrders(map, scheduled: scheduled);
     } catch (_) {
       return false;
     }
@@ -746,19 +951,20 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       );
       return;
     }
-    final String? typedPhoneError = _phoneController.text.trim().isEmpty
-        ? null
-        : PhoneNumberUtils.validateNationalNumber(
-            dialCode: '+94',
-            nationalNumber: _phoneController.text,
-          );
+    final PhoneValidationError? typedPhoneError =
+        _phoneController.text.trim().isEmpty
+            ? null
+            : PhoneNumberUtils.validateNationalNumber(
+                dialCode: '+94',
+                nationalNumber: _phoneController.text,
+              );
     if (typedPhoneError != null) {
       if (!context.mounted) {
         return;
       }
       showMndSnackBar(
         context,
-        typedPhoneError,
+        typedPhoneError.message(AppLocalizations.of(context)),
         variant: MndSnackBarVariant.warning,
       );
       return;
@@ -769,7 +975,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     final bool storeOpen = await _cartStoreIsAcceptingOrders(previewStoreId);
     if (!storeOpen) {
       if (context.mounted) {
-        showShopClosedSnackBar(context);
+        _showShopClosedNotice(context);
       }
       return;
     }
@@ -786,12 +992,16 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       previewCart.subtotal,
       percentOverride: previewFeeConfig.serviceChargePercent,
     );
+    final int previewEmergencyFee = _orderType == CheckoutOrderType.emergency
+        ? previewFeeConfig.emergencyFeeLkr
+        : 0;
     final int previewIpgFee = _payment == CheckoutPaymentMethod.payhere
         ? IpgFeePricing.ipgFeeLkr(
             previewCart.subtotal -
                 previewCart.discount +
                 previewDeliveryFee +
-                previewServiceCharge,
+                previewServiceCharge +
+                previewEmergencyFee,
             percentOverride: previewFeeConfig.ipgFeePercent,
           )
         : 0;
@@ -799,6 +1009,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         previewCart.discount +
         previewDeliveryFee +
         previewServiceCharge +
+        previewEmergencyFee +
         previewIpgFee;
 
     final bool? confirm = await showDialog<bool>(
@@ -807,6 +1018,10 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         totalLabel: MoneyFormat.lkr(previewTotal),
         payment: _payment,
         isPickup: isPickup,
+        scheduledForLabel:
+            _orderType == CheckoutOrderType.schedule && _scheduledFor != null
+                ? _formatScheduledFor(_scheduledFor!)
+                : null,
       ),
     );
 
@@ -829,7 +1044,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         await _cartStoreIsAcceptingOrders(cart.items.first.storeId);
     if (!stillOpen) {
       if (context.mounted) {
-        showShopClosedSnackBar(context);
+        _showShopClosedNotice(context);
       }
       return;
     }
@@ -847,14 +1062,21 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       subtotal,
       percentOverride: submitFeeConfig.serviceChargePercent,
     );
+    final int emergencyFee = _orderType == CheckoutOrderType.emergency
+        ? submitFeeConfig.emergencyFeeLkr
+        : 0;
     final int ipgFee = _payment == CheckoutPaymentMethod.payhere
         ? IpgFeePricing.ipgFeeLkr(
-            subtotal - discount + deliveryFee + serviceCharge,
+            subtotal - discount + deliveryFee + serviceCharge + emergencyFee,
             percentOverride: submitFeeConfig.ipgFeePercent,
           )
         : 0;
-    final int total =
-        subtotal - discount + deliveryFee + serviceCharge + ipgFee;
+    final int total = subtotal -
+        discount +
+        deliveryFee +
+        serviceCharge +
+        emergencyFee +
+        ipgFee;
     if (total < 0) {
       showMndSnackBar(
         context,
@@ -919,6 +1141,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         city: city,
         phone: phone,
         couponCode: cart.appliedCoupon?.code,
+        orderType: _orderType.wireValue,
+        scheduledFor: _scheduledFor?.toIso8601String(),
       );
 
       if (!context.mounted) {
@@ -991,6 +1215,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         city: city,
         phone: phone,
         couponCode: cart.appliedCoupon?.code,
+        orderType: _orderType.wireValue,
+        scheduledFor: _scheduledFor?.toIso8601String(),
       );
       if (!context.mounted) {
         return;
@@ -1096,11 +1322,16 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
     required this.totalLabel,
     required this.payment,
     required this.isPickup,
+    this.scheduledForLabel,
   });
 
   final String totalLabel;
   final CheckoutPaymentMethod payment;
   final bool isPickup;
+
+  /// Set only for a Schedule order — shown as an extra note under the
+  /// payment description.
+  final String? scheduledForLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1167,6 +1398,17 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
             ),
+            if (scheduledForLabel != null) ...<Widget>[
+              const SizedBox(height: 4),
+              Text(
+                l10n.checkoutConfirmScheduledNote(scheduledForLabel!),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.primaryBlue,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
             const SizedBox(height: AppSpacing.lg),
             Row(
               children: <Widget>[
@@ -1214,14 +1456,10 @@ class _PlaceOrderConfirmDialog extends StatelessWidget {
 
 class _CheckoutHeroCard extends StatelessWidget {
   const _CheckoutHeroCard({
-    required this.storeName,
-    required this.itemCount,
     required this.fulfillmentMode,
     required this.onFulfillmentChanged,
   });
 
-  final String storeName;
-  final int itemCount;
   final FulfillmentMode fulfillmentMode;
   final ValueChanged<FulfillmentMode> onFulfillmentChanged;
 
@@ -1230,60 +1468,184 @@ class _CheckoutHeroCard extends StatelessWidget {
     return MndPremiumCard(
       borderRadius: AppColors.cardRadiusSm,
       padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.storefront_rounded,
-                  color: AppColors.primaryBlue,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      storeName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      AppLocalizations.of(context)
-                          .checkoutItemCountLabel(itemCount),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          _FulfillmentModeSegment(
-            mode: fulfillmentMode,
-            onChanged: onFulfillmentChanged,
-          ),
-        ],
+      child: _FulfillmentModeSegment(
+        mode: fulfillmentMode,
+        onChanged: onFulfillmentChanged,
       ),
     );
   }
+}
+
+class _OrderTypeSection extends ConsumerWidget {
+  const _OrderTypeSection({
+    required this.storeId,
+    required this.orderType,
+    required this.isPickup,
+    required this.scheduledFor,
+    required this.onOrderTypeChanged,
+    required this.onPickScheduledTime,
+  });
+
+  final String storeId;
+  final CheckoutOrderType orderType;
+  final bool isPickup;
+  final DateTime? scheduledFor;
+  final ValueChanged<CheckoutOrderType> onOrderTypeChanged;
+  final VoidCallback onPickScheduledTime;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AsyncValue<StorePickupInfo?> pickupInfoAsync =
+        ref.watch(storePickupInfoByStoreIdProvider(storeId));
+    final VendorOpeningHours openingHours = VendorOpeningHours.fromRaw(
+      pickupInfoAsync.valueOrNull?.openingHours,
+    );
+    final bool outsideHours =
+        scheduledFor != null && !openingHours.isOpenAt(scheduledFor!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        MndSectionHeader(title: l10n.checkoutOrderTypeHeader),
+        const SizedBox(height: AppSpacing.sm),
+        MndPremiumCard(
+          borderRadius: AppColors.cardRadiusSm,
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _PaymentChip(
+                      label: l10n.checkoutOrderTypeStandard,
+                      icon: Icons.local_shipping_outlined,
+                      selected: orderType == CheckoutOrderType.standard,
+                      enabled: true,
+                      onTap: () =>
+                          onOrderTypeChanged(CheckoutOrderType.standard),
+                    ),
+                  ),
+                  if (!isPickup) ...<Widget>[
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: _PaymentChip(
+                        label: l10n.checkoutOrderTypeEmergency,
+                        icon: Icons.bolt_rounded,
+                        selected: orderType == CheckoutOrderType.emergency,
+                        enabled: true,
+                        onTap: () =>
+                            onOrderTypeChanged(CheckoutOrderType.emergency),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: _PaymentChip(
+                      label: l10n.checkoutOrderTypeSchedule,
+                      icon: Icons.event_outlined,
+                      selected: orderType == CheckoutOrderType.schedule,
+                      enabled: true,
+                      onTap: () =>
+                          onOrderTypeChanged(CheckoutOrderType.schedule),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                switch (orderType) {
+                  CheckoutOrderType.standard =>
+                    l10n.checkoutOrderTypeStandardNote,
+                  CheckoutOrderType.emergency =>
+                    l10n.checkoutOrderTypeEmergencyNote,
+                  CheckoutOrderType.schedule =>
+                    l10n.checkoutOrderTypeScheduleNote,
+                },
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              if (orderType == CheckoutOrderType.schedule) ...<Widget>[
+                const SizedBox(height: AppSpacing.sm),
+                Material(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+                  child: InkWell(
+                    onTap: onPickScheduledTime,
+                    borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+                    child: Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        borderRadius:
+                            BorderRadius.circular(AppColors.cardRadiusSm),
+                        border: Border.all(
+                          color: AppColors.primaryBlue.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          const Icon(
+                            Icons.schedule_rounded,
+                            size: 18,
+                            color: AppColors.primaryBlue,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              scheduledFor == null
+                                  ? l10n.checkoutSchedulePickTimeCta
+                                  : l10n.checkoutScheduledForLabel(
+                                      _formatScheduledFor(scheduledFor!),
+                                    ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.primaryBlue.withValues(alpha: 0.6),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (outsideHours) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.checkoutScheduleOutsideHoursWarning,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// e.g. "Jan 5, 6:30 PM" — a fixed pattern rather than locale-aware
+/// formatting, matching this app's other hand-rolled formatters (see
+/// [MoneyFormat]) rather than pulling in `intl`'s `DateFormat`.
+String _formatScheduledFor(DateTime dt) {
+  const List<String> months = <String>[
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', //
+  ];
+  final int hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final String period = dt.hour < 12 ? 'AM' : 'PM';
+  final String minute = dt.minute.toString().padLeft(2, '0');
+  return '${months[dt.month - 1]} ${dt.day}, $hour12:$minute $period';
 }
 
 class _FulfillmentModeSegment extends StatelessWidget {
@@ -1380,72 +1742,6 @@ class _SegmentChip extends StatelessWidget {
   }
 }
 
-class _SavedAddressChip extends StatelessWidget {
-  const _SavedAddressChip({
-    super.key,
-    required this.label,
-    required this.isDefault,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool isDefault;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color fg = selected ? Colors.white : AppColors.textPrimary;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: isDefault ? '$label, default address' : label,
-      excludeSemantics: true,
-      child: Material(
-        color: selected ? AppColors.primaryBlue : AppColors.homeMutedFill,
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(999),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: 8,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(
-                  Icons.location_on_rounded,
-                  size: 14,
-                  color: selected ? Colors.white : AppColors.textSecondary,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: fg,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                if (isDefault) ...<Widget>[
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.star_rounded,
-                    size: 14,
-                    color: selected ? Colors.white : AppColors.warning,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _CheckoutCouponCard extends ConsumerStatefulWidget {
   const _CheckoutCouponCard({required this.controller});
 
@@ -1466,11 +1762,12 @@ class _CheckoutCouponCardState extends ConsumerState<_CheckoutCouponCard> {
     }
     setState(() => _validating = true);
     final CartState cart = ref.read(cartProvider);
-    final CouponValidationResult result = await ref.read(couponRepositoryProvider).validate(
-          code: code,
-          subtotalLkr: cart.subtotal,
-          storeId: cart.items.isEmpty ? '' : cart.items.first.storeId,
-        );
+    final CouponValidationResult result =
+        await ref.read(couponRepositoryProvider).validate(
+              code: code,
+              subtotalLkr: cart.subtotal,
+              storeId: cart.items.isEmpty ? '' : cart.items.first.storeId,
+            );
     if (!mounted) {
       return;
     }
@@ -1630,27 +1927,25 @@ class _CheckoutDeliveryInstructionsCard extends StatelessWidget {
 
 class _DeliveryFulfillmentSection extends StatelessWidget {
   const _DeliveryFulfillmentSection({
-    required this.selectedSavedId,
     required this.hasSelectedAddress,
-    required this.hasMapPin,
+    required this.latitude,
+    required this.longitude,
+    required this.autoLocating,
     required this.line1Controller,
     required this.line2Controller,
     required this.cityController,
-    required this.phoneController,
     required this.onManageTap,
-    required this.onSavedSelected,
     required this.onMapTap,
   });
 
-  final String? selectedSavedId;
   final bool hasSelectedAddress;
-  final bool hasMapPin;
+  final double? latitude;
+  final double? longitude;
+  final bool autoLocating;
   final TextEditingController line1Controller;
   final TextEditingController line2Controller;
   final TextEditingController cityController;
-  final TextEditingController phoneController;
   final VoidCallback onManageTap;
-  final ValueChanged<SavedAddress> onSavedSelected;
   final VoidCallback onMapTap;
 
   @override
@@ -1667,100 +1962,36 @@ class _DeliveryFulfillmentSection extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         MndPremiumCard(
           borderRadius: AppColors.cardRadiusSm,
-          padding: const EdgeInsets.all(AppSpacing.md),
+          padding: EdgeInsets.zero,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              if (hasSelectedAddress) ...<Widget>[
-                _SelectedAddressBanner(
-                  line1: line1Controller.text.trim(),
-                  line2: line2Controller.text.trim(),
-                  city: cityController.text.trim(),
-                  phone: phoneController.text.trim(),
-                  pinnedOnMap: hasMapPin,
-                  onChangeTap: onMapTap,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-              ] else ...<Widget>[
-                _MapPickCta(onTap: onMapTap),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              Consumer(
-                builder: (BuildContext context, WidgetRef ref, _) {
-                  final AsyncValue<List<SavedAddress>> async =
-                      ref.watch(savedAddressesStreamProvider);
-                  return async.when(
-                    data: (List<SavedAddress> list) {
-                      if (list.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: AppSpacing.md,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              l10n.checkoutUseSavedLabel,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                            const SizedBox(height: AppSpacing.xs),
-                            Wrap(
-                              spacing: AppSpacing.xs,
-                              runSpacing: AppSpacing.xs,
-                              children: List<Widget>.generate(list.length,
-                                  (int index) {
-                                final SavedAddress a = list[index];
-                                final bool selected = selectedSavedId == a.id;
-                                return _SavedAddressChip(
-                                  key: index == 0
-                                      ? const ValueKey<String>(
-                                          'checkoutFirstSavedAddress')
-                                      : null,
-                                  label: a.label,
-                                  isDefault: a.isDefault,
-                                  selected: selected,
-                                  onTap: () => onSavedSelected(a),
-                                );
-                              }),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                    loading: () => const Padding(
-                      padding: EdgeInsets.only(bottom: AppSpacing.sm),
-                      child: LinearProgressIndicator(),
-                    ),
-                    error: (Object err, _) => Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppSpacing.sm,
-                      ),
-                      child: Text(
-                        l10n.checkoutSavedAddressesError,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                      ),
-                    ),
-                  );
-                },
+              _DeliveryMapPreviewCard(
+                latitude: latitude,
+                longitude: longitude,
+                hasSelectedAddress: hasSelectedAddress,
+                loading: autoLocating,
+                line1: line1Controller.text.trim(),
+                line2: line2Controller.text.trim(),
+                city: cityController.text.trim(),
+                onTap: onMapTap,
               ),
-              if (!hasSelectedAddress) ...<Widget>[
-                Text(
-                  l10n.checkoutSaveAddressesHint,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
+              if (!hasSelectedAddress)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.sm,
+                    AppSpacing.md,
+                    AppSpacing.md,
+                  ),
+                  child: Text(
+                    l10n.checkoutSaveAddressesHint,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
                 ),
-              ],
             ],
           ),
         ),
@@ -1769,79 +2000,218 @@ class _DeliveryFulfillmentSection extends StatelessWidget {
   }
 }
 
-class _MapPickCta extends StatelessWidget {
-  const _MapPickCta({required this.onTap});
+/// Small embedded map preview of the delivery pin, tap-to-open the full
+/// picker to change it. Falls back to a plain tinted placeholder (no map)
+/// when Google Maps isn't available on this platform/build.
+class _DeliveryMapPreviewCard extends StatelessWidget {
+  const _DeliveryMapPreviewCard({
+    required this.latitude,
+    required this.longitude,
+    required this.hasSelectedAddress,
+    required this.loading,
+    required this.line1,
+    required this.line2,
+    required this.city,
+    required this.onTap,
+  });
 
+  final double? latitude;
+  final double? longitude;
+  final bool hasSelectedAddress;
+  final bool loading;
+  final String line1;
+  final String line2;
+  final String city;
   final VoidCallback onTap;
+
+  static const double _mapHeight = 128;
+  static const LatLng _fallbackCenter = LatLng(6.9271, 79.8612); // Colombo
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final bool hasPin = latitude != null && longitude != null;
+    final bool mapSupported =
+        isDeliveryMapPickerSupported() && !MapUnavailableBanner.shouldShow;
+    final LatLng center =
+        hasPin ? LatLng(latitude!, longitude!) : _fallbackCenter;
+    final String addressLine = <String>[
+      line1,
+      if (line2.isNotEmpty) line2,
+      city,
+    ].where((String s) => s.isNotEmpty).join(', ');
+
     return Semantics(
       button: true,
-      label:
-          '${AppLocalizations.of(context).checkoutPickOnMapTitle}, ${AppLocalizations.of(context).checkoutPickOnMapSubtitle}',
+      label: hasSelectedAddress
+          ? 'Change delivery address, currently $addressLine'
+          : '${l10n.checkoutPickOnMapTitle}, ${l10n.checkoutPickOnMapSubtitle}',
       excludeSemantics: true,
       child: Material(
-        color: AppColors.primaryBlue.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+        color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-              border: Border.all(
-                color: AppColors.primaryBlue.withValues(alpha: 0.28),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              child: Row(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
+            child: SizedBox(
+              height: _mapHeight,
+              child: Stack(
+                fit: StackFit.expand,
                 children: <Widget>[
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryBlue,
-                      borderRadius:
-                          BorderRadius.circular(AppColors.cardRadiusSm),
+                  if (mapSupported)
+                    // Ignored so the platform map view never swallows
+                    // the tap before it reaches the InkWell above —
+                    // panning/zooming is disabled anyway, this is just
+                    // a live preview, not a picker.
+                    IgnorePointer(
+                      child: GoogleMap(
+                        // `initialCameraPosition` only applies when the
+                        // map is first created — without a key tied to
+                        // the pin, moving the pin (map picker, saved
+                        // address, auto-locate) would just move the
+                        // marker while the already-created map's camera
+                        // stayed put, leaving the pin off-center. Keying
+                        // by coordinates forces a fresh map (and a fresh
+                        // initial camera) whenever the pin moves.
+                        key: ValueKey<String>(
+                          'checkoutMapPreview_${center.latitude}_${center.longitude}',
+                        ),
+                        initialCameraPosition: CameraPosition(
+                          target: center,
+                          zoom: 15.5,
+                        ),
+                        // No native Marker — the custom Drop Off pin below
+                        // is drawn on top instead, so it can carry a label.
+                        zoomControlsEnabled: false,
+                        zoomGesturesEnabled: false,
+                        scrollGesturesEnabled: false,
+                        rotateGesturesEnabled: false,
+                        tiltGesturesEnabled: false,
+                        myLocationButtonEnabled: false,
+                        compassEnabled: false,
+                        mapToolbarEnabled: false,
+                        liteModeEnabled: true,
+                      ),
+                    )
+                  else
+                    ColoredBox(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.08),
+                      child: const Center(
+                        child: Icon(
+                          Icons.map_outlined,
+                          color: AppColors.primaryBlue,
+                          size: 32,
+                        ),
+                      ),
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.map_outlined,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          AppLocalizations.of(context).checkoutPickOnMapTitle,
-                          style:
-                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                  // The map never pans under this preview (gestures are
+                  // disabled), so the drop-off point is always exactly at
+                  // its center — a fixed custom pin here (instead of a
+                  // native Marker) lets it carry a "Drop Off" label.
+                  if (hasPin)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.xs + 2,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryBlue,
+                              borderRadius: BorderRadius.circular(6),
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.25),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              l10n.checkoutDropOffLabel,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: Colors.white,
                                     fontWeight: FontWeight.w800,
-                                    color: AppColors.textPrimary,
+                                    letterSpacing: 0.2,
                                   ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          AppLocalizations.of(context)
-                              .checkoutPickOnMapSubtitle,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                        ),
-                      ],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Icon(
+                            Icons.location_pin,
+                            size: 34,
+                            color: AppColors.primaryBlue,
+                            shadows: <Shadow>[
+                              Shadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 3,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppColors.textSecondary.withValues(alpha: 0.9),
-                  ),
+                  if (loading)
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.32),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.xs),
+                          Text(
+                            l10n.checkoutLocatingLabel,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!loading)
+                    Positioned(
+                      right: AppSpacing.xs,
+                      bottom: AppSpacing.xs,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.xs,
+                            vertical: 3,
+                          ),
+                          child: Text(
+                            l10n.checkoutTapMapToChangeHint,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1972,143 +2342,6 @@ class _StorePickupInfoCard extends StatelessWidget {
   }
 }
 
-/// The primary visual once an address is set — a tinted, bordered banner so
-/// the chosen drop-off reads as "confirmed" rather than just another form
-/// field, with a one-tap way to change it.
-class _SelectedAddressBanner extends StatelessWidget {
-  const _SelectedAddressBanner({
-    required this.line1,
-    required this.line2,
-    required this.city,
-    required this.phone,
-    required this.onChangeTap,
-    this.pinnedOnMap = false,
-  });
-
-  final String line1;
-  final String line2;
-  final String city;
-  final String phone;
-  final bool pinnedOnMap;
-  final VoidCallback onChangeTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final String detail = <String>[
-      line1,
-      if (line2.isNotEmpty) line2,
-      city,
-    ].join(', ');
-
-    return Semantics(
-      button: true,
-      label: 'Change delivery address, currently $detail',
-      excludeSemantics: true,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-        child: InkWell(
-          onTap: onChangeTap,
-          borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-          child: Container(
-            padding: const EdgeInsets.all(AppSpacing.sm),
-            decoration: BoxDecoration(
-              color: AppColors.primaryBlue.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-              border: Border.all(
-                  color: AppColors.primaryBlue.withValues(alpha: 0.18)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryBlue.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.location_on_rounded,
-                    color: AppColors.primaryBlue,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            AppLocalizations.of(context)
-                                .checkoutDeliveringToLabel,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: AppColors.primaryBlue,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          if (pinnedOnMap) ...<Widget>[
-                            const SizedBox(width: AppSpacing.xs),
-                            Icon(
-                              Icons.check_circle_rounded,
-                              size: 13,
-                              color: AppColors.success,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              AppLocalizations.of(context).checkoutPinnedLabel,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: AppColors.success,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        detail,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              height: 1.3,
-                            ),
-                      ),
-                      if (phone.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 2),
-                        Text(
-                          phone,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.primaryBlue.withValues(alpha: 0.6),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _PaymentChip extends StatelessWidget {
   const _PaymentChip({
     required this.label,
@@ -2188,6 +2421,26 @@ Widget? _collapsedCounter(
 }) =>
     null;
 
+String? _deliveryFeeDetailText(
+  AppLocalizations l10n,
+  DeliveryFeeQuote quote,
+) {
+  switch (quote.detailKind) {
+    case DeliveryFeeDetailKind.none:
+      return null;
+    case DeliveryFeeDetailKind.estimatedWithPin:
+      return l10n.checkoutEstimatedFeeWithPinDetail;
+    case DeliveryFeeDetailKind.estimatedNoPin:
+      return l10n.checkoutEstimatedFeeDetail;
+    case DeliveryFeeDetailKind.selfPickupFree:
+      return l10n.checkoutSelfPickupFreeDetail;
+    case DeliveryFeeDetailKind.distanceFromStore:
+      return l10n.checkoutDistanceFromStoreDetail(
+        quote.distanceKm!.toStringAsFixed(1),
+      );
+  }
+}
+
 class _SummaryRow extends StatelessWidget {
   const _SummaryRow({
     required this.label,
@@ -2214,33 +2467,36 @@ class _SummaryRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(label, style: base),
-        const SizedBox(width: AppSpacing.sm),
+        // Flexible (not the value column) so a long localized label — e.g.
+        // the bank-fee percentage label in Sinhala/Tamil — wraps instead of
+        // overflowing the row; the value column keeps its natural width so
+        // amounts still line up flush against the card's right edge.
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: <Widget>[
-              Text(
-                value,
-                textAlign: TextAlign.end,
-                style: base?.copyWith(
-                  color:
-                      valueColor ?? (emphasize ? AppColors.primaryBlue : null),
+          child: Text(label, style: base),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: <Widget>[
+            Text(
+              value,
+              textAlign: TextAlign.end,
+              style: base?.copyWith(
+                color: valueColor ?? (emphasize ? AppColors.primaryBlue : null),
+              ),
+            ),
+            if (detail != null && detail!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  detail!,
+                  textAlign: TextAlign.end,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
                 ),
               ),
-              if (detail != null && detail!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    detail!,
-                    textAlign: TextAlign.end,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ],
     );

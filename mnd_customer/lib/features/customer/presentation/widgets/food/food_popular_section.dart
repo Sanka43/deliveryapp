@@ -95,10 +95,7 @@ class FoodPopularSection extends ConsumerWidget {
                       imageUrl: item.imageUrl,
                       isAvailable: item.isInStock,
                       onTap: () {
-                        if (!isStoreOpenInCatalog(ref, item.storeId)) {
-                          showShopClosedSnackBar(context);
-                          return;
-                        }
+                        hintIfStoreClosed(context, ref, item.storeId);
                         showProductDetailsBottomSheet(
                           context: context,
                           ref: ref,

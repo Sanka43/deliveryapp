@@ -43,7 +43,8 @@ class OrderDetailsPage extends ConsumerWidget {
     return '${d.year}-${two(d.month)}-${two(d.day)} · ${two(d.hour)}:${two(d.minute)}';
   }
 
-  static String paymentChipLabel(BuildContext context, CustomerOrderDetail detail) {
+  static String paymentChipLabel(
+      BuildContext context, CustomerOrderDetail detail) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     if (detail.hasPendingRefundRequest) {
       return l10n.orderPaymentRefundPending;
@@ -127,8 +128,8 @@ class OrderDetailsPage extends ConsumerWidget {
               ),
             );
           }
-          final bool riderAssigned = detail.riderId != null &&
-              detail.riderId!.trim().isNotEmpty;
+          final bool riderAssigned =
+              detail.riderId != null && detail.riderId!.trim().isNotEmpty;
           final bool showTrackRider = riderAssigned &&
               OrderTimelineLogic.isActiveForLiveRiderMap(
                 detail.statusRaw,
@@ -139,8 +140,7 @@ class OrderDetailsPage extends ConsumerWidget {
           );
           final String paymentMethodKey =
               detail.paymentMethod.toLowerCase().trim();
-          final bool showPayOnline =
-              (paymentMethodKey == 'cashondelivery' ||
+          final bool showPayOnline = (paymentMethodKey == 'cashondelivery' ||
                   paymentMethodKey == 'cash_on_delivery') &&
               !detail.isPaid &&
               !OrderTimelineLogic.isCancelled(detail.statusRaw) &&
@@ -163,8 +163,7 @@ class OrderDetailsPage extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.sm),
                 Row(
                   children: <Widget>[
-                    if (riderAssigned)
-                      OrderCallRiderChip(orderId: detail.id),
+                    if (riderAssigned) OrderCallRiderChip(orderId: detail.id),
                     if (riderAssigned && detail.vendorId.isNotEmpty)
                       const SizedBox(width: AppSpacing.sm),
                     if (detail.vendorId.isNotEmpty)
@@ -384,7 +383,8 @@ class OrderDetailsPage extends ConsumerWidget {
                               const SizedBox(width: AppSpacing.sm),
                               Expanded(
                                 child: Text(
-                                  l10n.orderDeliveryNoteLabel(detail.deliveryNote),
+                                  l10n.orderDeliveryNoteLabel(
+                                      detail.deliveryNote),
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ),
@@ -425,7 +425,8 @@ class OrderDetailsPage extends ConsumerWidget {
                           ),
                           const Spacer(),
                           _PaymentChip(
-                            label: OrderDetailsPage.paymentChipLabel(context, detail),
+                            label: OrderDetailsPage.paymentChipLabel(
+                                context, detail),
                             color: OrderDetailsPage.paymentChipColor(detail),
                           ),
                         ],
@@ -473,6 +474,13 @@ class OrderDetailsPage extends ConsumerWidget {
                       _SummaryRow(
                         label: l10n.orderServiceChargeLabel,
                         value: formatLkr(detail.serviceCharge),
+                      ),
+                    ],
+                    if (detail.emergencyFee > 0) ...<Widget>[
+                      const SizedBox(height: AppSpacing.xs),
+                      _SummaryRow(
+                        label: l10n.summaryEmergencyFeeLabel,
+                        value: formatLkr(detail.emergencyFee),
                       ),
                     ],
                     const Padding(
@@ -677,7 +685,8 @@ class _RefundStatusBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.brandPrimary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppColors.cardRadiusLg),
-        border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.2)),
+        border:
+            Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.2)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,6 +1043,27 @@ class _HeroOrderCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (detail.isEmergency || detail.isScheduled) ...<Widget>[
+                    const SizedBox(height: AppSpacing.sm),
+                    Wrap(
+                      spacing: AppSpacing.xs,
+                      runSpacing: AppSpacing.xs,
+                      children: <Widget>[
+                        if (detail.isEmergency)
+                          _OrderTypePill(
+                            icon: Icons.bolt_rounded,
+                            label: l10n.checkoutOrderTypeEmergency,
+                          ),
+                        if (detail.isScheduled)
+                          _OrderTypePill(
+                            icon: Icons.schedule_rounded,
+                            label: l10n.checkoutScheduledForLabel(
+                              OrderDetailsPage.formatDate(detail.scheduledFor)!,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1052,6 +1082,45 @@ class _HeroOrderCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Small translucent pill on the hero card flagging an Emergency or
+/// Scheduled order.
+class _OrderTypePill extends StatelessWidget {
+  const _OrderTypePill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 6,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        ],
       ),
     );
   }

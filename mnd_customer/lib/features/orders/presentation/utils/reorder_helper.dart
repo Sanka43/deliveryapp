@@ -21,7 +21,8 @@ Future<void> reorderFromOrderId(
   }
 
   if (order == null) {
-    showMndSnackBar(context, 'Could not load order for reorder.', variant: MndSnackBarVariant.error);
+    showMndSnackBar(context, 'Could not load order for reorder.',
+        variant: MndSnackBarVariant.error);
     return;
   }
 
@@ -34,18 +35,13 @@ Future<void> handleReorder(
   CustomerOrderDetail order,
 ) async {
   if (order.items.isEmpty) {
-    showMndSnackBar(context, 'No items to add from this order.', variant: MndSnackBarVariant.warning);
+    showMndSnackBar(context, 'No items to add from this order.',
+        variant: MndSnackBarVariant.warning);
     return;
   }
   if (order.vendorId.isEmpty) {
-    showMndSnackBar(context, 'Cannot reorder — missing store information.', variant: MndSnackBarVariant.error);
-    return;
-  }
-
-  if (!isStoreOpenInCatalog(ref, order.vendorId)) {
-    if (context.mounted) {
-      showShopClosedSnackBar(context);
-    }
+    showMndSnackBar(context, 'Cannot reorder — missing store information.',
+        variant: MndSnackBarVariant.error);
     return;
   }
 
@@ -65,12 +61,19 @@ Future<void> handleReorder(
       return;
     }
     if (!ok) {
-      showMndSnackBar(context, 'Could not update cart.', variant: MndSnackBarVariant.error);
+      showMndSnackBar(context, 'Could not update cart.',
+          variant: MndSnackBarVariant.error);
       return;
     }
-    showMndSnackBar(context, cartItems.length == 1
-          ? 'Added item to your cart.'
-          : 'Added ${cartItems.length} items to your cart.', variant: MndSnackBarVariant.success);
+    if (hintIfStoreClosed(context, ref, order.vendorId)) {
+      return;
+    }
+    showMndSnackBar(
+        context,
+        cartItems.length == 1
+            ? 'Added item to your cart.'
+            : 'Added ${cartItems.length} items to your cart.',
+        variant: MndSnackBarVariant.success);
     return;
   }
 
@@ -98,11 +101,6 @@ Future<void> handleReorder(
     return;
   }
 
-  if (!isStoreOpenInCatalog(ref, order.vendorId)) {
-    showShopClosedSnackBar(context);
-    return;
-  }
-
   notifier.replaceCartContents(
     cartItems,
     deliveryNote: order.deliveryNote,
@@ -114,7 +112,13 @@ Future<void> handleReorder(
   if (!context.mounted) {
     return;
   }
-  showMndSnackBar(context, cartItems.length == 1
-        ? 'Cart updated with your previous item.'
-        : 'Cart updated with ${cartItems.length} items from this order.', variant: MndSnackBarVariant.success);
+  if (hintIfStoreClosed(context, ref, order.vendorId)) {
+    return;
+  }
+  showMndSnackBar(
+      context,
+      cartItems.length == 1
+          ? 'Cart updated with your previous item.'
+          : 'Cart updated with ${cartItems.length} items from this order.',
+      variant: MndSnackBarVariant.success);
 }

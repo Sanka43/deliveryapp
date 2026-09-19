@@ -32,21 +32,32 @@ final AutoDisposeFutureProviderFamily<double?, _RoutePoints>
   },
 );
 
+/// Which localized line to show for [DeliveryFeeQuote.detail] — kept as data
+/// rather than a formatted string so this provider doesn't need a
+/// [BuildContext]; the widget layer resolves it via [AppLocalizations].
+enum DeliveryFeeDetailKind {
+  none,
+  estimatedWithPin,
+  estimatedNoPin,
+  selfPickupFree,
+  distanceFromStore,
+}
+
 /// Resolved delivery charge and optional distance context for UI.
 class DeliveryFeeQuote {
   const DeliveryFeeQuote({
     required this.feeLkr,
     this.distanceKm,
     required this.isDistanceBased,
-    this.detail,
+    this.detailKind = DeliveryFeeDetailKind.none,
   });
 
   final int feeLkr;
   final double? distanceKm;
   final bool isDistanceBased;
 
-  /// Short line for summaries (e.g. under "Delivery").
-  final String? detail;
+  /// Which short line to show in summaries (e.g. under "Delivery").
+  final DeliveryFeeDetailKind detailKind;
 }
 
 DeliveryFeeQuote _estimatedFallback({required bool hasPin}) {
@@ -54,9 +65,9 @@ DeliveryFeeQuote _estimatedFallback({required bool hasPin}) {
     feeLkr: DeliveryPricing.fallbackFlatLkr,
     distanceKm: null,
     isDistanceBased: false,
-    detail: hasPin
-        ? 'Estimated delivery fee'
-        : 'Estimated · pin on map for exact fee',
+    detailKind: hasPin
+        ? DeliveryFeeDetailKind.estimatedWithPin
+        : DeliveryFeeDetailKind.estimatedNoPin,
   );
 }
 
@@ -68,7 +79,6 @@ final Provider<DeliveryFeeQuote> deliveryFeeQuoteProvider =
       feeLkr: 0,
       distanceKm: null,
       isDistanceBased: false,
-      detail: null,
     );
   }
 
@@ -77,7 +87,7 @@ final Provider<DeliveryFeeQuote> deliveryFeeQuoteProvider =
       feeLkr: 0,
       distanceKm: null,
       isDistanceBased: false,
-      detail: 'Self pickup — Free',
+      detailKind: DeliveryFeeDetailKind.selfPickupFree,
     );
   }
 
@@ -121,7 +131,7 @@ final Provider<DeliveryFeeQuote> deliveryFeeQuoteProvider =
         feeLkr: fee,
         distanceKm: km,
         isDistanceBased: true,
-        detail: '${km.toStringAsFixed(1)} km from store',
+        detailKind: DeliveryFeeDetailKind.distanceFromStore,
       );
     },
     loading: () => _estimatedFallback(hasPin: hasPin),

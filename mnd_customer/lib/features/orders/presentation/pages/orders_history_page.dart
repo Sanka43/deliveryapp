@@ -42,7 +42,8 @@ class OrdersHistoryPage extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCanvas,
-      appBar: mndPageAppBar(title: l10n.ordersHistoryTitle, implyLeading: false),
+      appBar:
+          mndPageAppBar(title: l10n.ordersHistoryTitle, implyLeading: false),
       body: auth.when(
         data: (User? user) {
           if (user == null) {
@@ -265,8 +266,7 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool canTrack =
-        !order.isCompleted &&
+    final bool canTrack = !order.isCompleted &&
         OrderTimelineLogic.isActiveForLiveRiderMap(
           order.statusRaw,
           isSelfPickup: order.isSelfPickup,
@@ -353,6 +353,36 @@ class _OrderCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (order.isEmergency || order.isScheduled) ...<Widget>[
+            const SizedBox(height: AppSpacing.xs),
+            Row(
+              children: <Widget>[
+                Icon(
+                  order.isEmergency
+                      ? Icons.bolt_rounded
+                      : Icons.schedule_rounded,
+                  size: 14,
+                  color: AppColors.primaryBlue,
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    order.isEmergency
+                        ? AppLocalizations.of(context)
+                            .checkoutOrderTypeEmergency
+                        : AppLocalizations.of(context)
+                            .checkoutScheduledForLabel(
+                            formatDate(order.scheduledFor) ?? '',
+                          ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

@@ -48,7 +48,7 @@ void main() {
           dialCode: '+94',
           nationalNumber: '',
         ),
-        'Phone number is required',
+        PhoneValidationError.required,
       );
     });
   });

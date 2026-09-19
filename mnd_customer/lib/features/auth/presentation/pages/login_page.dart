@@ -320,7 +320,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
             FirebaseCrashlytics.instance.recordError(
               e,
               stackTrace,
-              reason: 'LoginPage: customer profile prefetch failed after OTP verify',
+              reason:
+                  'LoginPage: customer profile prefetch failed after OTP verify',
               fatal: false,
             ),
           );
@@ -618,7 +619,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                         return PhoneNumberUtils.validateNationalNumber(
                           dialCode: _selectedDialCode,
                           nationalNumber: value,
-                        );
+                        )?.message(AppLocalizations.of(context));
                       },
                     ),
                   ),

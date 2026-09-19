@@ -122,10 +122,7 @@ class HomeRecommendedSection extends ConsumerWidget {
                       onTap: item.storeId.isEmpty
                           ? null
                           : () {
-                              if (!isStoreOpenInCatalog(ref, item.storeId)) {
-                                showShopClosedSnackBar(context);
-                                return;
-                              }
+                              hintIfStoreClosed(context, ref, item.storeId);
                               showProductDetailsBottomSheet(
                                 context: context,
                                 ref: ref,

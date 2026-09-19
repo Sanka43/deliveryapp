@@ -4,14 +4,17 @@ import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
 
 class OrderPlacementResult {
-  const OrderPlacementResult._({this.orderId, this.trackingNumber, this.errorMessage});
+  const OrderPlacementResult._(
+      {this.orderId, this.trackingNumber, this.errorMessage});
 
   factory OrderPlacementResult.success(String id, {String? trackingNumber}) {
-    return OrderPlacementResult._(orderId: id, trackingNumber: trackingNumber, errorMessage: null);
+    return OrderPlacementResult._(
+        orderId: id, trackingNumber: trackingNumber, errorMessage: null);
   }
 
   factory OrderPlacementResult.failure(String message) {
-    return OrderPlacementResult._(orderId: null, trackingNumber: null, errorMessage: message);
+    return OrderPlacementResult._(
+        orderId: null, trackingNumber: null, errorMessage: message);
   }
 
   final String? orderId;
@@ -42,7 +45,8 @@ class OrderPayHereCheckout {
   final Map<String, dynamic> fields;
 
   factory OrderPayHereCheckout.fromCallable(Map<String, dynamic> data) {
-    final Map<dynamic, dynamic>? rawFields = data['fields'] as Map<dynamic, dynamic>?;
+    final Map<dynamic, dynamic>? rawFields =
+        data['fields'] as Map<dynamic, dynamic>?;
     return OrderPayHereCheckout(
       orderId: (data['orderId'] as String?)?.trim() ?? '',
       trackingNumber: (data['trackingNumber'] as String?)?.trim() ?? '',
@@ -62,8 +66,8 @@ class OrderPlacementRepository {
     required FirebaseAuth auth,
     FirebaseFunctions? functions,
   })  : _auth = auth,
-        _functions = functions ??
-            FirebaseFunctions.instanceFor(region: 'asia-south1');
+        _functions =
+            functions ?? FirebaseFunctions.instanceFor(region: 'asia-south1');
 
   final FirebaseAuth _auth;
   final FirebaseFunctions _functions;
@@ -75,6 +79,8 @@ class OrderPlacementRepository {
     required String city,
     required String phone,
     String? couponCode,
+    String orderType = 'standard',
+    String? scheduledFor,
   }) {
     final String vendorId = cart.items.first.storeId;
     if (vendorId.isEmpty) {
@@ -108,8 +114,11 @@ class OrderPlacementRepository {
       'deliveryNote': cart.deliveryNote.trim(),
       'specialInstructions': cart.specialInstructions.trim(),
       'fulfillmentMode': cart.fulfillmentMode.firestoreValue,
+      'orderType': orderType,
       if (couponCode != null && couponCode.trim().isNotEmpty)
         'couponCode': couponCode.trim(),
+      if (scheduledFor != null && scheduledFor.isNotEmpty)
+        'scheduledFor': scheduledFor,
       if (!cart.isSelfPickup &&
           cart.dropoffLatitude != null &&
           cart.dropoffLongitude != null) ...<String, dynamic>{
@@ -126,6 +135,8 @@ class OrderPlacementRepository {
     required String city,
     required String phone,
     String? couponCode,
+    String orderType = 'standard',
+    String? scheduledFor,
   }) async {
     final User? user = _auth.currentUser;
     if (user == null) {
@@ -142,6 +153,8 @@ class OrderPlacementRepository {
       city: city,
       phone: phone,
       couponCode: couponCode,
+      orderType: orderType,
+      scheduledFor: scheduledFor,
     );
     if (payload == null) {
       return OrderPlacementResult.failure('Missing store for this cart.');
@@ -155,14 +168,14 @@ class OrderPlacementRepository {
       final Map<String, dynamic> data =
           Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);
       final String orderId = (data['orderId'] as String?)?.trim() ?? '';
-      final String? tracking =
-          (data['trackingNumber'] as String?)?.trim();
+      final String? tracking = (data['trackingNumber'] as String?)?.trim();
       if (orderId.isEmpty) {
         return OrderPlacementResult.failure('Order was not created.');
       }
       return OrderPlacementResult.success(
         orderId,
-        trackingNumber: (tracking == null || tracking.isEmpty) ? null : tracking,
+        trackingNumber:
+            (tracking == null || tracking.isEmpty) ? null : tracking,
       );
     } catch (e) {
       return OrderPlacementResult.failure(
@@ -180,6 +193,8 @@ class OrderPlacementRepository {
     required String city,
     required String phone,
     String? couponCode,
+    String orderType = 'standard',
+    String? scheduledFor,
     String firstName = 'Customer',
     String lastName = 'MND',
     String email = '',
@@ -198,6 +213,8 @@ class OrderPlacementRepository {
       city: city,
       phone: phone,
       couponCode: couponCode,
+      orderType: orderType,
+      scheduledFor: scheduledFor,
     );
     if (payload == null) {
       throw StateError('Missing store for this cart.');

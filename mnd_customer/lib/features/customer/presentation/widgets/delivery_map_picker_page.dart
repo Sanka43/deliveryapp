@@ -1,20 +1,21 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/core/utils/map_platform_support.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/delivery_address_resolver.dart';
 import 'package:mnd_delivery_app/core/utils/maps_proxy_client.dart';
-import 'package:mnd_delivery_app/core/utils/placemark_address_utils.dart';
 import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/core/widgets/map_unavailable_banner.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
 import 'package:mnd_delivery_app/core/widgets/place_autocomplete_field.dart';
+import 'package:mnd_delivery_app/features/customer/data/saved_address.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/saved_addresses_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/widgets/delivery_map_pick_result.dart';
 
 /// Default map center (Colombo area) when location is unavailable.
@@ -65,11 +66,54 @@ class _DeliveryMapPickerPageState extends State<DeliveryMapPickerPage> {
   bool _ignoreNextCameraMoveStart = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Rebuild whenever focus or text changes so the saved-addresses
+    // dropdown can show/hide itself — see [_showSavedAddressDropdown].
+    _searchFocus.addListener(_onSearchFocusOrTextChanged);
+    _searchController.addListener(_onSearchFocusOrTextChanged);
+  }
+
+  void _onSearchFocusOrTextChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Saved addresses show as a dropdown right under the search bar the
+  /// moment it's tapped (empty) — typing anything hides it in favour of the
+  /// field's own Places Autocomplete results.
+  bool get _showSavedAddressDropdown =>
+      _searchFocus.hasFocus && _searchController.text.trim().isEmpty;
+
+  @override
   void dispose() {
+    _searchFocus.removeListener(_onSearchFocusOrTextChanged);
+    _searchController.removeListener(_onSearchFocusOrTextChanged);
     _searchController.dispose();
     _searchFocus.dispose();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  /// Applies a saved address directly — skips the map/confirm step
+  /// entirely, mirroring the one-tap convenience the checkout page's own
+  /// saved-address chips used to offer before this row moved here.
+  ///
+  /// Works even when the saved address was never pinned on the map: it's
+  /// returned with null coordinates, and the caller falls back to a flat
+  /// delivery fee — same as picking an unpinned saved address always did.
+  void _useSavedAddress(SavedAddress address) {
+    Navigator.of(context).pop(
+      DeliveryMapPickResult(
+        line1: address.line1,
+        line2: address.line2,
+        city: address.city,
+        latitude: address.latitude,
+        longitude: address.longitude,
+        phone: address.phone.isNotEmpty ? address.phone : null,
+      ),
+    );
   }
 
   Future<void> _onPlaceSelected(PlaceDetailsResult details) async {
@@ -178,71 +222,8 @@ class _DeliveryMapPickerPageState extends State<DeliveryMapPickerPage> {
         }
         return;
       }
-      DeliveryMapPickResult? result;
-      // A named business/landmark right at the pin (e.g. "Pizza Hut -
-      // Badulla") reads far better than a generic street address, and is the
-      // only way to avoid a bare Plus Code in areas with no proper address
-      // data — same reasoning that shows a label on Google Maps' own pin.
-      final NearestPlaceResult? nearest = await findNearestPlaceViaFunction(
-        _mapCenter.latitude,
-        _mapCenter.longitude,
-      );
-      if (nearest != null) {
-        final List<String> parts = nearest.formattedAddress
-            .split(',')
-            .map((String s) => s.trim())
-            .where((String s) => s.isNotEmpty)
-            .toList();
-        result = DeliveryMapPickResult(
-          line1: nearest.name,
-          line2: '',
-          city: parts.length > 1 ? parts[parts.length - 2] : '',
-          latitude: _mapCenter.latitude,
-          longitude: _mapCenter.longitude,
-          placeName: nearest.name,
-        );
-      } else if (kIsWeb) {
-        // `geocoding` has no web implementation — use the Cloud Function
-        // proxy instead (Google's Geocoding REST API blocks direct browser
-        // calls).
-        final String? label = await reverseGeocodeViaFunction(
-          _mapCenter.latitude,
-          _mapCenter.longitude,
-        );
-        if (label != null) {
-          final List<String> parts = label
-              .split(',')
-              .map((String s) => s.trim())
-              .where((String s) => s.isNotEmpty)
-              .toList();
-          result = DeliveryMapPickResult(
-            line1: parts.isNotEmpty ? parts.first : label,
-            line2: '',
-            city: parts.length > 1 ? parts[parts.length - 2] : '',
-            latitude: _mapCenter.latitude,
-            longitude: _mapCenter.longitude,
-          );
-        }
-      } else {
-        try {
-          final List<Placemark> marks = await placemarkFromCoordinates(
-            _mapCenter.latitude,
-            _mapCenter.longitude,
-          );
-          result = buildDeliveryAddressFromPlacemarks(marks, _mapCenter);
-        } catch (_) {}
-      }
-      // Reverse geocoding isn't always available — fall back to coordinates
-      // rather than blocking the user from confirming a pin they can
-      // clearly see on the map.
-      result ??= DeliveryMapPickResult(
-        line1:
-            '${_mapCenter.latitude.toStringAsFixed(5)}, ${_mapCenter.longitude.toStringAsFixed(5)}',
-        line2: '',
-        city: '',
-        latitude: _mapCenter.latitude,
-        longitude: _mapCenter.longitude,
-      );
+      final DeliveryMapPickResult result =
+          await resolveDeliveryAddressForPoint(_mapCenter);
       if (mounted) {
         Navigator.of(context).pop(result);
       }
@@ -281,122 +262,214 @@ class _DeliveryMapPickerPageState extends State<DeliveryMapPickerPage> {
     }
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: mndPageAppBar(title: 'Pin delivery location'),
-      body: Column(
+      body: Stack(
+        fit: StackFit.expand,
         children: <Widget>[
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: _mapCenter,
-                    zoom: 16,
-                  ),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
-                  compassEnabled: true,
-                  mapToolbarEnabled: false,
-                  onMapCreated: (GoogleMapController c) => _mapController = c,
-                  onCameraMoveStarted: () {
-                    if (_ignoreNextCameraMoveStart) {
-                      _ignoreNextCameraMoveStart = false;
-                      return;
-                    }
-                    if (_selectedPlace != null) {
-                      setState(() => _selectedPlace = null);
-                    }
-                  },
-                  onCameraMove: (CameraPosition position) {
-                    _mapCenter = position.target;
-                  },
-                ),
-                const IgnorePointer(
-                  child: Center(
-                    child: Icon(
-                      Icons.location_pin,
-                      size: 48,
-                      color: Color(0xFFE53935),
-                    ),
-                  ),
-                ),
-                if (_loadingGeocode)
-                  const ColoredBox(
-                    color: Color(0x66000000),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                Positioned(
-                  top: AppSpacing.sm,
-                  left: AppSpacing.md,
-                  right: AppSpacing.md,
-                  child: PlaceAutocompleteField(
-                    key: _searchFieldKey,
-                    controller: _searchController,
-                    focusNode: _searchFocus,
-                    hintText: 'Search delivery location',
-                    biasCenter: () => _mapCenter,
-                    onPlaceSelected: _onPlaceSelected,
-                  ),
-                ),
-                Positioned(
-                  right: AppSpacing.md,
-                  bottom: AppSpacing.md,
-                  child: FloatingActionButton.small(
-                    heroTag: 'map_my_location',
-                    onPressed: _locating ? null : _goToMyLocation,
-                    child: _locating
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location),
-                  ),
-                ),
-              ],
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: _mapCenter,
+              zoom: 16,
+            ),
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            compassEnabled: true,
+            mapToolbarEnabled: false,
+            onMapCreated: (GoogleMapController c) => _mapController = c,
+            onCameraMoveStarted: () {
+              if (_ignoreNextCameraMoveStart) {
+                _ignoreNextCameraMoveStart = false;
+                return;
+              }
+              if (_selectedPlace != null) {
+                setState(() => _selectedPlace = null);
+              }
+            },
+            onCameraMove: (CameraPosition position) {
+              _mapCenter = position.target;
+            },
+          ),
+          const IgnorePointer(
+            child: Center(
+              child: Icon(
+                Icons.location_pin,
+                size: 48,
+                color: Color(0xFFE53935),
+              ),
             ),
           ),
-          Material(
-            color: Colors.white,
-            elevation: 8,
-            shadowColor: Colors.black.withValues(alpha: 0.08),
+          if (_loadingGeocode)
+            const ColoredBox(
+              color: Color(0x66000000),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          // Search bar takes the app bar's place — back button in the same
+          // row instead of a separate title bar above it.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
             child: SafeArea(
-              top: false,
+              bottom: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
                   AppSpacing.md,
                   AppSpacing.sm,
                   AppSpacing.md,
-                  AppSpacing.sm,
+                  0,
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    Text(
-                      'Move the map to place the pin on your drop-off',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w600,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Material(
+                          color: Colors.white,
+                          shape: const CircleBorder(),
+                          elevation: 3,
+                          shadowColor: Colors.black26,
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => Navigator.of(context).pop(),
+                            child: const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Icon(Icons.arrow_back, size: 20),
+                            ),
                           ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: PlaceAutocompleteField(
+                            key: _searchFieldKey,
+                            controller: _searchController,
+                            focusNode: _searchFocus,
+                            hintText: 'Search delivery location',
+                            biasCenter: () => _mapCenter,
+                            onPlaceSelected: _onPlaceSelected,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_showSavedAddressDropdown)
+                      Consumer(
+                        builder: (BuildContext context, WidgetRef ref, _) {
+                          final AsyncValue<List<SavedAddress>> async =
+                              ref.watch(savedAddressesStreamProvider);
+                          final List<SavedAddress> saved =
+                              async.valueOrNull ?? const <SavedAddress>[];
+                          if (saved.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.sm),
+                            child: Material(
+                              color: Colors.white,
+                              elevation: 4,
+                              borderRadius: BorderRadius.circular(14),
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxHeight: 260),
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  itemCount: saved.length,
+                                  separatorBuilder: (_, __) =>
+                                      const Divider(height: 1),
+                                  itemBuilder:
+                                      (BuildContext context, int index) {
+                                    final SavedAddress a = saved[index];
+                                    final String detail = <String>[
+                                      a.line1,
+                                      if (a.line2.isNotEmpty) a.line2,
+                                      a.city,
+                                    ]
+                                        .where((String s) => s.isNotEmpty)
+                                        .join(', ');
+                                    return ListTile(
+                                      leading: Icon(
+                                        a.isDefault
+                                            ? Icons.star_rounded
+                                            : Icons.location_on_outlined,
+                                        color: a.isDefault
+                                            ? AppColors.warning
+                                            : AppColors.primaryBlue,
+                                      ),
+                                      title: Text(
+                                        a.label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      subtitle: detail.isEmpty
+                                          ? null
+                                          : Text(
+                                              detail,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                      onTap: () => _useSavedAddress(a),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Floating, no card backdrop — the my-location button sits right
+          // above the confirm button instead of a separate fixed bottom bar.
+          Positioned(
+            left: AppSpacing.md,
+            right: AppSpacing.md,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    FloatingActionButton.small(
+                      heroTag: 'map_my_location',
+                      onPressed: _locating ? null : _goToMyLocation,
+                      child: _locating
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location),
                     ),
                     const SizedBox(height: AppSpacing.sm),
-                    FilledButton.icon(
-                      onPressed: _loadingGeocode ? null : _confirm,
-                      icon: _loadingGeocode
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check_rounded),
-                      label: Text(
-                        _loadingGeocode ? 'Resolving…' : 'Use this location',
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(elevation: 4),
+                        onPressed: _loadingGeocode ? null : _confirm,
+                        icon: _loadingGeocode
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_rounded),
+                        label: Text(
+                          _loadingGeocode ? 'Resolving…' : 'Use this location',
+                        ),
                       ),
                     ),
                   ],

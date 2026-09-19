@@ -12,6 +12,8 @@ class CustomerOrderSummary {
     this.trackingNumber,
     this.storeRated = false,
     this.fulfillmentMode = 'delivery',
+    this.orderType = 'standard',
+    this.scheduledFor,
   });
 
   final String id;
@@ -30,6 +32,16 @@ class CustomerOrderSummary {
 
   /// `delivery` or `selfPickup` from Firestore.
   final String fulfillmentMode;
+
+  /// `standard` | `emergency` | `schedule`; absent on older orders.
+  final String orderType;
+
+  /// Requested time for a `schedule` order.
+  final DateTime? scheduledFor;
+
+  bool get isEmergency => orderType == 'emergency';
+
+  bool get isScheduled => orderType == 'schedule' && scheduledFor != null;
 
   bool get isSelfPickup => fulfillmentMode.trim() == 'selfPickup';
 
@@ -118,6 +130,11 @@ class CustomerOrderSummary {
       trackingNumber: (tn == null || tn.isEmpty) ? null : tn,
       storeRated: data['storeRated'] == true,
       fulfillmentMode: mode.isEmpty ? 'delivery' : mode,
+      orderType: (data['orderType'] as String?)?.trim() == 'emergency' ||
+              (data['orderType'] as String?)?.trim() == 'schedule'
+          ? (data['orderType'] as String).trim()
+          : 'standard',
+      scheduledFor: (data['scheduledFor'] as Timestamp?)?.toDate(),
     );
   }
 }
