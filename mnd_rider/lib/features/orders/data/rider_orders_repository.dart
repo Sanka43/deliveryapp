@@ -28,6 +28,8 @@ class RiderAssignedOrder {
     required this.totalLkr,
     required this.createdAt,
     this.trackingNumber,
+    this.isEmergency = false,
+    this.scheduledFor,
   });
 
   final String id;
@@ -36,6 +38,10 @@ class RiderAssignedOrder {
   final int totalLkr;
   final DateTime? createdAt;
   final String? trackingNumber;
+  final bool isEmergency;
+
+  /// Set only for a Schedule order.
+  final DateTime? scheduledFor;
 
   String get referenceForDisplay {
     final String? t = trackingNumber?.trim();
@@ -53,6 +59,8 @@ class RiderAssignedOrder {
       totalLkr: d.totalLkr,
       createdAt: d.createdAt,
       trackingNumber: d.trackingNumber,
+      isEmergency: d.isEmergency,
+      scheduledFor: d.isScheduled ? d.scheduledFor : null,
     );
   }
 

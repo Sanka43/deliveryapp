@@ -12,6 +12,7 @@ import 'package:mnd_rider/core/widgets/rider_snackbar.dart';
 import 'package:mnd_rider/features/orders/data/rider_orders_repository.dart';
 import 'package:mnd_rider/features/orders/domain/rider_order_detail.dart';
 import 'package:mnd_rider/features/orders/presentation/providers/vendor_phone_provider.dart';
+import 'package:mnd_rider/features/orders/presentation/widgets/rider_order_type_badges.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 String _humanOrderStatus(String raw) {
@@ -33,18 +34,6 @@ String _humanOrderStatus(String raw) {
     default:
       return raw.replaceAll('_', ' ');
   }
-}
-
-/// e.g. "Jan 5, 6:30 PM".
-String _formatScheduledFor(DateTime dt) {
-  const List<String> months = <String>[
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', //
-  ];
-  final int hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-  final String period = dt.hour < 12 ? 'AM' : 'PM';
-  final String minute = dt.minute.toString().padLeft(2, '0');
-  return '${months[dt.month - 1]} ${dt.day}, $hour12:$minute $period';
 }
 
 class RiderOrderDetailPage extends ConsumerWidget {
@@ -269,7 +258,7 @@ class _Body extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Scheduled for ${_formatScheduledFor(order.scheduledFor!)}',
+                        'Scheduled for ${formatScheduledFor(order.scheduledFor!)}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: AppColors.primaryBlue,
                           fontWeight: FontWeight.w700,

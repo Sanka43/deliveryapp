@@ -48,6 +48,8 @@ class RiderDeliveryRequest {
     this.dropoffLatitude,
     this.dropoffLongitude,
     this.offeredAt,
+    this.isEmergency = false,
+    this.scheduledFor,
   });
 
   final String orderId;
@@ -70,6 +72,10 @@ class RiderDeliveryRequest {
   final double? dropoffLatitude;
   final double? dropoffLongitude;
   final DateTime? offeredAt;
+  final bool isEmergency;
+
+  /// Set only for a Schedule order.
+  final DateTime? scheduledFor;
 
   double get estimatedPayout => estimatedEarningsLkr.toDouble();
 
@@ -123,6 +129,10 @@ class RiderDeliveryRequest {
       pickupLatitude: pickupLatitude,
       pickupLongitude: pickupLongitude,
       pickupAddress: pickupAddress,
+      orderType: isEmergency
+          ? 'emergency'
+          : (scheduledFor != null ? 'schedule' : 'standard'),
+      scheduledFor: scheduledFor,
     );
   }
 
@@ -147,6 +157,8 @@ class RiderDeliveryRequest {
       dropoffLatitude: dropoffLatitude,
       dropoffLongitude: dropoffLongitude,
       offeredAt: offeredAt,
+      isEmergency: isEmergency,
+      scheduledFor: scheduledFor,
     );
   }
 
@@ -186,6 +198,8 @@ class RiderDeliveryRequest {
       dropoffLatitude: dropoffLatitude,
       dropoffLongitude: dropoffLongitude,
       offeredAt: offeredAt,
+      isEmergency: isEmergency,
+      scheduledFor: scheduledFor,
     );
   }
 
@@ -249,6 +263,8 @@ class RiderDeliveryRequest {
       dropoffLatitude: dropLat,
       dropoffLongitude: dropLng,
       offeredAt: DateTime.now(),
+      isEmergency: order.isEmergency,
+      scheduledFor: order.isScheduled ? order.scheduledFor : null,
     );
   }
 }

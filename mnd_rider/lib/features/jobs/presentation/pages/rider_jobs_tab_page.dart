@@ -17,6 +17,7 @@ import 'package:mnd_rider/features/jobs/presentation/widgets/rider_open_jobs_sec
 import 'package:mnd_rider/features/orders/data/rider_orders_repository.dart';
 import 'package:mnd_rider/features/orders/domain/rider_order_detail.dart';
 import 'package:mnd_rider/features/orders/presentation/providers/rider_active_order_provider.dart';
+import 'package:mnd_rider/features/orders/presentation/widgets/rider_order_type_badges.dart';
 import 'package:mnd_rider/features/trips/presentation/widgets/rider_passenger_rides_section.dart';
 import 'package:mnd_rider/features/shell/presentation/widgets/rider_floating_nav_bar.dart';
 
@@ -200,6 +201,8 @@ class RiderJobsTabPage extends ConsumerWidget {
                                 storeName: o.storeName,
                                 status: humanStatus(o.status),
                                 amount: LkrFormat.money(o.totalLkr),
+                                isEmergency: o.isEmergency,
+                                scheduledFor: o.scheduledFor,
                                 onTap: () => context.push(
                                   '${RoutePaths.orderDetail}/${o.id}',
                                 ),
@@ -534,12 +537,16 @@ class _AssignedOrderTile extends StatelessWidget {
     required this.status,
     required this.amount,
     required this.onTap,
+    this.isEmergency = false,
+    this.scheduledFor,
   });
 
   final String storeName;
   final String status;
   final String amount;
   final VoidCallback onTap;
+  final bool isEmergency;
+  final DateTime? scheduledFor;
 
   @override
   Widget build(BuildContext context) {
@@ -577,6 +584,13 @@ class _AssignedOrderTile extends StatelessWidget {
                             fontWeight: FontWeight.w500,
                           ),
                     ),
+                    if (isEmergency || scheduledFor != null) ...<Widget>[
+                      const SizedBox(height: 6),
+                      RiderOrderTypeBadges(
+                        isEmergency: isEmergency,
+                        scheduledFor: scheduledFor,
+                      ),
+                    ],
                   ],
                 ),
               ),

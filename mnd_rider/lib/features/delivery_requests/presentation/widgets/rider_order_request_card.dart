@@ -5,6 +5,7 @@ import 'package:mnd_rider/core/utils/lkr_format.dart';
 import 'package:mnd_rider/core/widgets/rider_drive_sheet.dart';
 import 'package:mnd_rider/core/widgets/rider_primary_cta.dart';
 import 'package:mnd_rider/features/delivery_requests/domain/rider_delivery_request.dart';
+import 'package:mnd_rider/features/orders/presentation/widgets/rider_order_type_badges.dart';
 
 /// Offer sheet — fare first, Accept-dominant, glanceable while riding.
 class RiderOrderRequestCard extends StatelessWidget {
@@ -138,6 +139,15 @@ class RiderOrderRequestCard extends StatelessWidget {
               ),
             ],
           ),
+          if (request.isEmergency || request.scheduledFor != null) ...<Widget>[
+            const SizedBox(height: 10),
+            Center(
+              child: RiderOrderTypeBadges(
+                isEmergency: request.isEmergency,
+                scheduledFor: request.scheduledFor,
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           _LegLine(
             color: AppColors.pickupGreen,

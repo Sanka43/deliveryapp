@@ -50,6 +50,25 @@
     ordersPageDocs = direction === "prev" ? await ordersPager.prev() : await ordersPager.next();
   }
 
+  // Checkout order type (standard | emergency | schedule). Orders placed
+  // before order types existed have no orderType and read as standard.
+  function orderTypeKind(o) {
+    const t = String(o.orderType || "").trim().toLowerCase();
+    return t === "emergency" || t === "schedule" ? t : "standard";
+  }
+
+  // Badges for the Orders list; nothing for a standard order.
+  function orderTypeBadges(o) {
+    const kind = orderTypeKind(o);
+    if (kind === "emergency") {
+      return ` <span class="badge badge-pending">⚡ Emergency</span>`;
+    }
+    if (kind === "schedule" && o.scheduledFor) {
+      return ` <span class="badge badge-preparing">🕐 ${escapeHtml(fmtTs(o.scheduledFor))}</span>`;
+    }
+    return "";
+  }
+
   // Same fields openOrderDetails() already reads (paymentMethod/paymentStatus)
   // — COD orders never get a paymentStatus written (see DATABASE.md §3.7),
   // so "no paymentStatus" + cashOnDelivery reads as still-uncollected COD
@@ -111,7 +130,7 @@
                   ? `<button type="button" class="btn btn-ghost btn-sm u-w-auto" data-assign-rider-order="${escapeHtml(o.id)}" aria-label="Assign rider for order ${escapeHtml(orderLabel)}">Assign rider</button>`
                   : "";
               return `<tr class="order-row" tabindex="0" data-view-order="${escapeHtml(o.id)}" aria-label="View details for order ${escapeHtml(orderLabel)}">
-          <td data-label="Order"><strong>${escapeHtml(orderLabel)}</strong><br/><small>${escapeHtml(fmtTs(o.createdAt))}</small></td>
+          <td data-label="Order"><strong>${escapeHtml(orderLabel)}</strong><br/><small>${escapeHtml(fmtTs(o.createdAt))}</small>${orderTypeBadges(o) ? `<br/>${orderTypeBadges(o)}` : ""}</td>
           <td data-label="Customer"><strong>${escapeHtml(customerName)}</strong>${customerMeta ? `<br/><small>${escapeHtml(customerMeta)}</small>` : ""}</td>
           <td data-label="Shop / Address"><strong>${escapeHtml(shopName)}</strong><br/><small>${escapeHtml(orderAddrLine(o))}</small></td>
           <td data-label="Total">${fmtMoney(o.total)}</td>
@@ -207,7 +226,10 @@
           ${orderDetailLine("Customer", customerName)}
           ${orderDetailLine("Phone", customerPhone)}
           ${customerEmail ? orderDetailLine("Email", customerEmail) : ""}
-          ${orderDetailLine("Order type", fulfillment)}
+          ${orderDetailLine("Fulfillment", fulfillment)}
+          ${orderTypeKind(o) === "emergency" ? orderDetailLine("Order type", "Emergency") : ""}
+          ${orderTypeKind(o) === "schedule" ? orderDetailLine("Order type", "Scheduled") : ""}
+          ${orderTypeKind(o) === "schedule" && o.scheduledFor ? orderDetailLine("Scheduled for", fmtTs(o.scheduledFor)) : ""}
           ${orderDetailLine("Status", statusLabel(o.status || "placed"))}
           ${orderMissedByShop(o) ? orderDetailLine("Cancel reason", "Missed by shop (no confirm)") : ""}
           ${orderDetailLine("Rider", riderLabel)}
@@ -241,6 +263,7 @@
               )
             : ""}
           ${orderDetailLine("Delivery fee", fmtMoney(o.deliveryFee))}
+          ${Number(o.emergencyFee) > 0 ? orderDetailLine("Emergency fee", fmtMoney(o.emergencyFee)) : ""}
           ${orderDetailLine("Total", fmtMoney(o.total), "order-detail-line--total")}
         </div>
 

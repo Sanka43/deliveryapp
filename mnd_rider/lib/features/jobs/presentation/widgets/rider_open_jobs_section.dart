@@ -13,6 +13,7 @@ import 'package:mnd_rider/features/delivery_requests/domain/rider_delivery_reque
 import 'package:mnd_rider/features/delivery_requests/presentation/providers/rider_delivery_requests_provider.dart';
 import 'package:mnd_rider/features/delivery_requests/presentation/providers/rider_order_accept_provider.dart';
 import 'package:mnd_rider/features/orders/presentation/providers/rider_active_order_provider.dart';
+import 'package:mnd_rider/features/orders/presentation/widgets/rider_order_type_badges.dart';
 
 /// Manual claim list for the Jobs tab (visible only while online).
 class RiderOpenJobsSection extends ConsumerStatefulWidget {
@@ -276,6 +277,14 @@ class _OpenJobCard extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (job.isEmergency ||
+                          job.scheduledFor != null) ...<Widget>[
+                        const SizedBox(height: 6),
+                        RiderOrderTypeBadges(
+                          isEmergency: job.isEmergency,
+                          scheduledFor: job.scheduledFor,
+                        ),
+                      ],
                     ],
                   ),
                 ),
