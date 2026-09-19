@@ -26,6 +26,9 @@ import {IPG_FEE_PERCENT} from "./ipgFee";
  * or a read error all fall back to the hardcoded defaults so checkout never
  * breaks on a config problem.
  */
+/** Flat surcharge added to a delivery order marked "Emergency" at checkout. */
+export const DEFAULT_EMERGENCY_FEE_LKR = 200;
+
 export type PlatformFeeConfig = {
   delivery: DeliveryFeeConfig;
   serviceChargePercent: number;
@@ -33,6 +36,7 @@ export type PlatformFeeConfig = {
   orderRiderCommissionLkr: number;
   maxRiderCashInHandLkr: number;
   ipgFeePercent: number;
+  emergencyFeeLkr: number;
 };
 
 const DEFAULT_PLATFORM_FEE_CONFIG: PlatformFeeConfig = {
@@ -42,6 +46,7 @@ const DEFAULT_PLATFORM_FEE_CONFIG: PlatformFeeConfig = {
   orderRiderCommissionLkr: DEFAULT_ORDER_RIDER_COMMISSION_LKR,
   maxRiderCashInHandLkr: DEFAULT_MAX_CASH_IN_HAND_LKR,
   ipgFeePercent: IPG_FEE_PERCENT,
+  emergencyFeeLkr: DEFAULT_EMERGENCY_FEE_LKR,
 };
 
 export async function loadPlatformFeeConfig(): Promise<PlatformFeeConfig> {
@@ -94,6 +99,10 @@ export async function loadPlatformFeeConfig(): Promise<PlatformFeeConfig> {
         ipgFeePercent <= 100
           ? ipgFeePercent
           : IPG_FEE_PERCENT,
+      emergencyFeeLkr: readLkrConfig(
+        d.emergencyFeeLkr,
+        DEFAULT_EMERGENCY_FEE_LKR,
+      ),
     };
   } catch (err) {
     logger.warn("loadPlatformFeeConfig failed, using defaults", err);

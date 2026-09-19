@@ -60,6 +60,10 @@
     // paying online via PayHere. Mirrors IPG_FEE_PERCENT in
     // functions/src/ipgFee.ts.
     ipgFeePercent: 3.3,
+    // Flat surcharge added to a delivery order marked "Emergency" at
+    // checkout. Mirrors DEFAULT_EMERGENCY_FEE_LKR in
+    // functions/src/platformConfig.ts.
+    emergencyFeeLkr: 200,
   };
 
   const DEFAULT_RIDE_FARES = {
@@ -7740,6 +7744,10 @@
           d.ipgFeePercent == null
             ? PLATFORM_FEES_DEFAULTS.ipgFeePercent
             : Number(d.ipgFeePercent),
+        emergencyFeeLkr:
+          Number(d.emergencyFeeLkr) >= 0 && d.emergencyFeeLkr != null
+            ? Number(d.emergencyFeeLkr)
+            : PLATFORM_FEES_DEFAULTS.emergencyFeeLkr,
       };
     } catch (e) {
       cache.platformFees = { ...PLATFORM_FEES_DEFAULTS };
@@ -7761,6 +7769,7 @@
     setVal("fee-per-km", f.pricePerKmLkr);
     setVal("fee-shop-monthly-pct", f.shopMonthlyCommissionPercent);
     setVal("fee-ipg-pct", f.ipgFeePercent);
+    setVal("fee-emergency-lkr", f.emergencyFeeLkr);
   }
 
   async function savePlatformFeesFromForm() {
@@ -7801,6 +7810,10 @@
         100,
         Math.max(0, Number(document.getElementById("fee-ipg-pct").value) || 0)
       ),
+      emergencyFeeLkr: Math.max(
+        0,
+        Math.round(Number(document.getElementById("fee-emergency-lkr").value) || 0)
+      ),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
     await db
@@ -7816,6 +7829,7 @@
       pricePerKmLkr: payload.pricePerKmLkr,
       shopMonthlyCommissionPercent: payload.shopMonthlyCommissionPercent,
       ipgFeePercent: payload.ipgFeePercent,
+      emergencyFeeLkr: payload.emergencyFeeLkr,
     };
     toast("Platform fees saved", "success");
   }

@@ -21,6 +21,11 @@ import {
   haversineKm,
   roundTraveledKm,
 } from "./deliveryFee";
+import {
+  CheckoutOrderType,
+  resolveCheckoutOrderType,
+  vendorAcceptsOrderType,
+} from "./checkoutOrderType";
 import {fetchDrivingDistanceKm} from "./drivingDistance";
 import {loadPlatformFeeConfig} from "./platformConfig";
 import {reserveTrackingNumber as reserveSharedTrackingNumber} from "./trackingNumber";
@@ -430,6 +435,9 @@ type PreparedCustomerOrder = {
   dropLng: number | null;
   isSelfPickup: boolean;
   ipgFeePercent: number;
+  orderType: CheckoutOrderType;
+  scheduledFor: Date | null;
+  emergencyFeeLkr: number;
 };
 
 /**
@@ -501,7 +509,12 @@ async function prepareCustomerOrder(
     throw new HttpsError("not-found", "This store is no longer available.");
   }
   const vendor = vendorSnap.data()!;
-  if (vendor.active !== true) {
+  const {orderType, scheduledFor} = resolveCheckoutOrderType(
+    data?.orderType,
+    isSelfPickup,
+    data?.scheduledFor,
+  );
+  if (!vendorAcceptsOrderType(vendor, orderType)) {
     throw new HttpsError(
       "failed-precondition",
       "This store is not accepting orders right now.",
@@ -529,6 +542,8 @@ async function prepareCustomerOrder(
 
   const origin = vendorCoords(vendor);
   const platformFees = await loadPlatformFeeConfig();
+  const emergencyFeeLkr =
+    orderType === "emergency" ? platformFees.emergencyFeeLkr : 0;
   let deliveryFee = 0;
   if (!isSelfPickup) {
     deliveryFee = FALLBACK_FLAT_FEE_LKR;
@@ -567,6 +582,9 @@ async function prepareCustomerOrder(
     dropLng,
     isSelfPickup,
     ipgFeePercent: platformFees.ipgFeePercent,
+    orderType,
+    scheduledFor,
+    emergencyFeeLkr,
   };
 }
 
@@ -712,7 +730,11 @@ export const placeCashOnDeliveryOrder = onCall(
       );
       const total = Math.max(
         0,
-        subtotal - discount + prepared.deliveryFee + serviceCharge,
+        subtotal -
+          discount +
+          prepared.deliveryFee +
+          serviceCharge +
+          prepared.emergencyFeeLkr,
       );
       const payload: Record<string, unknown> = {
         trackingNumber,
@@ -728,6 +750,7 @@ export const placeCashOnDeliveryOrder = onCall(
         deliveryFee: prepared.deliveryFee,
         serviceCharge,
         total,
+        orderType: prepared.orderType,
         // Fixed-fee COD orders never go through completeDeliveryOrder (that's
         // actual-trip-only, see placeVendorManualOrder) — the rider's own
         // status update just flips status:'delivered' with no recalculation.
@@ -756,6 +779,12 @@ export const placeCashOnDeliveryOrder = onCall(
       ) {
         payload.dropoffLatitude = prepared.dropLat;
         payload.dropoffLongitude = prepared.dropLng;
+      }
+      if (prepared.orderType === "emergency") {
+        payload.emergencyFee = prepared.emergencyFeeLkr;
+      }
+      if (prepared.orderType === "schedule" && prepared.scheduledFor) {
+        payload.scheduledFor = prepared.scheduledFor;
       }
       tx.set(orderRef, payload);
       // Placed immediately (not a draft) — this order is real now, so the
@@ -836,14 +865,24 @@ export const createPayHereCheckoutForOrder = onCall(
       // Only orders paid via PayHere carry this — PayHere charges MND a
       // percentage of the card transaction, so it's passed on to the
       // customer here rather than absorbed. Computed on everything else in
-      // the total so it isn't itself charged the gateway's own cut.
+      // the total (including the emergency fee, which the card also
+      // actually charges) so it isn't itself charged the gateway's own cut.
       const ipgFee = computeIpgFeeLkr(
-        subtotal - discount + prepared.deliveryFee + serviceCharge,
+        subtotal -
+          discount +
+          prepared.deliveryFee +
+          serviceCharge +
+          prepared.emergencyFeeLkr,
         prepared.ipgFeePercent,
       );
       const total = Math.max(
         0,
-        subtotal - discount + prepared.deliveryFee + serviceCharge + ipgFee,
+        subtotal -
+          discount +
+          prepared.deliveryFee +
+          serviceCharge +
+          prepared.emergencyFeeLkr +
+          ipgFee,
       );
       const payload: Record<string, unknown> = {
         trackingNumber,
@@ -865,6 +904,7 @@ export const createPayHereCheckoutForOrder = onCall(
         serviceCharge,
         ipgFeeLkr: ipgFee,
         total,
+        orderType: prepared.orderType,
         deliveryAddress: prepared.deliveryAddress,
         deliveryNote: prepared.deliveryNote,
         specialInstructions: prepared.specialInstructions,
@@ -885,6 +925,12 @@ export const createPayHereCheckoutForOrder = onCall(
       ) {
         payload.dropoffLatitude = prepared.dropLat;
         payload.dropoffLongitude = prepared.dropLng;
+      }
+      if (prepared.orderType === "emergency") {
+        payload.emergencyFee = prepared.emergencyFeeLkr;
+      }
+      if (prepared.orderType === "schedule" && prepared.scheduledFor) {
+        payload.scheduledFor = prepared.scheduledFor;
       }
       tx.set(orderRef, payload);
       return {trackingNumber, total};

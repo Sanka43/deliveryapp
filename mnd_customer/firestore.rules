@@ -1180,6 +1180,13 @@ service cloud.firestore {
           && o.deliveryFee >= 0
           && (!('serviceCharge' in o)
             || (o.serviceCharge is int && o.serviceCharge >= 0))
+          && (!('emergencyFee' in o)
+            || (o.emergencyFee is int && o.emergencyFee >= 0))
+          && (!('orderType' in o)
+            || (o.orderType is string
+              && (o.orderType == 'standard' || o.orderType == 'emergency' || o.orderType == 'schedule')))
+          && (!('orderType' in o) || o.orderType != 'schedule'
+            || ('scheduledFor' in o && o.scheduledFor is timestamp && o.scheduledFor > request.time))
           && o.total is int
           && o.total >= 0
           && o.deliveryNote is string
