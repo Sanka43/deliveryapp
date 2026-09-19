@@ -31,6 +31,8 @@ class RiderOrderDetail {
     this.pickupLongitude,
     this.pickupAddress,
     this.deliveryNote,
+    this.orderType = 'standard',
+    this.scheduledFor,
   });
 
   final String id;
@@ -38,6 +40,7 @@ class RiderOrderDetail {
   final String storeName;
   final String vendorId;
   final String? customerId;
+
   /// Phone didn't match an MND account — delivery needs the SMS'd code.
   final bool isGuestCustomer;
   final int totalLkr;
@@ -45,10 +48,12 @@ class RiderOrderDetail {
   final int subtotalLkr;
   final int discountLkr;
   final int serviceChargeLkr;
+
   /// Customer already paid shop for products; rider collects delivery only.
   final bool productsPaid;
   final String paymentMethod;
   final String paymentStatus;
+
   /// `actual_trip` → fee finalized from path KM on deliver.
   final String? deliveryFeeMode;
   final int? amountDueFromCustomerLkr;
@@ -64,6 +69,18 @@ class RiderOrderDetail {
   final double? pickupLongitude;
   final String? pickupAddress;
   final String? deliveryNote;
+
+  /// `standard` | `emergency` | `schedule`, chosen by the customer at
+  /// checkout. Doesn't change dispatch — the vendor still decides when to
+  /// mark the order `ready`; this is informational only.
+  final String orderType;
+
+  /// Set only when [orderType] is `schedule`.
+  final DateTime? scheduledFor;
+
+  bool get isEmergency => orderType == 'emergency';
+
+  bool get isScheduled => orderType == 'schedule' && scheduledFor != null;
 
   bool get usesActualTripFee =>
       (deliveryFeeMode ?? '').trim().toLowerCase() == 'actual_trip';
@@ -115,7 +132,10 @@ class RiderOrderDetail {
     if (items.isEmpty) {
       return 'Order';
     }
-    final int qty = items.fold<int>(0, (int s, RiderOrderLineItem i) => s + i.quantity);
+    final int qty = items.fold<int>(
+      0,
+      (int s, RiderOrderLineItem i) => s + i.quantity,
+    );
     return '$qty item${qty == 1 ? '' : 's'}';
   }
 
@@ -140,7 +160,8 @@ class RiderOrderDetail {
   }
 
   factory RiderOrderDetail.fromDoc(String id, Map<String, dynamic> data) {
-    final List<dynamic> rawItems = data['items'] as List<dynamic>? ?? <dynamic>[];
+    final List<dynamic> rawItems =
+        data['items'] as List<dynamic>? ?? <dynamic>[];
     final List<RiderOrderLineItem> items = rawItems
         .whereType<Map<String, dynamic>>()
         .map(RiderOrderLineItem.fromMap)
@@ -191,15 +212,18 @@ class RiderOrderDetail {
       pickupLongitude: readDouble(data['pickupLongitude']),
       pickupAddress: (data['pickupAddress'] as String?)?.trim(),
       deliveryNote: (data['deliveryNote'] as String?)?.trim(),
+      orderType:
+          (data['orderType'] as String?)?.trim().toLowerCase().isNotEmpty ==
+              true
+          ? (data['orderType'] as String).trim().toLowerCase()
+          : 'standard',
+      scheduledFor: (data['scheduledFor'] as Timestamp?)?.toDate(),
     );
   }
 }
 
 class RiderOrderLineItem {
-  const RiderOrderLineItem({
-    required this.productName,
-    required this.quantity,
-  });
+  const RiderOrderLineItem({required this.productName, required this.quantity});
 
   final String productName;
   final int quantity;

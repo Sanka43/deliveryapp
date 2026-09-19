@@ -35,6 +35,18 @@ String _humanOrderStatus(String raw) {
   }
 }
 
+/// e.g. "Jan 5, 6:30 PM".
+String _formatScheduledFor(DateTime dt) {
+  const List<String> months = <String>[
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', //
+  ];
+  final int hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final String period = dt.hour < 12 ? 'AM' : 'PM';
+  final String minute = dt.minute.toString().padLeft(2, '0');
+  return '${months[dt.month - 1]} ${dt.day}, $hour12:$minute $period';
+}
+
 class RiderOrderDetailPage extends ConsumerWidget {
   const RiderOrderDetailPage({super.key, required this.orderId});
 
@@ -53,8 +65,9 @@ class RiderOrderDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<RiderOrderDetail?> orderAsync =
-        ref.watch(riderOrderDetailProvider(orderId));
+    final AsyncValue<RiderOrderDetail?> orderAsync = ref.watch(
+      riderOrderDetailProvider(orderId),
+    );
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -64,8 +77,9 @@ class RiderOrderDetailPage extends ConsumerWidget {
           if (order == null) {
             return const Center(child: Text('Order not found'));
           }
-          final String? shopPhone =
-              ref.watch(vendorPhoneProvider(order.vendorId)).valueOrNull;
+          final String? shopPhone = ref
+              .watch(vendorPhoneProvider(order.vendorId))
+              .valueOrNull;
           return _Body(
             order: order,
             shopPhone: shopPhone,
@@ -194,6 +208,78 @@ class _Body extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              if (order.isEmergency) ...<Widget>[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorRed.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.buttonRadius,
+                    ),
+                    border: Border.all(
+                      color: AppColors.errorRed.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(
+                        Icons.bolt_rounded,
+                        color: AppColors.errorRed,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Emergency order — customer requested a rush delivery',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.errorRed,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (order.isScheduled) ...<Widget>[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.buttonRadius,
+                    ),
+                    border: Border.all(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(
+                        Icons.schedule_rounded,
+                        color: AppColors.primaryBlue,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Scheduled for ${_formatScheduledFor(order.scheduledFor!)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               if (order.isPrepaidOnline) ...<Widget>[
                 Container(
                   width: double.infinity,
@@ -203,7 +289,9 @@ class _Body extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.onlineGreen.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.buttonRadius,
+                    ),
                     border: Border.all(
                       color: AppColors.onlineGreen.withValues(alpha: 0.3),
                     ),
@@ -234,10 +322,7 @@ class _Body extends StatelessWidget {
                 if (!order.productsPaid)
                   _MoneyRow(label: 'Subtotal', amount: order.subtotalLkr),
                 if (order.discountLkr > 0)
-                  _MoneyRow(
-                    label: 'Discount',
-                    amount: -order.discountLkr,
-                  ),
+                  _MoneyRow(label: 'Discount', amount: -order.discountLkr),
                 _MoneyRow(label: 'Delivery fee', amount: order.deliveryFeeLkr),
                 if (order.serviceChargeLkr > 0)
                   _MoneyRow(
@@ -400,10 +485,7 @@ class _Card extends StatelessWidget {
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: child,
-      ),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
     );
   }
 }

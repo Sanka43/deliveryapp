@@ -18,8 +18,9 @@ abstract final class VendorOrdersTheme {
       ? Theme.of(context).colorScheme.surfaceContainerLowest
       : AppColors.canvas;
 
-  static Color primaryText(BuildContext context) =>
-      isDark(context) ? Theme.of(context).colorScheme.onSurface : AppColors.textCharcoal;
+  static Color primaryText(BuildContext context) => isDark(context)
+      ? Theme.of(context).colorScheme.onSurface
+      : AppColors.textCharcoal;
 
   static Color mutedText(BuildContext context) => isDark(context)
       ? Theme.of(context).colorScheme.onSurfaceVariant
@@ -83,11 +84,16 @@ abstract final class VendorOrdersTheme {
     ];
   }
 
-  static List<BoxShadow> chipShadow(BuildContext context, {required bool selected}) {
+  static List<BoxShadow> chipShadow(
+    BuildContext context, {
+    required bool selected,
+  }) {
     if (!isDark(context)) {
       return <BoxShadow>[
         BoxShadow(
-          color: AppColors.textCharcoal.withValues(alpha: selected ? 0.22 : 0.1),
+          color: AppColors.textCharcoal.withValues(
+            alpha: selected ? 0.22 : 0.1,
+          ),
           blurRadius: selected ? 16 : 12,
           offset: Offset(0, selected ? 5 : 3),
           spreadRadius: selected ? 0 : -1,
@@ -117,11 +123,11 @@ abstract final class VendorOrdersStageColors {
   static const Color active = AppColors.textCharcoal;
 
   static Color forFilter(VendorOrderPipelineFilter filter) => switch (filter) {
-        VendorOrderPipelineFilter.newOrders => newOrders,
-        VendorOrderPipelineFilter.kitchen => kitchen,
-        VendorOrderPipelineFilter.ready => ready,
-        VendorOrderPipelineFilter.active => active,
-      };
+    VendorOrderPipelineFilter.newOrders => newOrders,
+    VendorOrderPipelineFilter.kitchen => kitchen,
+    VendorOrderPipelineFilter.ready => ready,
+    VendorOrderPipelineFilter.active => active,
+  };
 
   static Color softFill(Color accent, {required bool isDark}) =>
       accent.withValues(alpha: isDark ? 0.14 : 0.09);
@@ -271,7 +277,10 @@ class VendorOrdersPipelineBar extends StatelessWidget {
     );
   }
 
-  List<Widget> _interleaveChips(List<_PipelineChip> chips, {bool expanded = false}) {
+  List<Widget> _interleaveChips(
+    List<_PipelineChip> chips, {
+    bool expanded = false,
+  }) {
     final List<Widget> out = <Widget>[];
     for (int i = 0; i < chips.length; i++) {
       if (i > 0) {
@@ -329,62 +338,64 @@ class _PipelineChipState extends State<_PipelineChip> {
         : VendorOrdersTheme.chipUnselectedBg(context);
 
     final Widget chip = GestureDetector(
-        onTap: _handleTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedScale(
-          scale: _pressed ? 0.96 : 1,
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOut,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.fromLTRB(6, 12, 6, 11),
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: VendorOrdersTheme.chipShadow(context, selected: widget.selected),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 220),
-                  style: theme.textTheme.titleLarge!.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    height: 1,
-                    color: textColor,
-                    fontSize: 22,
-                  ),
-                  child: Text('${widget.value}', textAlign: TextAlign.center),
-                ),
-                const SizedBox(height: 6),
-                AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 220),
-                  style: theme.textTheme.labelSmall!.copyWith(
-                    color: textColor.withValues(alpha: widget.selected ? 0.92 : 1),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.35,
-                    fontSize: 10,
-                    height: 1.2,
-                  ),
-                  child: Text(
-                    widget.label.toUpperCase(),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+      onTap: _handleTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.fromLTRB(6, 12, 6, 11),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: VendorOrdersTheme.chipShadow(
+              context,
+              selected: widget.selected,
             ),
           ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 220),
+                style: theme.textTheme.titleLarge!.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                  height: 1,
+                  color: textColor,
+                  fontSize: 22,
+                ),
+                child: Text('${widget.value}', textAlign: TextAlign.center),
+              ),
+              const SizedBox(height: 6),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 220),
+                style: theme.textTheme.labelSmall!.copyWith(
+                  color: textColor.withValues(
+                    alpha: widget.selected ? 0.92 : 1,
+                  ),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.35,
+                  fontSize: 10,
+                  height: 1.2,
+                ),
+                child: Text(
+                  widget.label.toUpperCase(),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
-      );
-
-    return SizedBox(
-      width: widget.fixedWidth ?? double.infinity,
-      child: chip,
+      ),
     );
+
+    return SizedBox(width: widget.fixedWidth ?? double.infinity, child: chip);
   }
 }
 
@@ -447,7 +458,9 @@ class VendorOrdersSectionHeader extends StatelessWidget {
             decoration: BoxDecoration(
               color: VendorOrdersStageColors.softFill(accent, isDark: isDark),
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: VendorOrdersStageColors.softBorder(accent)),
+              border: Border.all(
+                color: VendorOrdersStageColors.softBorder(accent),
+              ),
             ),
             child: Text(
               '$count',
@@ -494,12 +507,22 @@ class _OrderPlacedAtBadge extends StatelessWidget {
             fontSize: 14,
             letterSpacing: 0.1,
             height: 1.15,
-            fontFeatures: isJustNow ? null : const <FontFeature>[FontFeature.tabularFigures()],
+            fontFeatures: isJustNow
+                ? null
+                : const <FontFeature>[FontFeature.tabularFigures()],
           ),
         ),
       ],
     );
   }
+}
+
+/// e.g. "6:30 PM" for the SCHEDULED badge.
+String _scheduledBadgeTime(DateTime dt) {
+  final int hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final String period = dt.hour < 12 ? 'AM' : 'PM';
+  final String minute = dt.minute.toString().padLeft(2, '0');
+  return '$hour12:$minute $period';
 }
 
 enum VendorOrderCardStage { urgent, progress, ready }
@@ -537,10 +560,10 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
   bool _secondaryBusy = false;
 
   Color get _stageAccent => switch (widget.stage) {
-        VendorOrderCardStage.urgent => VendorOrdersStageColors.newOrders,
-        VendorOrderCardStage.progress => VendorOrdersStageColors.kitchen,
-        VendorOrderCardStage.ready => VendorOrdersStageColors.ready,
-      };
+    VendorOrderCardStage.urgent => VendorOrdersStageColors.newOrders,
+    VendorOrderCardStage.progress => VendorOrdersStageColors.kitchen,
+    VendorOrderCardStage.ready => VendorOrdersStageColors.ready,
+  };
 
   Future<void> _runPrimary() async {
     // Guards against a fast double-tap firing the status-update write (and
@@ -588,7 +611,9 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final VendorPendingOrder order = widget.order;
-    final String itemsLabel = order.itemCount == 1 ? '1 item' : '${order.itemCount} items';
+    final String itemsLabel = order.itemCount == 1
+        ? '1 item'
+        : '${order.itemCount} items';
     final Color cardBg = VendorOrdersTheme.cardSurface(context);
     final Color titleColor = VendorOrdersTheme.primaryText(context);
     final Color mutedColor = VendorOrdersTheme.mutedText(context);
@@ -665,12 +690,13 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                                   Flexible(
                                     child: Text(
                                       order.customerPhone,
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        color: mutedColor,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                        height: 1.2,
-                                      ),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: mutedColor,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                            height: 1.2,
+                                          ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -720,7 +746,8 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: order.productCashStatus == 'settled_to_shop'
+                              color:
+                                  order.productCashStatus == 'settled_to_shop'
                                   ? AppColors.openGreen.withValues(alpha: 0.16)
                                   : AppColors.pendingAmber.withValues(
                                       alpha: 0.16,
@@ -738,10 +765,62 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                             ),
                           ),
                         ],
-                        if (widget.stage == VendorOrderCardStage.urgent) ...<Widget>[
+                        if (order.isEmergency) ...<Widget>[
                           const SizedBox(height: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.orderRejectRed.withValues(
+                                alpha: 0.16,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '⚡ EMERGENCY',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AppColors.textCharcoal,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.3,
+                                fontSize: 9.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (order.isScheduled) ...<Widget>[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryBlue.withValues(
+                                alpha: 0.16,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              'SCHEDULED ${_scheduledBadgeTime(order.scheduledFor!)}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AppColors.textCharcoal,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.3,
+                                fontSize: 9.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (widget.stage ==
+                            VendorOrderCardStage.urgent) ...<Widget>[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: VendorOrdersTheme.newBadgeBg(context),
                               borderRadius: BorderRadius.circular(999),
@@ -765,7 +844,11 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: <Widget>[
-                    Icon(Icons.shopping_bag_outlined, size: 14, color: mutedColor),
+                    Icon(
+                      Icons.shopping_bag_outlined,
+                      size: 14,
+                      color: mutedColor,
+                    ),
                     const SizedBox(width: 5),
                     Text(
                       itemsLabel,
@@ -785,7 +868,9 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                         fontSize: 17,
                         letterSpacing: -0.2,
                         height: 1.1,
-                        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures(),
+                        ],
                       ),
                     ),
                   ],
@@ -848,7 +933,8 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                   const SizedBox(height: 14),
                   Row(
                     children: <Widget>[
-                      if (widget.onSecondary != null && widget.secondaryLabel != null) ...<Widget>[
+                      if (widget.onSecondary != null &&
+                          widget.secondaryLabel != null) ...<Widget>[
                         Expanded(
                           child: OutlinedButton(
                             onPressed: _secondaryBusy ? null : _runSecondary,
@@ -860,7 +946,9 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               side: BorderSide(
-                                color: VendorOrdersTheme.outlineButtonBorder(context),
+                                color: VendorOrdersTheme.outlineButtonBorder(
+                                  context,
+                                ),
                               ),
                               textStyle: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w600,
@@ -902,7 +990,9 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                               style: FilledButton.styleFrom(
                                 backgroundColor: _stageAccent,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),

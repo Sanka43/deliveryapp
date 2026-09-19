@@ -35,6 +35,8 @@ class VendorPendingOrder {
     this.cancellationReason = '',
     this.cancellationReasonDetail = '',
     this.refundRequestStatus = '',
+    this.orderType = 'standard',
+    this.scheduledFor,
   });
 
   final String id;
@@ -111,12 +113,26 @@ class VendorPendingOrder {
   /// `processing` | `pending_review` | `completed` from Firestore, empty when no refund was requested.
   final String refundRequestStatus;
 
+  /// `standard` | `emergency` | `schedule` from Firestore, chosen by the
+  /// customer at checkout. Empty/unrecognized values are treated as
+  /// `standard`.
+  final String orderType;
+
+  /// Set only when [orderType] is `schedule` — when the customer asked for
+  /// this order to be brought.
+  final DateTime? scheduledFor;
+
+  bool get isEmergency => orderType == 'emergency';
+
+  bool get isScheduled => orderType == 'schedule' && scheduledFor != null;
+
   bool get isSelfPickup => fulfillmentMode == 'selfPickup';
 
   bool get isRefunded => paymentStatus == 'refunded';
 
   bool get hasPendingRefundRequest =>
-      refundRequestStatus == 'processing' || refundRequestStatus == 'pending_review';
+      refundRequestStatus == 'processing' ||
+      refundRequestStatus == 'pending_review';
 
   /// Short label for the cancelled-orders history card, e.g. "Cancelled by customer".
   String get cancelledByLabel {
@@ -209,8 +225,7 @@ class VendorPendingOrder {
         (data['riderId'] as String?)?.trim() ??
         '';
     final String addressLabel = _addressLabel(addr);
-    final String customerName =
-        (data['customerName'] as String?)?.trim() ?? '';
+    final String customerName = (data['customerName'] as String?)?.trim() ?? '';
     final String orderSource =
         (data['orderSource'] as String?)?.trim().toLowerCase() ?? '';
     return VendorPendingOrder(
@@ -255,6 +270,12 @@ class VendorPendingOrder {
           (data['cancellationReasonDetail'] as String?)?.trim() ?? '',
       refundRequestStatus:
           (data['refundRequestStatus'] as String?)?.trim().toLowerCase() ?? '',
+      orderType:
+          (data['orderType'] as String?)?.trim().toLowerCase().isNotEmpty ==
+              true
+          ? (data['orderType'] as String).trim().toLowerCase()
+          : 'standard',
+      scheduledFor: (data['scheduledFor'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -314,7 +335,9 @@ class VendorPendingOrder {
             value['extras'] as List<dynamic>? ?? const <dynamic>[];
         final List<String> extras = extrasRaw
             .whereType<Map<String, dynamic>>()
-            .map((Map<String, dynamic> e) => (e['name'] as String?)?.trim() ?? '')
+            .map(
+              (Map<String, dynamic> e) => (e['name'] as String?)?.trim() ?? '',
+            )
             .where((String name) => name.isNotEmpty)
             .toList(growable: false);
         items.add(
@@ -384,8 +407,9 @@ class VendorOrderLineItem {
   /// `{Type} · {Size}` combo convention (e.g. `Chicken · Full`). Falls back
   /// to a plain size with no type when it doesn't match that shape.
   ({String? type, String size}) get typeAndSize {
-    final ({String type, String size})? combo =
-        parseTypeSizeComboLabel(selectedSize);
+    final ({String type, String size})? combo = parseTypeSizeComboLabel(
+      selectedSize,
+    );
     if (combo != null) {
       return (type: combo.type, size: combo.size);
     }
