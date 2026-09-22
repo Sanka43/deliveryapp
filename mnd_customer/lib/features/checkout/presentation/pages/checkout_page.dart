@@ -1142,7 +1142,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         phone: phone,
         couponCode: cart.appliedCoupon?.code,
         orderType: _orderType.wireValue,
-        scheduledFor: _scheduledFor?.toIso8601String(),
+        scheduledFor: _scheduledFor?.toUtc().toIso8601String(),
       );
 
       if (!context.mounted) {
@@ -1216,7 +1216,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         phone: phone,
         couponCode: cart.appliedCoupon?.code,
         orderType: _orderType.wireValue,
-        scheduledFor: _scheduledFor?.toIso8601String(),
+        scheduledFor: _scheduledFor?.toUtc().toIso8601String(),
       );
       if (!context.mounted) {
         return;
