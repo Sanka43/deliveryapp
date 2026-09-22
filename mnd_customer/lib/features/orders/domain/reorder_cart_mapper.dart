@@ -9,7 +9,9 @@ extension OrderLineItemReorderMapping on OrderLineItem {
     if (pk.isEmpty) {
       final String raw =
           '${order.id}_${productName}_$selectedSize'.toLowerCase();
-      pk = raw.replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'_+'), '_');
+      pk = raw
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_');
       if (pk.isEmpty) {
         pk = 'reorder_item';
       }

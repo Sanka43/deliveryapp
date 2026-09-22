@@ -49,9 +49,11 @@ class _StoreRatingCardState extends ConsumerState<StoreRatingCard> {
     }
     setState(() => _submitting = false);
     if (result.ok) {
-      showMndSnackBar(context, 'Thanks for rating this store!', variant: MndSnackBarVariant.success);
+      showMndSnackBar(context, 'Thanks for rating this store!',
+          variant: MndSnackBarVariant.success);
     } else {
-      showMndSnackBar(context, result.message ?? 'Could not submit rating.', variant: MndSnackBarVariant.error);
+      showMndSnackBar(context, result.message ?? 'Could not submit rating.',
+          variant: MndSnackBarVariant.error);
     }
   }
 
@@ -87,7 +89,9 @@ class _StoreRatingCardState extends ConsumerState<StoreRatingCard> {
                 children: <Widget>[
                   for (int i = 1; i <= 5; i++)
                     Icon(
-                      i <= stars ? Icons.star_rounded : Icons.star_outline_rounded,
+                      i <= stars
+                          ? Icons.star_rounded
+                          : Icons.star_outline_rounded,
                       color: const Color(0xFFF59E0B),
                       size: 28,
                     ),
@@ -136,10 +140,10 @@ class _StoreRatingCardState extends ConsumerState<StoreRatingCard> {
                 for (int i = 1; i <= 5; i++)
                   IconButton(
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    onPressed: _submitting
-                        ? null
-                        : () => setState(() => _stars = i),
+                    constraints:
+                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                    onPressed:
+                        _submitting ? null : () => setState(() => _stars = i),
                     icon: Icon(
                       i <= _stars
                           ? Icons.star_rounded

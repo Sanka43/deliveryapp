@@ -27,7 +27,8 @@ class CustomerOrdersRepository {
   /// Firestore [orders] for [customerUid], newest first. Empty stream if uid is empty.
   Stream<List<CustomerOrderSummary>> watchMyOrders(String customerUid) {
     if (customerUid.isEmpty) {
-      return Stream<List<CustomerOrderSummary>>.value(const <CustomerOrderSummary>[]);
+      return Stream<List<CustomerOrderSummary>>.value(
+          const <CustomerOrderSummary>[]);
     }
     return _firestore
         .collection(FirebaseCollections.orders)
@@ -35,16 +36,14 @@ class CustomerOrdersRepository {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map(
-          (QuerySnapshot<Map<String, dynamic>> snapshot) {
-            return snapshot.docs
-                .map(
-                  (QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-                    return CustomerOrderSummary.fromDoc(doc.id, doc.data());
-                  },
-                )
-                .toList(growable: false);
+      (QuerySnapshot<Map<String, dynamic>> snapshot) {
+        return snapshot.docs.map(
+          (QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+            return CustomerOrderSummary.fromDoc(doc.id, doc.data());
           },
-        );
+        ).toList(growable: false);
+      },
+    );
   }
 
   /// Single order document owned by [customerUid] only.
@@ -153,7 +152,9 @@ class CustomerOrdersRepository {
     }
 
     try {
-      await _functions.httpsCallable('cancelOrderByCustomer').call(<String, dynamic>{
+      await _functions
+          .httpsCallable('cancelOrderByCustomer')
+          .call(<String, dynamic>{
         'orderId': orderId,
         'reasonId': trimmedReason,
         if (detail != null && detail.isNotEmpty) 'otherDetail': detail,
@@ -181,17 +182,20 @@ class CustomerOrdersRepository {
     final String trimmedReason = (reason ?? '').trim();
 
     try {
-      final HttpsCallableResult<dynamic> result =
-          await _functions.httpsCallable('requestOrderRefund').call(<String, dynamic>{
+      final HttpsCallableResult<dynamic> result = await _functions
+          .httpsCallable('requestOrderRefund')
+          .call(<String, dynamic>{
         'orderId': orderId,
         if (trimmedReason.isNotEmpty) 'reason': trimmedReason,
       });
       final Map<String, dynamic> data =
           Map<String, dynamic>.from(result.data as Map<dynamic, dynamic>);
       final String outcome = (data['outcome'] as String?)?.trim() ?? '';
-      final RefundRequestOutcome? parsed = RefundRequestOutcome.fromWire(outcome);
+      final RefundRequestOutcome? parsed =
+          RefundRequestOutcome.fromWire(outcome);
       if (parsed == null) {
-        return RefundRequestResult.failure('Could not submit your refund request.');
+        return RefundRequestResult.failure(
+            'Could not submit your refund request.');
       }
       return RefundRequestResult.success(parsed);
     } catch (e) {
@@ -217,15 +221,17 @@ class CustomerOrdersRepository {
 
     final String trimmedComment = (comment ?? '').trim();
     if (trimmedComment.length > 500) {
-      return StoreRatingResult.failure('Comment must be 500 characters or less.');
+      return StoreRatingResult.failure(
+          'Comment must be 500 characters or less.');
     }
 
     try {
       await _firestore.runTransaction((Transaction transaction) async {
         final DocumentReference<Map<String, dynamic>> orderRef =
             _firestore.collection(FirebaseCollections.orders).doc(orderId);
-        final DocumentReference<Map<String, dynamic>> ratingRef =
-            _firestore.collection(FirebaseCollections.storeRatings).doc(orderId);
+        final DocumentReference<Map<String, dynamic>> ratingRef = _firestore
+            .collection(FirebaseCollections.storeRatings)
+            .doc(orderId);
 
         final DocumentSnapshot<Map<String, dynamic>> orderSnap =
             await transaction.get(orderRef);
@@ -302,15 +308,17 @@ class CustomerOrdersRepository {
 
     final String trimmedComment = (comment ?? '').trim();
     if (trimmedComment.length > 500) {
-      return StoreRatingResult.failure('Comment must be 500 characters or less.');
+      return StoreRatingResult.failure(
+          'Comment must be 500 characters or less.');
     }
 
     try {
       await _firestore.runTransaction((Transaction transaction) async {
         final DocumentReference<Map<String, dynamic>> orderRef =
             _firestore.collection(FirebaseCollections.orders).doc(orderId);
-        final DocumentReference<Map<String, dynamic>> ratingRef =
-            _firestore.collection(FirebaseCollections.riderRatings).doc(orderId);
+        final DocumentReference<Map<String, dynamic>> ratingRef = _firestore
+            .collection(FirebaseCollections.riderRatings)
+            .doc(orderId);
 
         final DocumentSnapshot<Map<String, dynamic>> orderSnap =
             await transaction.get(orderRef);
@@ -375,8 +383,7 @@ class CustomerOrdersRepository {
 class StoreRatingResult {
   const StoreRatingResult._({required this.ok, this.message});
 
-  factory StoreRatingResult.success() =>
-      const StoreRatingResult._(ok: true);
+  factory StoreRatingResult.success() => const StoreRatingResult._(ok: true);
 
   factory StoreRatingResult.failure(String message) =>
       StoreRatingResult._(ok: false, message: message);

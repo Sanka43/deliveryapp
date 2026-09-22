@@ -60,7 +60,8 @@ class _CancelOrderSheetState extends ConsumerState<_CancelOrderSheet> {
   Future<void> _submit() async {
     final String otherText = _otherDetailController.text.trim();
     if (_selectedReasonId == 'other' && otherText.isEmpty) {
-      showMndSnackBar(widget.pageContext, 'Please describe your reason.', variant: MndSnackBarVariant.warning);
+      showMndSnackBar(widget.pageContext, 'Please describe your reason.',
+          variant: MndSnackBarVariant.warning);
       return;
     }
 
@@ -80,11 +81,14 @@ class _CancelOrderSheetState extends ConsumerState<_CancelOrderSheet> {
       if (widget.sheetContext.mounted) {
         Navigator.of(widget.sheetContext).pop();
       }
-      showMndSnackBar(widget.pageContext, 'Your order has been cancelled.', variant: MndSnackBarVariant.success);
+      showMndSnackBar(widget.pageContext, 'Your order has been cancelled.',
+          variant: MndSnackBarVariant.success);
       return;
     }
 
-    showMndSnackBar(widget.pageContext, result.errorMessage ?? 'Could not cancel order.', variant: MndSnackBarVariant.error);
+    showMndSnackBar(
+        widget.pageContext, result.errorMessage ?? 'Could not cancel order.',
+        variant: MndSnackBarVariant.error);
   }
 
   @override
@@ -106,17 +110,20 @@ class _CancelOrderSheetState extends ConsumerState<_CancelOrderSheet> {
           children: <Widget>[
             Text(
               'Cancel order',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               widget.detail.storeName,
-              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black54),
+              style:
+                  theme.textTheme.bodyMedium?.copyWith(color: Colors.black54),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
               'Why are you cancelling?',
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: AppSpacing.sm),
             ...OrderCancellationReason.customerOptions.map(
@@ -126,7 +133,9 @@ class _CancelOrderSheetState extends ConsumerState<_CancelOrderSheet> {
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   leading: Icon(
-                    selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
                     color: selected ? scheme.primary : Colors.black45,
                   ),
                   title: Text(r.label),

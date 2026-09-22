@@ -5,7 +5,8 @@ void main() {
   group('OrderTrackingNumber.build', () {
     test('formats MND + YY + 5-digit sequence', () {
       final DateTime d = DateTime(2026, 5, 14);
-      expect(OrderTrackingNumber.build(placedAt: d, sequence: 12), 'MND2600012');
+      expect(
+          OrderTrackingNumber.build(placedAt: d, sequence: 12), 'MND2600012');
     });
 
     test('pads single-digit year and sequence', () {

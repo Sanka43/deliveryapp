@@ -23,7 +23,5 @@ final StreamProvider<List<CustomerOrderSummary>> customerOrdersStreamProvider =
       const <CustomerOrderSummary>[],
     );
   }
-  return ref
-      .watch(customerOrdersRepositoryProvider)
-      .watchMyOrders(user.uid);
+  return ref.watch(customerOrdersRepositoryProvider).watchMyOrders(user.uid);
 });

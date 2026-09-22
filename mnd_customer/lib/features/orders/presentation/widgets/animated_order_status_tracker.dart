@@ -42,7 +42,8 @@ class AnimatedOrderStatusTracker extends StatefulWidget {
   final bool embedded;
 
   @override
-  State<AnimatedOrderStatusTracker> createState() => _AnimatedOrderStatusTrackerState();
+  State<AnimatedOrderStatusTracker> createState() =>
+      _AnimatedOrderStatusTrackerState();
 }
 
 class _AnimatedOrderStatusTrackerState extends State<AnimatedOrderStatusTracker>
@@ -116,7 +117,8 @@ class _AnimatedOrderStatusTrackerState extends State<AnimatedOrderStatusTracker>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             for (int i = 0; i < 4; i++) ...<Widget>[
-              if (i > 0) _ConnectorRow(leadingIndex: i - 1, currentStep: current),
+              if (i > 0)
+                _ConnectorRow(leadingIndex: i - 1, currentStep: current),
               _StepOrb(
                 index: i,
                 currentStep: current,
@@ -152,17 +154,17 @@ class _AnimatedOrderStatusTrackerState extends State<AnimatedOrderStatusTracker>
                       Text(
                         steps[current].title,
                         style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primaryBlue,
-                            ),
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryBlue,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         steps[current].subtitle,
                         style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.black87,
-                              height: 1.35,
-                            ),
+                          color: Colors.black87,
+                          height: 1.35,
+                        ),
                       ),
                     ],
                   ),
@@ -184,8 +186,8 @@ class _AnimatedOrderStatusTrackerState extends State<AnimatedOrderStatusTracker>
         Text(
           'Order status',
           style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         MndPremiumCard(
@@ -320,9 +322,7 @@ class _StepOrb extends StatelessWidget {
             : active
                 ? base.withValues(alpha: 0.14)
                 : trackFill,
-        border: active
-            ? Border.all(color: base, width: 2.5)
-            : null,
+        border: active ? Border.all(color: base, width: 2.5) : null,
         boxShadow: active
             ? <BoxShadow>[
                 BoxShadow(
@@ -367,7 +367,8 @@ class _StepOrb extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  fontWeight: active || done ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight:
+                      active || done ? FontWeight.w700 : FontWeight.w500,
                   color: active
                       ? base
                       : done
@@ -408,9 +409,9 @@ class _AwaitingPaymentTrackerCard extends StatelessWidget {
               child: Text(
                 'Payment not completed — this order has not been placed yet.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                      color: warnColor,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: warnColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -428,8 +429,8 @@ class _AwaitingPaymentTrackerCard extends StatelessWidget {
         Text(
           'Order status',
           style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         banner,
@@ -465,9 +466,9 @@ class _CancelledTrackerCard extends StatelessWidget {
               child: Text(
                 'This order was cancelled and will not be delivered.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                      color: errorColor,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: errorColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -485,8 +486,8 @@ class _CancelledTrackerCard extends StatelessWidget {
         Text(
           'Order status',
           style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         banner,

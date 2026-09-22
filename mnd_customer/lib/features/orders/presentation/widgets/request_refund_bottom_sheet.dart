@@ -38,7 +38,8 @@ class _RequestRefundSheet extends ConsumerStatefulWidget {
   final CustomerOrderDetail detail;
 
   @override
-  ConsumerState<_RequestRefundSheet> createState() => _RequestRefundSheetState();
+  ConsumerState<_RequestRefundSheet> createState() =>
+      _RequestRefundSheetState();
 }
 
 class _RequestRefundSheetState extends ConsumerState<_RequestRefundSheet> {
@@ -127,12 +128,14 @@ class _RequestRefundSheetState extends ConsumerState<_RequestRefundSheet> {
           children: <Widget>[
             Text(
               l10n.orderRefundRequestSheetTitle,
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               l10n.orderRefundRequestSheetBody,
-              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black54),
+              style:
+                  theme.textTheme.bodyMedium?.copyWith(color: Colors.black54),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(

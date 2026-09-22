@@ -27,12 +27,14 @@ class LiveRiderTrackingPage extends ConsumerStatefulWidget {
   final String orderId;
 
   @override
-  ConsumerState<LiveRiderTrackingPage> createState() => _LiveRiderTrackingPageState();
+  ConsumerState<LiveRiderTrackingPage> createState() =>
+      _LiveRiderTrackingPageState();
 }
 
 class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
   GoogleMapController? _map;
   bool _didInitialBounds = false;
+
   /// When true, map camera follows [RiderLiveLocation] stream updates.
   bool _followRider = true;
 
@@ -184,7 +186,8 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
 
     ref.listen<AsyncValue<RiderLiveLocation?>>(
       riderLiveLocationStreamProvider(riderKey),
-      (AsyncValue<RiderLiveLocation?>? previous, AsyncValue<RiderLiveLocation?> next) {
+      (AsyncValue<RiderLiveLocation?>? previous,
+          AsyncValue<RiderLiveLocation?> next) {
         if (!_mapSupported) {
           return;
         }
@@ -193,9 +196,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
         if (c == null) {
           return;
         }
-        if (_didInitialBounds &&
-            _followRider &&
-            r != null) {
+        if (_didInitialBounds && _followRider && r != null) {
           c.animateCamera(
             CameraUpdate.newLatLngZoom(LatLng(r.latitude, r.longitude), 16),
           );
@@ -270,8 +271,10 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
             zoomControlsEnabled: false,
             compassEnabled: true,
             mapToolbarEnabled: false,
-            markers: _buildMarkers(rider: rider, dropLat: dropLat, dropLng: dropLng),
-            polylines: _buildPolylines(rider: rider, dropLat: dropLat, dropLng: dropLng),
+            markers:
+                _buildMarkers(rider: rider, dropLat: dropLat, dropLng: dropLng),
+            polylines: _buildPolylines(
+                rider: rider, dropLat: dropLat, dropLng: dropLng),
             onMapCreated: (GoogleMapController controller) {
               _map = controller;
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -283,9 +286,11 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                     dropLng != null &&
                     !_didInitialBounds) {
                   _didInitialBounds = true;
-                  _fitToMarkers(rider: rider, dropLat: dropLat, dropLng: dropLng);
+                  _fitToMarkers(
+                      rider: rider, dropLat: dropLat, dropLng: dropLng);
                 } else if (!_didInitialBounds) {
-                  _fitToMarkers(rider: rider, dropLat: dropLat, dropLng: dropLng);
+                  _fitToMarkers(
+                      rider: rider, dropLat: dropLat, dropLng: dropLng);
                 }
               });
             },
@@ -390,8 +395,7 @@ class _LiveRiderTrackingPageState extends ConsumerState<LiveRiderTrackingPage> {
                     const SizedBox(height: AppSpacing.sm),
                     Row(
                       children: <Widget>[
-                        if (assigned)
-                          OrderCallRiderChip(orderId: detail.id),
+                        if (assigned) OrderCallRiderChip(orderId: detail.id),
                         if (assigned && detail.vendorId.isNotEmpty)
                           const SizedBox(width: AppSpacing.sm),
                         if (detail.vendorId.isNotEmpty)

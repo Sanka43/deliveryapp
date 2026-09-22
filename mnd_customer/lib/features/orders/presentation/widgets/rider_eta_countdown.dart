@@ -123,9 +123,8 @@ class _RiderEtaCountdownState extends State<RiderEtaCountdown> {
     final Duration left = end.difference(DateTime.now());
     final bool overdue = left <= Duration.zero;
 
-    final String timeStr = overdue
-        ? 'Less than a minute'
-        : _formatDuration(left);
+    final String timeStr =
+        overdue ? 'Less than a minute' : _formatDuration(left);
 
     return _EtaCard(
       label: overdue ? null : 'Arriving in',
@@ -201,26 +200,27 @@ class _EtaCard extends StatelessWidget {
                   Text(
                     label!,
                     style: t.labelLarge?.copyWith(
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(height: 2),
                 ],
                 Text(
                   headline,
-                  style: (largeCountdown ? t.headlineSmall : t.titleMedium)?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primaryBlue,
-                      ),
+                  style: (largeCountdown ? t.headlineSmall : t.titleMedium)
+                      ?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryBlue,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   subline,
                   style: t.bodySmall?.copyWith(
-                        color: Colors.black54,
-                        height: 1.3,
-                      ),
+                    color: Colors.black54,
+                    height: 1.3,
+                  ),
                 ),
               ],
             ),

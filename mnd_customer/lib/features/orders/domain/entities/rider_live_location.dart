@@ -49,8 +49,8 @@ class RiderLiveLocation {
     if (lat == null || lng == null) {
       return null;
     }
-    final Timestamp? ts =
-        data['locationUpdatedAt'] as Timestamp? ?? data['updatedAt'] as Timestamp?;
+    final Timestamp? ts = data['locationUpdatedAt'] as Timestamp? ??
+        data['updatedAt'] as Timestamp?;
     return RiderLiveLocation(
       latitude: lat,
       longitude: lng,
