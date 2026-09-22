@@ -15,6 +15,8 @@ import 'package:mnd_delivery_app/core/widgets/home/mnd_section_header.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_network_image.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_page_app_bar.dart';
 import 'package:mnd_delivery_app/features/cart/presentation/providers/cart_provider.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/widgets/home/home_navigation_helpers.dart';
 import 'package:mnd_delivery_app/l10n/generated/app_localizations.dart';
 
 class CartPage extends ConsumerStatefulWidget {
@@ -81,11 +83,10 @@ class _CartPageState extends ConsumerState<CartPage> {
                     children: <Widget>[
                       if (storeName.isNotEmpty) ...<Widget>[
                         _CartHeroCard(
+                          storeId: cart.items.first.storeId,
                           storeName: storeName,
                           itemCount: cart.itemCount,
                           subtotal: subtotal,
-                          mode: cart.fulfillmentMode,
-                          onModeChanged: cartNotifier.setFulfillmentMode,
                         ),
                         const SizedBox(height: AppSpacing.md),
                       ],
@@ -108,7 +109,8 @@ class _CartPageState extends ConsumerState<CartPage> {
                             key: ValueKey<String>(item.lineId),
                             direction: DismissDirection.endToStart,
                             background: _DismissBackground(),
-                            onDismissed: (_) => cartNotifier.removeItem(item.lineId),
+                            onDismissed: (_) =>
+                                cartNotifier.removeItem(item.lineId),
                             child: _CartItemCard(item: item),
                           ),
                         ),
@@ -135,166 +137,134 @@ class _CartPageState extends ConsumerState<CartPage> {
   }
 }
 
-/// Store identity + fulfillment toggle in a single card (mirrors the
-/// checkout page's hero pattern so the cart -> checkout handoff feels
-/// like one continuous flow rather than two different apps).
-class _CartHeroCard extends StatelessWidget {
+/// Store identity card — live logo and open/closed cue from the vendor doc,
+/// tappable to reopen the store's menu. The delivery/pickup choice now lives
+/// only on checkout (it was duplicated here, one tap apart from the same
+/// control there, and out of sync with the Order type section that depends
+/// on it).
+class _CartHeroCard extends ConsumerWidget {
   const _CartHeroCard({
+    required this.storeId,
     required this.storeName,
     required this.itemCount,
     required this.subtotal,
-    required this.mode,
-    required this.onModeChanged,
   });
 
+  final String storeId;
   final String storeName;
   final int itemCount;
   final int subtotal;
-  final FulfillmentMode mode;
-  final ValueChanged<FulfillmentMode> onModeChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final String trimmedId = storeId.trim();
+    final SearchStore? live = trimmedId.isEmpty
+        ? null
+        : ref.watch(vendorDocStreamProvider(trimmedId)).asData?.value;
+    final String imageUrl = live?.imageUrl.trim() ?? '';
+    final bool isOpen = live?.isOpen ?? true;
+
     return MndPremiumCard(
       borderRadius: AppColors.cardRadiusSm,
       padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      onTap: live == null ? null : () => openStoreDetails(context, live),
+      child: Row(
         children: <Widget>[
-          Row(
+          Stack(
+            clipBehavior: Clip.none,
             children: <Widget>[
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.storefront_rounded,
-                  color: AppColors.primaryBlue,
-                  size: 22,
-                ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: imageUrl.isEmpty
+                    ? const _StoreAvatarFallback()
+                    : MndNetworkImage(
+                        imageUrl: imageUrl,
+                        width: 52,
+                        height: 52,
+                        fit: BoxFit.cover,
+                        errorChild: const _StoreAvatarFallback(),
+                      ),
               ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      storeName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
+              if (!isOpen)
+                Positioned(
+                  right: -4,
+                  bottom: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: AppColors.surfaceElevated,
+                        width: 2,
+                      ),
+                    ),
+                    child: Text(
+                      'Closed',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            fontSize: 9,
+                            height: 1.0,
                           ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      AppLocalizations.of(context)
-                          .cartItemCountSummary(itemCount, MoneyFormat.lkr(subtotal)),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-          _FulfillmentModeSegment(mode: mode, onChanged: onModeChanged),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  storeName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  AppLocalizations.of(context).cartItemCountSummary(
+                      itemCount, MoneyFormat.lkr(subtotal)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          if (live != null)
+            Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textSecondary.withValues(alpha: 0.6),
+            ),
         ],
       ),
     );
   }
 }
 
-class _FulfillmentModeSegment extends StatelessWidget {
-  const _FulfillmentModeSegment({
-    required this.mode,
-    required this.onChanged,
-  });
-
-  final FulfillmentMode mode;
-  final ValueChanged<FulfillmentMode> onChanged;
+class _StoreAvatarFallback extends StatelessWidget {
+  const _StoreAvatarFallback();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.homeMutedFill,
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusSm),
-      ),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: _SegmentChip(
-              label: AppLocalizations.of(context).fulfillmentDelivery,
-              icon: Icons.delivery_dining_rounded,
-              selected: mode == FulfillmentMode.delivery,
-              onTap: () => onChanged(FulfillmentMode.delivery),
-            ),
-          ),
-          Expanded(
-            child: _SegmentChip(
-              label: AppLocalizations.of(context).fulfillmentSelfPickup,
-              icon: Icons.storefront_rounded,
-              selected: mode == FulfillmentMode.selfPickup,
-              onTap: () => onChanged(FulfillmentMode.selfPickup),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SegmentChip extends StatelessWidget {
-  const _SegmentChip({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppColors.primaryBlue : Colors.transparent,
-      borderRadius: BorderRadius.circular(AppColors.cardRadiusSm - 2),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppColors.cardRadiusSm - 2),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                icon,
-                size: 18,
-                color: selected ? Colors.white : AppColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: selected ? Colors.white : AppColors.textPrimary,
-                    ),
-              ),
-            ],
-          ),
-        ),
+      width: 52,
+      height: 52,
+      color: AppColors.primaryBlue.withValues(alpha: 0.10),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.storefront_rounded,
+        color: AppColors.primaryBlue,
+        size: 24,
       ),
     );
   }
@@ -623,7 +593,8 @@ class _MaxOrderValueBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
+          const Icon(Icons.error_outline_rounded,
+              color: AppColors.error, size: 20),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
             child: Text(
