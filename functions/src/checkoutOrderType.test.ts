@@ -46,6 +46,29 @@ describe("resolveCheckoutOrderType", () => {
     assert.equal(result.scheduledFor?.getTime(), Date.parse(target));
   });
 
+  it("accepts an explicit UTC offset and keeps the same instant", () => {
+    // 8:45 PM in Sri Lanka (+05:30) is 15:15 UTC.
+    const result = resolveCheckoutOrderType(
+      "schedule",
+      false,
+      "2026-01-01T20:45:00.000+05:30",
+      NOW,
+    );
+    assert.equal(
+      result.scheduledFor?.toISOString(),
+      "2026-01-01T15:15:00.000Z",
+    );
+  });
+
+  it("rejects a scheduledFor with no timezone (ambiguous wall-clock time)", () => {
+    const naive = new Date(NOW + 60 * 60 * 1000).toISOString().replace("Z", "");
+    assert.throws(
+      () => resolveCheckoutOrderType("schedule", false, naive, NOW),
+      (err: unknown) =>
+        err instanceof HttpsError && err.code === "invalid-argument",
+    );
+  });
+
   it("rejects a missing scheduledFor when type is schedule", () => {
     assert.throws(
       () => resolveCheckoutOrderType("schedule", false, undefined, NOW),

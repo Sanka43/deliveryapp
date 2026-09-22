@@ -10,6 +10,9 @@ export interface ResolvedCheckoutOrderType {
   scheduledFor: Date | null;
 }
 
+/** Ends with `Z` or a `+hh:mm` / `-hh:mm` / `+hhmm` UTC offset. */
+const HAS_UTC_OFFSET = /(Z|[+-]\d{2}:?\d{2})$/i;
+
 /**
  * Validates the customer's chosen checkout order type against the raw
  * callable request fields. Emergency only makes sense for delivery (the
@@ -40,8 +43,11 @@ export function resolveCheckoutOrderType(
     return {orderType, scheduledFor: null};
   }
 
-  const parsed =
-    scheduledForRaw == null ? null : new Date(String(scheduledForRaw));
+  // The instant must be unambiguous: an ISO string with no "Z"/offset is read
+  // as server-local (UTC) time, which silently shifts a customer's wall-clock
+  // pick by their UTC offset (e.g. 8:45 PM in Sri Lanka became 2:15 AM).
+  const rawString = scheduledForRaw == null ? "" : String(scheduledForRaw);
+  const parsed = HAS_UTC_OFFSET.test(rawString) ? new Date(rawString) : null;
   if (!parsed || Number.isNaN(parsed.getTime())) {
     throw new HttpsError(
       "invalid-argument",
