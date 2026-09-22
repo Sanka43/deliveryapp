@@ -7,6 +7,7 @@ import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/orders/data/vendor_orders_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/providers/vendor_order_board_provider.dart';
 import 'package:mnd_shop/features/orders/presentation/widgets/vendor_item_variant_chip.dart';
+import 'package:mnd_shop/features/orders/presentation/widgets/vendor_order_type_banner.dart';
 import 'package:mnd_shop/features/products/presentation/providers/vendor_session_store_providers.dart';
 
 /// Polished "New order" popup shown when an order lands on the vendor board.
@@ -234,6 +235,7 @@ class _VendorNewOrderDialogState extends ConsumerState<VendorNewOrderDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
+                        VendorOrderTypeBanner(order: order),
                         _SectionLabel(
                           text: _vTxt(
                             context,

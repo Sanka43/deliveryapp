@@ -5,6 +5,7 @@ import 'package:mnd_shop/core/utils/phone_call_launcher.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/orders/data/vendor_order_rider_contact_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/widgets/vendor_order_items_list.dart';
+import 'package:mnd_shop/features/orders/presentation/widgets/vendor_order_type_banner.dart';
 
 /// Full-screen order details. [readOnly] hides accept/reject (e.g. kitchen / ready pipeline).
 class IncomingVendorOrderPage extends ConsumerWidget {
@@ -125,6 +126,7 @@ class IncomingVendorOrderPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 14),
+          VendorOrderTypeBanner(order: order),
           if (order.customerPhone.isNotEmpty ||
               order.customerName.isNotEmpty ||
               order.isGuestCustomer)

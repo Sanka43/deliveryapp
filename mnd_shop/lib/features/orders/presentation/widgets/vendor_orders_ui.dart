@@ -8,6 +8,7 @@ import 'package:mnd_shop/core/widgets/vendor_shell_ui.dart';
 import 'package:mnd_shop/features/dashboard/domain/vendor_pending_order.dart';
 import 'package:mnd_shop/features/orders/data/vendor_order_rider_contact_repository.dart';
 import 'package:mnd_shop/features/orders/presentation/widgets/vendor_order_items_list.dart';
+import 'package:mnd_shop/features/orders/presentation/widgets/vendor_order_type_banner.dart';
 
 /// Orders-tab colors — light mode values are fixed; dark mode uses adapted surfaces.
 abstract final class VendorOrdersTheme {
@@ -517,14 +518,6 @@ class _OrderPlacedAtBadge extends StatelessWidget {
   }
 }
 
-/// e.g. "6:30 PM" for the SCHEDULED badge.
-String _scheduledBadgeTime(DateTime dt) {
-  final int hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-  final String period = dt.hour < 12 ? 'AM' : 'PM';
-  final String minute = dt.minute.toString().padLeft(2, '0');
-  return '$hour12:$minute $period';
-}
-
 enum VendorOrderCardStage { urgent, progress, ready }
 
 /// Order pipeline card — stage-tinted surface and CTA.
@@ -638,6 +631,7 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
+                VendorOrderTypeBanner(order: order),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
@@ -756,54 +750,6 @@ class _VendorOrderListCardState extends State<VendorOrderListCard> {
                             ),
                             child: Text(
                               order.productCashBadgeLabel,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: AppColors.textCharcoal,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.3,
-                                fontSize: 9.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (order.isEmergency) ...<Widget>[
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.orderRejectRed.withValues(
-                                alpha: 0.16,
-                              ),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              '⚡ EMERGENCY',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: AppColors.textCharcoal,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.3,
-                                fontSize: 9.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (order.isScheduled) ...<Widget>[
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryBlue.withValues(
-                                alpha: 0.16,
-                              ),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              'SCHEDULED ${_scheduledBadgeTime(order.scheduledFor!)}',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: AppColors.textCharcoal,
                                 fontWeight: FontWeight.w700,
