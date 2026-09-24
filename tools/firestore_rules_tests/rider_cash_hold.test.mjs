@@ -181,12 +181,26 @@ await check(
     }),
   ),
 );
+// Completion goes through the completeCashOrRideTrip Cloud Function (drop-off
+// PIN + extra-distance fare), which the hold doesn't block. Since b584a07f no
+// rider may write status 'completed' directly — held or not.
 await check(
-  'held rider CAN complete their in-flight ride',
-  assertSucceeds(
+  'held rider CANNOT write completed directly (must use completeCashOrRideTrip)',
+  assertFails(
     updateDoc(doc(asRider(HELD_RIDER), 'trips', 'tripInFlight'), {
       status: 'completed',
       completedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  ),
+);
+await check(
+  'held rider CAN still cancel their in-flight ride',
+  assertSucceeds(
+    updateDoc(doc(asRider(HELD_RIDER), 'trips', 'tripInFlight'), {
+      status: 'cancelled',
+      cancelledAt: serverTimestamp(),
+      cancelReason: 'passenger_no_show',
       updatedAt: serverTimestamp(),
     }),
   ),

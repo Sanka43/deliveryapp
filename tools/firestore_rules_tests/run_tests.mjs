@@ -9,7 +9,7 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rulesPath = resolve(here, '../../mnd_customer/firestore.rules');
@@ -130,4 +130,112 @@ await check(
   assertFails(
     setDoc(doc(vendorADb(), 'vendors', 'fake-store'), {
       uid: VENDOR_A,
-      role: 'v
+      role: 'vendor',
+      vendorStoreId: VENDOR_A,
+      name: 'Fake Store',
+      active: false,
+      approvalStatus: 'pending',
+    }),
+  ),
+);
+await check(
+  'new vendor CANNOT self-register as already approved/active',
+  assertFails(
+    setDoc(doc(env.authenticatedContext('vendorC').firestore(), 'vendors', 'vendorC'), {
+      uid: 'vendorC',
+      role: 'vendor',
+      vendorStoreId: 'vendorC',
+      name: 'Shop C',
+      active: true,
+      approvalStatus: 'approved',
+    }),
+  ),
+);
+await check(
+  'new vendor CAN self-register a pending, inactive store',
+  assertSucceeds(
+    setDoc(doc(env.authenticatedContext('vendorC').firestore(), 'vendors', 'vendorC'), {
+      uid: 'vendorC',
+      role: 'vendor',
+      vendorStoreId: 'vendorC',
+      name: 'Shop C',
+      active: false,
+      approvalStatus: 'pending',
+    }),
+  ),
+);
+
+console.log('\n-- orders: cross-tenant access --');
+await seed();
+const vendorBDb = () => env.authenticatedContext(VENDOR_B).firestore();
+await check(
+  'vendor CAN read own store order',
+  assertSucceeds(getDoc(doc(vendorADb(), 'orders', 'order1'))),
+);
+await check(
+  "vendor CANNOT read another store's order",
+  assertFails(getDoc(doc(vendorBDb(), 'orders', 'order1'))),
+);
+await check(
+  "vendor CANNOT update another store's order status",
+  assertFails(
+    updateDoc(doc(vendorBDb(), 'orders', 'order1'), {
+      status: 'cancelled',
+      updatedAt: serverTimestamp(),
+    }),
+  ),
+);
+await check(
+  'vendor CAN confirm own placed order',
+  assertSucceeds(
+    updateDoc(doc(vendorADb(), 'orders', 'order1'), {
+      status: 'confirmed',
+      vendorStatusUpdatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  ),
+);
+await check(
+  'vendor CANNOT change the total on own order',
+  assertFails(updateDoc(doc(vendorADb(), 'orders', 'order1'), { total: 1 })),
+);
+await seed(); // order1 was confirmed above — reset it to 'placed'.
+await check(
+  'vendor CANNOT skip straight from placed to ready',
+  assertFails(
+    updateDoc(doc(vendorADb(), 'orders', 'order1'), {
+      status: 'ready',
+      openForRiders: true,
+      updatedAt: serverTimestamp(),
+    }),
+  ),
+);
+
+console.log('\n-- orders: customer limits --');
+await seed();
+await check(
+  'customer CAN rate the store on a delivered order',
+  assertSucceeds(
+    updateDoc(doc(customerDb(), 'orders', 'order2'), {
+      storeRated: true,
+      storeRatingStars: 5,
+      updatedAt: serverTimestamp(),
+    }),
+  ),
+);
+await check(
+  'customer CANNOT change the total on own order',
+  assertFails(updateDoc(doc(customerDb(), 'orders', 'order1'), { total: 1 })),
+);
+await check(
+  "vendor CANNOT read a customer's profile",
+  assertFails(getDoc(doc(vendorADb(), 'customers', CUSTOMER))),
+);
+
+await env.cleanup();
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) {
+  console.log('Failures:');
+  for (const f of failures) console.log(`  - ${f}`);
+  process.exit(1);
+}
