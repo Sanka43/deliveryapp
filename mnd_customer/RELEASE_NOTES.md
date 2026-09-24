@@ -1,5 +1,15 @@
 # Release Notes — MND Customer App
 
+## 2026-09-22
+
+### What's New
+- Choose Emergency, Standard, or Scheduled when placing an order
+- Schedule an order for later, even if the shop is currently closed
+
+### Improvements
+- Cart now shows if your store is open or closed, with a quick tap to view it
+- More accurate scheduled order times
+
 ## 2026-09-09
 
 ### What's New
