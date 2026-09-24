@@ -24,6 +24,18 @@ const smslenzSenderId = defineString("SMSLENZ_SENDER_ID", {
   description: "Approved SMSlenz sender_id",
 });
 
+// App-store review login: this one number gets a fixed code and no SMS is
+// sent, so Google Play / App Store reviewers can sign in without a real SIM.
+// Leave either param empty to disable.
+const reviewPhone = defineString("REVIEW_PHONE", {
+  default: "",
+  description: "Store-review demo phone (E.164 or local), no SMS sent",
+});
+const reviewOtp = defineString("REVIEW_OTP", {
+  default: "",
+  description: "Fixed 6-digit code for REVIEW_PHONE",
+});
+
 type OtpDoc = {
   phoneE164: string;
   sessionId: string;
@@ -168,6 +180,16 @@ async function assertPhoneAvailableForRegister(e164: string): Promise<void> {
   }
 }
 
+/** Fixed code when [e164] is the configured store-review phone, else null. */
+function reviewOtpFor(e164: string): string | null {
+  const phone = normalizeCustomerPhoneE164(reviewPhone.value());
+  const otp = reviewOtp.value().trim();
+  if (!phone.ok || !/^\d{6}$/.test(otp)) {
+    return null;
+  }
+  return phone.e164 === e164 ? otp : null;
+}
+
 function gatewayConfig(): {userId: string; apiKey: string; senderId: string} {
   return {
     userId: (process.env.SMSLENZ_USER_ID || smslenzUserId.value() || "").trim(),
@@ -308,30 +330,33 @@ export const requestPhoneOtp = onCall(
       }
     }
 
-    const otp = generateOtp();
+    const fixedOtp = reviewOtpFor(e164);
+    const otp = fixedOtp ?? generateOtp();
     const sessionId = generateSessionId();
     const otpSalt = randomBytes(16).toString("hex");
     const otpHash = hashWithSalt(otp, otpSalt);
 
-    const config = gatewayConfig();
-    if (!config.userId || !config.apiKey) {
-      logger.error("SMSlenz credentials missing");
-      throw new HttpsError(
-        "failed-precondition",
-        "SMS gateway is not configured. Contact support.",
-      );
-    }
+    if (!fixedOtp) {
+      const config = gatewayConfig();
+      if (!config.userId || !config.apiKey) {
+        logger.error("SMSlenz credentials missing");
+        throw new HttpsError(
+          "failed-precondition",
+          "SMS gateway is not configured. Contact support.",
+        );
+      }
 
-    const message =
-      `Your MND verification code is ${otp}. ` +
-      "Valid for 10 minutes. Do not share this code.";
+      const message =
+        `Your MND verification code is ${otp}. ` +
+        "Valid for 10 minutes. Do not share this code.";
 
-    const sent = await sendSmslenzSms(config, e164, message);
-    if (!sent.ok) {
-      throw new HttpsError(
-        "unavailable",
-        "Could not send verification SMS. Please try again.",
-      );
+      const sent = await sendSmslenzSms(config, e164, message);
+      if (!sent.ok) {
+        throw new HttpsError(
+          "unavailable",
+          "Could not send verification SMS. Please try again.",
+        );
+      }
     }
 
     await ref.set(
@@ -351,10 +376,10 @@ export const requestPhoneOtp = onCall(
       {merge: true},
     );
 
-    logger.info("Phone OTP sent via SMSlenz", {
-      phoneHash: phoneDocId(e164),
-      purpose,
-    });
+    logger.info(
+      fixedOtp ? "Review phone OTP issued (no SMS)" : "Phone OTP sent via SMSlenz",
+      {phoneHash: phoneDocId(e164), purpose},
+    );
 
     return {
       ok: true,
