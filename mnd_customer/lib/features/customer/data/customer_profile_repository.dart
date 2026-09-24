@@ -27,18 +27,18 @@ class CustomerProfileRepository {
   Reference _profilePhotoRef(String uid) =>
       _storage.ref().child('customers/$uid/profile.jpg');
 
-  /// Emits [null] when signed out; otherwise live profile from Auth + [customers] doc.
-  Stream<CustomerProfile?> watchProfile() {
-    return _auth.authStateChanges().asyncExpand((User? user) {
-      if (user == null) {
-        return Stream<CustomerProfile?>.value(null);
-      }
-      return _customerDoc(user.uid).snapshots().map(
-        (DocumentSnapshot<Map<String, dynamic>> snapshot) {
-          return CustomerProfile.merge(user, snapshot.data());
-        },
-      );
-    });
+  /// Live profile from Auth + [customers] doc for [user].
+  ///
+  /// Callers rebind per user (see [customerProfileStreamProvider]); don't wrap
+  /// this in authStateChanges().asyncExpand — asyncExpand never cancels the
+  /// old user's never-ending listener, so a sign-out leaves it stuck on
+  /// permission-denied.
+  Stream<CustomerProfile> watchProfile(User user) {
+    return _customerDoc(user.uid).snapshots().map(
+      (DocumentSnapshot<Map<String, dynamic>> snapshot) {
+        return CustomerProfile.merge(user, snapshot.data());
+      },
+    );
   }
 
   /// One-shot read of Auth + [customers] doc for the signed-in user.

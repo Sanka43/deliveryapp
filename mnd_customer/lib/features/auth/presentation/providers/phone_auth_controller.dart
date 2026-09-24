@@ -352,15 +352,21 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } else {
-      await userRef.set(
-        <String, dynamic>{
-          'displayName': user.displayName,
-          'email': user.email,
-          'phoneNumber': user.phoneNumber ?? fallbackPhoneNumber,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      // Phone/custom-token users have null Auth displayName/email, so only
+      // backfill those when the doc lacks them — never overwrite saved values.
+      final Map<String, dynamic> existing = snapshot.data() ?? <String, dynamic>{};
+      bool isBlank(Object? v) => v is! String || v.trim().isEmpty;
+      final Map<String, dynamic> patch = <String, dynamic>{
+        'phoneNumber': user.phoneNumber ?? fallbackPhoneNumber,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (isBlank(existing['displayName']) && !isBlank(user.displayName)) {
+        patch['displayName'] = user.displayName;
+      }
+      if (isBlank(existing['email']) && !isBlank(user.email)) {
+        patch['email'] = user.email;
+      }
+      await userRef.set(patch, SetOptions(merge: true));
     }
 
     await FcmTokenRepository(

@@ -355,5 +355,19 @@
   "languageSaveErrorFallback": "Could not save language. Please try again.",
   "languageLoadErrorFallback": "Could not load language. Please try again.",
   "languageUseDeviceOption": "Use device language",
-  "languageFollowsDeviceSubtitle": "Follows your phone settings"
+  "languageFollowsDeviceSubtitle": "Follows your phone settings",
+
+  "completeProfileTitle": "Complete your profile",
+  "completeProfileSubtitle": "Tell us your name so riders and shops know who you are.",
+  "completeProfileNameLabel": "Full name",
+  "completeProfileNameRequired": "Please enter your name",
+  "completeProfileNameTooShort": "Name must be at least 2 characters",
+  "completeProfileNameTooLong": "Name is too long",
+  "completeProfileNameInvalid": "Please enter your real name",
+  "completeProfileEmailLabel": "Email (optional)",
+  "completeProfileEmailInvalid": "Enter a valid email address",
+  "completeProfilePhoneLabel": "Phone",
+  "completeProfileContinue": "Continue",
+  "completeProfileWrongNumber": "Not your number? Log out",
+  "completeProfileSaveFailed": "Could not save your profile. Please try again."
 }

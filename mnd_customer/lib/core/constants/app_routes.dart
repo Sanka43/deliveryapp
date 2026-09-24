@@ -4,6 +4,9 @@ class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
   static const String login = '/login';
+
+  /// Mandatory name (+ optional email) step for customers with no name yet.
+  static const String completeProfile = '/complete-profile';
   static const String customer = '/customer';
   static const String customerSearch = '/customer/search';
   static const String customerFavorites = '/customer/favorites';

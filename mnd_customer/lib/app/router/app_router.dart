@@ -13,6 +13,8 @@ import 'package:mnd_delivery_app/features/auth/presentation/pages/wrong_dedicate
 import 'package:mnd_delivery_app/features/auth/presentation/providers/guest_browsing_provider.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/widgets/auth_slide_page.dart';
 import 'package:mnd_delivery_app/features/auth/presentation/providers/user_role_provider.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/pages/complete_profile_page.dart';
+import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_profile_provider.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_home_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_shell_page.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/pages/customer_profile_page.dart';
@@ -132,6 +134,7 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
   ref.listen<bool>(guestBrowsingProvider, (_, __) => refresh.refresh());
   ref.listen(userRoleProvider, (_, __) => refresh.refresh());
   ref.listen(authStateUserProvider, (_, __) => refresh.refresh());
+  ref.listen(profileSetupRequiredProvider, (_, __) => refresh.refresh());
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
@@ -180,7 +183,29 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
       final String normalizedRole = _normalizedRole(userRoleState.valueOrNull);
       final String home = _homeForNormalizedRole(normalizedRole);
 
-      if (isAuthFlowRoute) {
+      // New customers must enter a name before using the app. Unknown (null)
+      // never gates, so existing users aren't bounced while Firestore loads.
+      final bool isCompleteProfile =
+          state.matchedLocation == AppRoutes.completeProfile;
+      if (normalizedRole == 'customer') {
+        final bool? setupRequired =
+            ref.read(profileSetupRequiredProvider).valueOrNull;
+        if (setupRequired == true) {
+          if (isCompleteProfile) {
+            return null;
+          }
+          // Remember a deep target (e.g. checkout) to resume after setup.
+          if (!isAuthFlowRoute &&
+              state.matchedLocation != AppRoutes.customer &&
+              (ref.read(postAuthRedirectProvider) ?? '').isEmpty) {
+            ref.read(postAuthRedirectProvider.notifier).state =
+                state.uri.toString();
+          }
+          return AppRoutes.completeProfile;
+        }
+      }
+
+      if (isAuthFlowRoute || isCompleteProfile) {
         final String? pending = ref.read(postAuthRedirectProvider);
         if (pending != null && pending.isNotEmpty) {
           ref.read(postAuthRedirectProvider.notifier).state = null;
@@ -213,6 +238,11 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
           name: state.matchedLocation,
           child: const LoginPage(),
         ),
+      ),
+      GoRoute(
+        path: AppRoutes.completeProfile,
+        builder: (BuildContext context, GoRouterState state) =>
+            const CompleteProfilePage(),
       ),
       GoRoute(
         path: AppRoutes.wrongAppRider,

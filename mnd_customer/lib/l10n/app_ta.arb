@@ -309,5 +309,19 @@
   "languageSaveErrorFallback": "மொழியைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
   "languageLoadErrorFallback": "மொழியை ஏற்ற முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
   "languageUseDeviceOption": "சாதன மொழியைப் பயன்படுத்தவும்",
-  "languageFollowsDeviceSubtitle": "உங்கள் தொலைபேசி அமைப்புகளைப் பின்பற்றுகிறது"
+  "languageFollowsDeviceSubtitle": "உங்கள் தொலைபேசி அமைப்புகளைப் பின்பற்றுகிறது",
+
+  "completeProfileTitle": "உங்கள் சுயவிவரத்தை நிறைவு செய்யுங்கள்",
+  "completeProfileSubtitle": "ரைடர்களும் கடைகளும் உங்களை அறிய உங்கள் பெயரை உள்ளிடவும்.",
+  "completeProfileNameLabel": "முழுப் பெயர்",
+  "completeProfileNameRequired": "உங்கள் பெயரை உள்ளிடவும்",
+  "completeProfileNameTooShort": "பெயர் குறைந்தது 2 எழுத்துகள் இருக்க வேண்டும்",
+  "completeProfileNameTooLong": "பெயர் மிக நீளமாக உள்ளது",
+  "completeProfileNameInvalid": "உங்கள் உண்மையான பெயரை உள்ளிடவும்",
+  "completeProfileEmailLabel": "மின்னஞ்சல் (விருப்பத்தேர்வு)",
+  "completeProfileEmailInvalid": "சரியான மின்னஞ்சல் முகவரியை உள்ளிடவும்",
+  "completeProfilePhoneLabel": "தொலைபேசி",
+  "completeProfileContinue": "தொடரவும்",
+  "completeProfileWrongNumber": "உங்கள் எண் இல்லையா? வெளியேறு",
+  "completeProfileSaveFailed": "சுயவிவரத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
 }

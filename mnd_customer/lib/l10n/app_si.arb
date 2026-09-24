@@ -309,5 +309,19 @@
   "languageSaveErrorFallback": "භාෂාව සුරැකිය නොහැක. කරුණාකර නැවත උත්සාහ කරන්න.",
   "languageLoadErrorFallback": "භාෂාව පූරණය කළ නොහැක. කරුණාකර නැවත උත්සාහ කරන්න.",
   "languageUseDeviceOption": "උපාංගයේ භාෂාව භාවිත කරන්න",
-  "languageFollowsDeviceSubtitle": "ඔබේ දුරකථන සැකසීම් අනුගමනය කරයි"
+  "languageFollowsDeviceSubtitle": "ඔබේ දුරකථන සැකසීම් අනුගමනය කරයි",
+
+  "completeProfileTitle": "ඔබේ profile එක සම්පූර්ණ කරන්න",
+  "completeProfileSubtitle": "Riders සහ කඩවලට ඔබව හඳුනාගන්න ඔබේ නම ඇතුළත් කරන්න.",
+  "completeProfileNameLabel": "සම්පූර්ණ නම",
+  "completeProfileNameRequired": "කරුණාකර ඔබේ නම ඇතුළත් කරන්න",
+  "completeProfileNameTooShort": "නමේ අවම වශයෙන් අකුරු 2ක් තිබිය යුතුයි",
+  "completeProfileNameTooLong": "නම දිග වැඩියි",
+  "completeProfileNameInvalid": "කරුණාකර ඔබේ සැබෑ නම ඇතුළත් කරන්න",
+  "completeProfileEmailLabel": "Email (අත්‍යවශ්‍ය නැත)",
+  "completeProfileEmailInvalid": "වලංගු email ලිපිනයක් ඇතුළත් කරන්න",
+  "completeProfilePhoneLabel": "දුරකථන අංකය",
+  "completeProfileContinue": "ඉදිරියට",
+  "completeProfileWrongNumber": "ඔබේ අංකය නොවේද? Log out වන්න",
+  "completeProfileSaveFailed": "Profile එක සුරැකීමට නොහැකි විය. නැවත උත්සාහ කරන්න."
 }

@@ -63,6 +63,13 @@ class CustomerProfile extends Equatable {
     );
   }
 
+  /// False until the customer has entered a real name (merge falls back to
+  /// 'Customer'). Gates the post-login complete-profile step.
+  bool get hasRealName {
+    final String n = name.trim();
+    return n.length >= 2 && n.toLowerCase() != 'customer';
+  }
+
   /// True when name and phone are set for job applications and orders.
   bool get isProfileComplete {
     final String n = name.trim();

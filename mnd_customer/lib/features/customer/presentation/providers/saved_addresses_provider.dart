@@ -9,25 +9,24 @@ import 'package:mnd_delivery_app/features/customer/data/saved_address.dart';
 /// Live list of saved addresses for the signed-in user (empty if not signed in).
 final StreamProvider<List<SavedAddress>> savedAddressesStreamProvider =
     StreamProvider<List<SavedAddress>>((Ref ref) {
-  final FirebaseAuth auth = ref.watch(firebaseAuthProvider);
-  final FirebaseFirestore db = ref.watch(firestoreProvider);
-
-  return auth.authStateChanges().asyncExpand((User? user) {
-    if (user == null) {
-      return Stream<List<SavedAddress>>.value(const <SavedAddress>[]);
-    }
-    return db
-        .collection(FirebaseCollections.customers)
-        .doc(user.uid)
-        .collection(FirebaseCollections.savedAddresses)
-        .orderBy('createdAt', descending: false)
-        .snapshots()
-        .map(
-      (QuerySnapshot<Map<String, dynamic>> snapshot) {
-        return snapshot.docs.map(SavedAddress.fromFirestore).toList(growable: false);
-      },
-    );
-  });
+  // resolveAuthUser rebinds on sign-in/out; authStateChanges().asyncExpand
+  // kept the old user's listener alive and stuck on permission-denied.
+  final User? user = resolveAuthUser(ref);
+  if (user == null) {
+    return Stream<List<SavedAddress>>.value(const <SavedAddress>[]);
+  }
+  return ref
+      .watch(firestoreProvider)
+      .collection(FirebaseCollections.customers)
+      .doc(user.uid)
+      .collection(FirebaseCollections.savedAddresses)
+      .orderBy('createdAt', descending: false)
+      .snapshots()
+      .map(
+    (QuerySnapshot<Map<String, dynamic>> snapshot) {
+      return snapshot.docs.map(SavedAddress.fromFirestore).toList(growable: false);
+    },
+  );
 });
 
 final Provider<SavedAddressesActions> savedAddressesActionsProvider =
