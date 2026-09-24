@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
+import 'package:mnd_delivery_app/app/router/profile_setup_redirect.dart';
 import 'package:mnd_delivery_app/core/config/env_config.dart';
 import 'package:mnd_delivery_app/core/constants/app_routes.dart';
 import 'package:mnd_delivery_app/core/utils/go_router_refresh_stream.dart';
@@ -183,25 +184,27 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
       final String normalizedRole = _normalizedRole(userRoleState.valueOrNull);
       final String home = _homeForNormalizedRole(normalizedRole);
 
-      // New customers must enter a name before using the app. Unknown (null)
-      // never gates, so existing users aren't bounced while Firestore loads.
+      // New customers must enter a name before using the app.
       final bool isCompleteProfile =
           state.matchedLocation == AppRoutes.completeProfile;
       if (normalizedRole == 'customer') {
-        final bool? setupRequired =
-            ref.read(profileSetupRequiredProvider).valueOrNull;
-        if (setupRequired == true) {
-          if (isCompleteProfile) {
-            return null;
-          }
-          // Remember a deep target (e.g. checkout) to resume after setup.
-          if (!isAuthFlowRoute &&
-              state.matchedLocation != AppRoutes.customer &&
-              (ref.read(postAuthRedirectProvider) ?? '').isEmpty) {
-            ref.read(postAuthRedirectProvider.notifier).state =
-                state.uri.toString();
-          }
-          return AppRoutes.completeProfile;
+        final ProfileSetupRedirect setup = profileSetupRedirect(
+          setupRequired: ref.read(profileSetupRequiredProvider).valueOrNull,
+          matchedLocation: state.matchedLocation,
+          location: state.uri.toString(),
+          isAuthFlowRoute: isAuthFlowRoute,
+          pendingRedirect: ref.read(postAuthRedirectProvider),
+        );
+        if (setup.pendingToSave != null) {
+          ref.read(postAuthRedirectProvider.notifier).state =
+              setup.pendingToSave;
+        }
+        if (setup.redirectTo != null) {
+          return setup.redirectTo;
+        }
+        if (isCompleteProfile &&
+            ref.read(profileSetupRequiredProvider).valueOrNull == true) {
+          return null;
         }
       }
 

@@ -5,6 +5,7 @@ import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
 import 'package:mnd_delivery_app/features/customer/presentation/providers/customer_search_provider.dart';
 import 'package:mnd_delivery_app/features/orders/domain/entities/customer_order_summary.dart';
 import 'package:mnd_delivery_app/features/orders/presentation/providers/customer_orders_provider.dart';
+import 'package:mnd_delivery_app/core/utils/stream_switch_map.dart';
 
 /// Static food subcategory chips when Firestore `shop_types` is empty.
 const List<String> kFoodCategoryFallbackLabels = <String>[
@@ -263,7 +264,7 @@ final StreamProvider<List<String>> foodCategoryLabelsProvider =
       .collection(FirebaseCollections.shopCategories)
       .orderBy('order')
       .snapshots()
-      .asyncExpand((QuerySnapshot<Map<String, dynamic>> categoriesSnap) {
+      .switchMap((QuerySnapshot<Map<String, dynamic>> categoriesSnap) {
     String? foodCategoryId;
     for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in categoriesSnap.docs) {
       final Map<String, dynamic> m = doc.data();

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mnd_delivery_app/app/providers/firebase_providers.dart';
 import 'package:mnd_delivery_app/core/constants/firebase_collections.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:mnd_delivery_app/core/utils/stream_switch_map.dart';
 
 /// Persisted after role resolves so the next cold start can leave splash instantly.
 const String kLastUserRolePrefsKey = 'mnd_last_user_role';
@@ -47,7 +48,7 @@ final StreamProvider<String?> userRoleProvider =
       .collection(FirebaseCollections.customers)
       .doc(user.uid)
       .snapshots()
-      .asyncExpand((DocumentSnapshot<Map<String, dynamic>> userSnap) {
+      .switchMap((DocumentSnapshot<Map<String, dynamic>> userSnap) {
     final String? roleFromUser =
         (userSnap.data()?['role'] as String?)?.trim().toLowerCase();
     if (roleFromUser != null && roleFromUser.isNotEmpty) {
@@ -57,7 +58,7 @@ final StreamProvider<String?> userRoleProvider =
         .collection(FirebaseCollections.vendors)
         .doc(user.uid)
         .snapshots()
-        .asyncExpand((DocumentSnapshot<Map<String, dynamic>> vSnap) {
+        .switchMap((DocumentSnapshot<Map<String, dynamic>> vSnap) {
       final String? roleFromVendor =
           (vSnap.data()?['role'] as String?)?.trim().toLowerCase();
       if (roleFromVendor != null && roleFromVendor.isNotEmpty) {

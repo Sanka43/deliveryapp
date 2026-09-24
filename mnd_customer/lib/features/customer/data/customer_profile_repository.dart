@@ -82,7 +82,23 @@ class CustomerProfileRepository {
     }
 
     try {
-      await _customerDoc(user.uid).set(payload, SetOptions(merge: true));
+      final DocumentReference<Map<String, dynamic>> ref = _customerDoc(user.uid);
+      // A missing doc makes this merge a *create*, which the rules only allow
+      // with uid + role — e.g. when post-OTP _ensureUserProfile failed.
+      final DocumentSnapshot<Map<String, dynamic>> existing = await ref.get();
+      if (!existing.exists) {
+        payload['uid'] = user.uid;
+        payload['role'] = 'customer';
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        final String? phone = user.phoneNumber?.trim();
+        if (phone != null && phone.isNotEmpty) {
+          payload['phoneNumber'] = phone;
+        }
+        if (emailField == null) {
+          payload.remove('email');
+        }
+      }
+      await ref.set(payload, SetOptions(merge: true));
     } catch (e) {
       return ProfileUpdateResult.failure(
         userFacingError(e, fallback: 'Could not save your profile.'),

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:mnd_delivery_app/core/utils/profile_validation.dart';
 
 class CustomerProfile extends Equatable {
   const CustomerProfile({
@@ -66,8 +67,8 @@ class CustomerProfile extends Equatable {
   /// False until the customer has entered a real name (merge falls back to
   /// 'Customer'). Gates the post-login complete-profile step.
   bool get hasRealName {
-    final String n = name.trim();
-    return n.length >= 2 && n.toLowerCase() != 'customer';
+    final ProfileNameError? error = validateProfileName(name);
+    return error == null || error == ProfileNameError.tooLong;
   }
 
   /// True when name and phone are set for job applications and orders.

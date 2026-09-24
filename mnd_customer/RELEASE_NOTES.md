@@ -1,5 +1,16 @@
 # Release Notes — MND Customer App
 
+## Unreleased
+
+### What's New
+- New customers are asked for their name (email optional) right after signing in
+- Existing customers who never added a name will see this step once on their next app open
+
+### Fixes
+- Signing out and back in no longer clears your saved email or name
+- Fixed "You do not have access" on Settings/Profile after signing out and back in
+- Saved addresses now load correctly after switching accounts
+
 ## 2026-09-22
 
 ### What's New

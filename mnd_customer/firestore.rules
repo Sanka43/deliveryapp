@@ -226,9 +226,11 @@ service cloud.firestore {
       }
 
       function validSelfCustomerUpdate() {
+        // get() so legacy docs without uid/role can still be updated; the
+        // values still can't be added or changed by the owner.
         return isSelf(uid)
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.role == resource.data.role
+          && request.resource.data.get('uid', null) == resource.data.get('uid', null)
+          && request.resource.data.get('role', null) == resource.data.get('role', null)
           // vendorStoreId is admin-managed: self-updates must not re-point the
           // profile at another vendor's store (order/store access is derived from it).
           // Referral fields are server-managed (see noClientReferralFields()).

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mnd_delivery_app/core/constants/app_colors.dart';
 import 'package:mnd_delivery_app/core/constants/app_spacing.dart';
+import 'package:mnd_delivery_app/core/utils/profile_validation.dart';
 import 'package:mnd_delivery_app/core/utils/user_facing_error.dart';
 import 'package:mnd_delivery_app/core/widgets/mnd_snackbar.dart';
 import 'package:mnd_delivery_app/core/widgets/home/mnd_premium_card.dart';
@@ -84,7 +85,10 @@ class _EditProfileFormScaffoldState
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.profile.name);
+    // Don't prefill the 'Customer' fallback — the validator would reject it.
+    _nameController = TextEditingController(
+      text: widget.profile.hasRealName ? widget.profile.name : '',
+    );
     _emailController =
         TextEditingController(text: widget.profile.email ?? '');
   }
@@ -97,27 +101,22 @@ class _EditProfileFormScaffoldState
   }
 
   String? _validateName(String? v) {
-    if (v == null || v.trim().isEmpty) {
-      return 'Please enter your name';
+    switch (validateProfileName(v)) {
+      case ProfileNameError.empty:
+        return 'Please enter your name';
+      case ProfileNameError.tooShort:
+        return 'Name must be at least 2 characters';
+      case ProfileNameError.tooLong:
+        return 'Name is too long';
+      case ProfileNameError.placeholder:
+        return 'Please enter your real name';
+      case null:
+        return null;
     }
-    if (v.trim().length > 80) {
-      return 'Name is too long';
-    }
-    return null;
   }
 
   String? _validateEmail(String? v) {
-    if (v == null || v.trim().isEmpty) {
-      return null;
-    }
-    final String t = v.trim();
-    final bool ok = RegExp(
-      r'^[a-zA-Z0-9.!#$%&*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$',
-    ).hasMatch(t);
-    if (!ok) {
-      return 'Enter a valid email address';
-    }
-    return null;
+    return isValidOptionalEmail(v) ? null : 'Enter a valid email address';
   }
 
   Future<void> _onSave() async {

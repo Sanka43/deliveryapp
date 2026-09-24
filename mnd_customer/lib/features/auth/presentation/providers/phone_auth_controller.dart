@@ -45,6 +45,31 @@ class PhoneAuthState {
   }
 }
 
+/// Merge patch for an existing customers/{uid} doc on sign-in.
+///
+/// Phone/custom-token users have null Auth displayName/email, so those are
+/// only backfilled when the doc lacks them — never overwriting saved values.
+@visibleForTesting
+Map<String, dynamic> returningCustomerPatch({
+  required Map<String, dynamic> existing,
+  required String? authDisplayName,
+  required String? authEmail,
+  required String? phoneNumber,
+}) {
+  bool isBlank(Object? v) => v is! String || v.trim().isEmpty;
+  final Map<String, dynamic> patch = <String, dynamic>{
+    'phoneNumber': phoneNumber,
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
+  if (isBlank(existing['displayName']) && !isBlank(authDisplayName)) {
+    patch['displayName'] = authDisplayName;
+  }
+  if (isBlank(existing['email']) && !isBlank(authEmail)) {
+    patch['email'] = authEmail;
+  }
+  return patch;
+}
+
 final StateNotifierProvider<PhoneAuthController, PhoneAuthState>
     phoneAuthControllerProvider =
     StateNotifierProvider<PhoneAuthController, PhoneAuthState>(
@@ -352,21 +377,15 @@ class PhoneAuthController extends StateNotifier<PhoneAuthState> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } else {
-      // Phone/custom-token users have null Auth displayName/email, so only
-      // backfill those when the doc lacks them — never overwrite saved values.
-      final Map<String, dynamic> existing = snapshot.data() ?? <String, dynamic>{};
-      bool isBlank(Object? v) => v is! String || v.trim().isEmpty;
-      final Map<String, dynamic> patch = <String, dynamic>{
-        'phoneNumber': user.phoneNumber ?? fallbackPhoneNumber,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      if (isBlank(existing['displayName']) && !isBlank(user.displayName)) {
-        patch['displayName'] = user.displayName;
-      }
-      if (isBlank(existing['email']) && !isBlank(user.email)) {
-        patch['email'] = user.email;
-      }
-      await userRef.set(patch, SetOptions(merge: true));
+      await userRef.set(
+        returningCustomerPatch(
+          existing: snapshot.data() ?? <String, dynamic>{},
+          authDisplayName: user.displayName,
+          authEmail: user.email,
+          phoneNumber: user.phoneNumber ?? fallbackPhoneNumber,
+        ),
+        SetOptions(merge: true),
+      );
     }
 
     await FcmTokenRepository(
