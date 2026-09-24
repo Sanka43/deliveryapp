@@ -714,7 +714,7 @@ service cloud.firestore {
             'vehiclePhotos',
             'insurancePhotoUrl', 'insuranceExpiresAt',
             'revenueLicensePhotoUrl', 'revenueLicenseExpiresAt',
-            'vehicleType', 'vehicleNumber', 'city', 'email',
+            'vehicleType', 'serviceTypes', 'vehicleNumber', 'city', 'email',
             'role', 'status', 'online', 'registrationComplete', 'phoneVerified',
             'createdAt', 'updatedAt'
           ])
@@ -735,6 +735,12 @@ service cloud.firestore {
           && d.nicNumber.size() <= 14
           && d.vehicleType is string
           && d.vehicleType in ['bike', 'three_wheeler', 'van', 'car']
+          && (!('serviceTypes' in d) || (
+            d.serviceTypes is list
+            && d.serviceTypes.size() >= 1
+            && d.serviceTypes.size() <= 2
+            && d.serviceTypes.toSet().hasOnly(['food_delivery', 'passenger_transport'])
+          ))
           && d.vehicleNumber is string
           && d.vehicleNumber.size() >= 3
           && d.vehicleNumber.size() <= 20

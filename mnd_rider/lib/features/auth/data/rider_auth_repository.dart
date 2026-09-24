@@ -185,38 +185,49 @@ class RiderAuthRepository {
     // Ensure Storage sees a fresh auth token after phone OTP sign-in.
     await user.getIdToken(true);
 
-    final String profileUrl = await _storage.uploadRiderProfilePhoto(
-      riderId: user.uid,
-      bytes: form.profilePhotoBytes!,
-    );
-    final String licenseFrontUrl = await _storage.uploadRiderLicensePhoto(
-      riderId: user.uid,
-      bytes: form.licensePhotoFrontBytes!,
-      side: 'front',
-    );
-    final String licenseBackUrl = await _storage.uploadRiderLicensePhoto(
-      riderId: user.uid,
-      bytes: form.licensePhotoBackBytes!,
-      side: 'back',
-    );
-    final Map<String, String> vehiclePhotoUrls = <String, String>{};
-    for (final RiderVehiclePhotoSide side in RiderVehiclePhotoSide.values) {
-      vehiclePhotoUrls[side.firestoreKey] = await _storage.uploadRiderVehiclePhoto(
+    // Upload all photos concurrently — sequential uploads of 9 photos made
+    // the submitting screen hang for a long time on mobile data.
+    final List<RiderVehiclePhotoSide> vehicleSides = RiderVehiclePhotoSide.values;
+    final List<String> urls = await Future.wait(<Future<String>>[
+      _storage.uploadRiderProfilePhoto(
         riderId: user.uid,
-        bytes: form.vehiclePhotoBytesFor(side)!,
-        side: side.firestoreKey,
-      );
-    }
+        bytes: form.profilePhotoBytes!,
+      ),
+      _storage.uploadRiderLicensePhoto(
+        riderId: user.uid,
+        bytes: form.licensePhotoFrontBytes!,
+        side: 'front',
+      ),
+      _storage.uploadRiderLicensePhoto(
+        riderId: user.uid,
+        bytes: form.licensePhotoBackBytes!,
+        side: 'back',
+      ),
+      _storage.uploadRiderInsurancePhoto(
+        riderId: user.uid,
+        bytes: form.insurancePhotoBytes!,
+      ),
+      _storage.uploadRiderRevenueLicensePhoto(
+        riderId: user.uid,
+        bytes: form.revenueLicensePhotoBytes!,
+      ),
+      for (final RiderVehiclePhotoSide side in vehicleSides)
+        _storage.uploadRiderVehiclePhoto(
+          riderId: user.uid,
+          bytes: form.vehiclePhotoBytesFor(side)!,
+          side: side.firestoreKey,
+        ),
+    ]);
+    final String profileUrl = urls[0];
+    final String licenseFrontUrl = urls[1];
+    final String licenseBackUrl = urls[2];
+    final String insuranceUrl = urls[3];
+    final String revenueLicenseUrl = urls[4];
+    final Map<String, String> vehiclePhotoUrls = <String, String>{
+      for (int i = 0; i < vehicleSides.length; i++)
+        vehicleSides[i].firestoreKey: urls[5 + i],
+    };
     final String vehicleUrl = vehiclePhotoUrls[RiderVehiclePhotoSide.front.firestoreKey]!;
-    final String insuranceUrl = await _storage.uploadRiderInsurancePhoto(
-      riderId: user.uid,
-      bytes: form.insurancePhotoBytes!,
-    );
-    final String revenueLicenseUrl =
-        await _storage.uploadRiderRevenueLicensePhoto(
-      riderId: user.uid,
-      bytes: form.revenueLicensePhotoBytes!,
-    );
 
     // Fresh ID token so Firestore rules can see phone_number / phoneVerified.
     await user.getIdToken(true);
