@@ -1,6 +1,6 @@
 # Release Notes — MND Customer App
 
-## Unreleased
+## 2026-09-24
 
 ### What's New
 - New customers are asked for their name (email optional) right after signing in
